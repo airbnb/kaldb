@@ -1,7 +1,9 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="KalDb Index Node" type="Application" factoryName="Application">
+  <configuration default="false" name="KalDb Recovery Node" type="Application" factoryName="Application">
+    <option name="ALTERNATIVE_JRE_PATH" value="21" />
+    <option name="ALTERNATIVE_JRE_PATH_ENABLED" value="true" />
     <envs>
-      <env name="NODE_ROLES" value="INDEX" />
+      <env name="NODE_ROLES" value="RECOVERY" />
     </envs>
     <option name="MAIN_CLASS_NAME" value="com.slack.kaldb.server.Kaldb" />
     <module name="kaldb" />
