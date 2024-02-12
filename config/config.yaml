@@ -140,4 +140,4 @@ preprocessorConfig:
   dataTransformer: ${PREPROCESSOR_TRANSFORMER:-json}
   rateLimiterMaxBurstSeconds: ${PREPROCESSOR_RATE_LIMITER_MAX_BURST_SECONDS:-1}
   kafkaPartitionStickyTimeoutMs: ${KAFKA_PARTITION_STICKY_TIMEOUT_MS:-0}
-  useBulkApi: ${KALDB_PREPROCESSOR_USE_BULK_API:-false}
+  useBulkApi: ${KALDB_PREPROCESSOR_USE_BULK_API:-true}
