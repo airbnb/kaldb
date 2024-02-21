@@ -41,6 +41,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import software.amazon.awssdk.crt.Log;
 
 /**
  * gRPC service that performs a distributed search We take all the search metadata stores and query
@@ -140,7 +141,7 @@ public class KaldbDistributedQueryService extends KaldbQueryServiceBase implemen
       // updates
       pendingStubUpdate = executorService.schedule(this::doStubUpdate, 1500, TimeUnit.MILLISECONDS);
     } else {
-      LOG.debug(
+      LOG.info(
           "Update stubs already queued for execution, will run in {} ms",
           pendingStubUpdate.getDelay(TimeUnit.MILLISECONDS));
     }
@@ -162,7 +163,7 @@ public class KaldbDistributedQueryService extends KaldbQueryServiceBase implemen
       latestSearchServers.forEach(
           server -> {
             if (!stubs.containsKey(server)) {
-              LOG.debug("SearchMetadata listener event. Adding server={}", server);
+              LOG.info("SearchMetadata listener event. Adding server={}", server);
               stubs.put(server, getKaldbServiceGrpcClient(server));
               addedStubs.getAndIncrement();
             }
@@ -173,14 +174,14 @@ public class KaldbDistributedQueryService extends KaldbQueryServiceBase implemen
           .keySet()
           .forEach(
               server -> {
-                LOG.debug("SearchMetadata listener event. Removing server={}", server);
+                LOG.info("SearchMetadata listener event. Removing server={}", server);
                 if (!latestSearchServers.contains(server)) {
                   stubs.remove(server);
                   removedStubs.getAndIncrement();
                 }
               });
 
-      LOG.debug(
+      LOG.info(
           "SearchMetadata listener event. previous_total_stub_count={} current_total_stub_count={} added_stubs={} removed_stubs={}",
           currentSearchMetadataCount,
           stubs.size(),
@@ -346,7 +347,7 @@ public class KaldbDistributedQueryService extends KaldbQueryServiceBase implemen
 
   private List<SearchResult<LogMessage>> distributedSearch(
       final KaldbSearch.SearchRequest distribSearchReq) {
-    LOG.debug("Starting distributed search for request: {}", distribSearchReq);
+    LOG.info("Starting distributed search for request: {}", distribSearchReq);
     ScopedSpan span =
         Tracing.currentTracer().startScopedSpan("KaldbDistributedQueryService.distributedSearch");
 
@@ -362,10 +363,13 @@ public class KaldbDistributedQueryService extends KaldbQueryServiceBase implemen
     Map<String, List<SearchMetadata>> searchMetadataNodesMatchingQuery =
         getMatchingSearchMetadata(searchMetadataStore, snapshotsMatchingQuery);
 
+    LOG.info("searchMetadataNodesMatchingQuery: {}", searchMetadataNodesMatchingQuery);
     // from the list of search metadata nodes per snapshot, pick one. Additionally map it to the
     // underlying URL to query
     Map<String, List<String>> nodesAndSnapshotsToQuery =
         getNodesAndSnapshotsToQuery(searchMetadataNodesMatchingQuery);
+
+    LOG.info("nodesAndSnapshotsToQuery: {}", nodesAndSnapshotsToQuery);
 
     span.tag("queryServerCount", String.valueOf(nodesAndSnapshotsToQuery.size()));
 
@@ -392,6 +396,7 @@ public class KaldbDistributedQueryService extends KaldbQueryServiceBase implemen
                                       distribSearchReq.toBuilder()
                                           .addAllChunkIds(searchNode.getValue())
                                           .build();
+                                  LOG.info("localSearchReq: {}", localSearchReq);
                                   return SearchResultUtils.fromSearchResultProtoOrEmpty(
                                       stub.withDeadlineAfter(
                                               defaultQueryTimeout.toMillis(), TimeUnit.MILLISECONDS)
@@ -458,7 +463,7 @@ public class KaldbDistributedQueryService extends KaldbQueryServiceBase implemen
       distributedQueryTotalSnapshots.increment(aggregatedResult.totalSnapshots);
       distributedQuerySnapshotsWithReplicas.increment(aggregatedResult.snapshotsWithReplicas);
 
-      LOG.debug("aggregatedResult={}", aggregatedResult);
+      LOG.info("aggregatedResult={}", aggregatedResult);
       return SearchResultUtils.toSearchResultProto(aggregatedResult);
     } catch (Exception e) {
       LOG.error("Distributed search failed", e);
@@ -472,7 +477,7 @@ public class KaldbDistributedQueryService extends KaldbQueryServiceBase implemen
     //  and would benefit from refactoring the current "distributedSearch" abstraction to support
     //  different types of requests
 
-    LOG.debug("Starting distributed search for schema request: {}", distribSchemaReq);
+    LOG.info("Starting distributed search for schema request: {}", distribSchemaReq);
     ScopedSpan span =
         Tracing.currentTracer().startScopedSpan("KaldbDistributedQueryService.distributedSchema");
 
