@@ -69,6 +69,14 @@ services:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - NODE_ROLES=PREPROCESSOR
       - ZIPKIN_TRACING_ENDPOINT=http://openzipkin:9411/api/v2/spans
+      - KALDB_MANAGER_CONNECTION_STRING=kaldb_manager:8083
+      - S3_ENDPOINT=http://dep_s3:9090
+      - KALDB_INDEX_SERVER_ADDRESS=kaldb_index
+      - KALDB_QUERY_SERVER_ADDRESS=kaldb_query
+      - KALDB_CACHE_SERVER_ADDRESS=kaldb_cache
+      - KALDB_MANAGER_SERVER_ADDRESS=kaldb_manager
+      - KALDB_RECOVERY_SERVER_ADDRESS=kaldb_recovery
+      - KALDB_PREPROCESSOR_SERVER_ADDRESS=kaldb_preprocessor
     depends_on:
       - zookeeper
       - kafka
@@ -85,6 +93,14 @@ services:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - NODE_ROLES=INDEX
       - ZIPKIN_TRACING_ENDPOINT=http://openzipkin:9411/api/v2/spans
+      - KALDB_MANAGER_CONNECTION_STRING=kaldb_manager:8083
+      - S3_ENDPOINT=http://dep_s3:9090
+      - KALDB_INDEX_SERVER_ADDRESS=kaldb_index
+      - KALDB_QUERY_SERVER_ADDRESS=kaldb_query
+      - KALDB_CACHE_SERVER_ADDRESS=kaldb_cache
+      - KALDB_MANAGER_SERVER_ADDRESS=kaldb_manager
+      - KALDB_RECOVERY_SERVER_ADDRESS=kaldb_recovery
+      - KALDB_PREPROCESSOR_SERVER_ADDRESS=kaldb_preprocessor
     depends_on:
       - kaldb_preprocessor
 
@@ -98,6 +114,14 @@ services:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - NODE_ROLES=MANAGER
       - ZIPKIN_TRACING_ENDPOINT=http://openzipkin:9411/api/v2/spans
+      - KALDB_MANAGER_CONNECTION_STRING=kaldb_manager:8083
+      - S3_ENDPOINT=http://dep_s3:9090
+      - KALDB_INDEX_SERVER_ADDRESS=kaldb_index
+      - KALDB_QUERY_SERVER_ADDRESS=kaldb_query
+      - KALDB_CACHE_SERVER_ADDRESS=kaldb_cache
+      - KALDB_MANAGER_SERVER_ADDRESS=kaldb_manager
+      - KALDB_RECOVERY_SERVER_ADDRESS=kaldb_recovery
+      - KALDB_PREPROCESSOR_SERVER_ADDRESS=kaldb_preprocessor
     depends_on:
       - kaldb_preprocessor
 
@@ -132,6 +156,14 @@ services:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - NODE_ROLES=CACHE
       - ZIPKIN_TRACING_ENDPOINT=http://openzipkin:9411/api/v2/spans
+      - KALDB_MANAGER_CONNECTION_STRING=kaldb_manager:8083
+      - S3_ENDPOINT=http://dep_s3:9090
+      - KALDB_INDEX_SERVER_ADDRESS=kaldb_index
+      - KALDB_QUERY_SERVER_ADDRESS=kaldb_query
+      - KALDB_CACHE_SERVER_ADDRESS=kaldb_cache
+      - KALDB_MANAGER_SERVER_ADDRESS=kaldb_manager
+      - KALDB_RECOVERY_SERVER_ADDRESS=kaldb_recovery
+      - KALDB_PREPROCESSOR_SERVER_ADDRESS=kaldb_preprocessor
     depends_on:
       - kaldb_preprocessor
 
@@ -145,5 +177,13 @@ services:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - NODE_ROLES=RECOVERY
       - ZIPKIN_TRACING_ENDPOINT=http://openzipkin:9411/api/v2/spans
+      - KALDB_MANAGER_CONNECTION_STRING=kaldb_manager:8083
+      - S3_ENDPOINT=http://dep_s3:9090
+      - KALDB_INDEX_SERVER_ADDRESS=kaldb_index
+      - KALDB_QUERY_SERVER_ADDRESS=kaldb_query
+      - KALDB_CACHE_SERVER_ADDRESS=kaldb_cache
+      - KALDB_MANAGER_SERVER_ADDRESS=kaldb_manager
+      - KALDB_RECOVERY_SERVER_ADDRESS=kaldb_recovery
+      - KALDB_PREPROCESSOR_SERVER_ADDRESS=kaldb_preprocessor
     depends_on:
       - kaldb_preprocessor
