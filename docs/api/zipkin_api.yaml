@@ -40,7 +40,7 @@ paths:
               type: number
           description: |
             End time filter in epoch milliseconds
-        - name: startTimeEpochMs
+        - name: size
           in: query
           schema:
               type: integer
