@@ -58,7 +58,7 @@ services:
     ports:
       - 9411:9411
 
-  #to build this image run 'docker build -t slackhq/astra .'
+  # to build this image run 'docker build -t slackhq/astra .'
   astra_preprocessor:
     image: 'slackhq/astra'
     container_name: astra_preprocessor
