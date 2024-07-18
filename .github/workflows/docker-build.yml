@@ -1,9 +1,8 @@
-name: Build and PushDocker Image CI
+name: Build and Push Docker Image CI
 
 on:
   push:
     branches: [ "airbnb-main" ]
-  workflow_dispatch:
 
 jobs:
 
