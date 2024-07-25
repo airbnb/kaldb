@@ -1,0 +1,637 @@
+{
+  "took": 0,
+  "responses": [
+    {
+      "took": 8,
+      "timed_out": false,
+      "_shards": {
+        "failed": 0,
+        "total": 1
+      },
+      "_debug": {},
+      "hits": {
+        "total": {
+          "value": 21,
+          "relation": "eq"
+        },
+        "max_score": null,
+        "hits": [
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "15104ffc-32c0-47f2-87af-7a6d07ec58c0",
+            "_score": null,
+            "_timesinceepoch": 1720792121.405506463,
+            "_source": {
+              "traceId": "e980dba376cda125484cd5c87e9c5551",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.405506463Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Server",
+              "droppedEventsCount": 0,
+              "parentSpanId": "fd7ef68f89e1fcef",
+              "spanId": "12baac4dc4d76459",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "okey-dokey-0",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960886Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-client, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.961009Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121405
+            ]
+          },
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "3f9bfe54-50fe-4a9b-892d-6c5010b2d585",
+            "_score": null,
+            "_timesinceepoch": 1720792121.405912755,
+            "_source": {
+              "traceId": "e980dba376cda125484cd5c87e9c5551",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.405912755Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Client",
+              "droppedEventsCount": 0,
+              "spanId": "fd7ef68f89e1fcef",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "lets-go",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960886Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-server, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.961009Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121405
+            ]
+          },
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "a6985ec4-8b5e-426c-b2cd-a6431f1a7ba2",
+            "_score": null,
+            "_timesinceepoch": 1720792121.404003672,
+            "_source": {
+              "traceId": "aa71fcbed12ba6dee199fba8d6a9a7f6",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.404003672Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Client",
+              "droppedEventsCount": 0,
+              "spanId": "7a9b7c596f6fd485",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "lets-go",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960882Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-server, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.961005Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121404
+            ]
+          },
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "0bc6c7ec-9c05-495f-af8d-cc5802de4a89",
+            "_score": null,
+            "_timesinceepoch": 1720792121.404382380,
+            "_source": {
+              "traceId": "063b6755cefab229bb84af81f2b48d0b",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.404382380Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Server",
+              "droppedEventsCount": 0,
+              "parentSpanId": "9195d551a32adddf",
+              "spanId": "9c7e0a0dcff1c60f",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "okey-dokey-0",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960884Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-client, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.961007Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121404
+            ]
+          },
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "b1ecd391-4c56-4a28-a525-3c4469615b4e",
+            "_score": null,
+            "_timesinceepoch": 1720792121.404992130,
+            "_source": {
+              "traceId": "063b6755cefab229bb84af81f2b48d0b",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.404992130Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Client",
+              "droppedEventsCount": 0,
+              "spanId": "9195d551a32adddf",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "lets-go",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960884Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-server, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.961007Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121404
+            ]
+          },
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "5d6a50c1-9d97-43b4-a0b5-308c5b93906b",
+            "_score": null,
+            "_timesinceepoch": 1720792121.403087838,
+            "_source": {
+              "traceId": "f9e6f36358d6dcb21076319a5ce1adf3",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.403087838Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Client",
+              "droppedEventsCount": 0,
+              "spanId": "57d1ed1afcf2e0ee",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "lets-go",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960879Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-server, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.961002Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121403
+            ]
+          },
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "0561f4c2-cc16-46fd-a012-820918eedb3c",
+            "_score": null,
+            "_timesinceepoch": 1720792121.403562797,
+            "_source": {
+              "traceId": "aa71fcbed12ba6dee199fba8d6a9a7f6",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.403562797Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Server",
+              "droppedEventsCount": 0,
+              "parentSpanId": "7a9b7c596f6fd485",
+              "spanId": "3b0dffd1244ffee1",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "okey-dokey-0",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960882Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-client, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.961005Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121403
+            ]
+          },
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "b315ffee-9981-4230-a24c-c8fb9459e0a6",
+            "_score": null,
+            "_timesinceepoch": 1720792121.402188797,
+            "_source": {
+              "traceId": "bc7b81f137747572042c42285b794078",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.402188797Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Client",
+              "droppedEventsCount": 0,
+              "spanId": "e8cbf9a726db3b10",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "lets-go",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960876Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-server, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.960999Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121402
+            ]
+          },
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "b2db57dd-a2b5-4225-8d37-e244358a7a88",
+            "_score": null,
+            "_timesinceepoch": 1720792121.402702880,
+            "_source": {
+              "traceId": "f9e6f36358d6dcb21076319a5ce1adf3",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.402702880Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Server",
+              "droppedEventsCount": 0,
+              "parentSpanId": "57d1ed1afcf2e0ee",
+              "spanId": "acab42a7345ede30",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "okey-dokey-0",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960879Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-client, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.961002Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121402
+            ]
+          },
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "1b695e90-438b-45ce-8969-eb7e040f54ae",
+            "_score": null,
+            "_timesinceepoch": 1720792121.401037338,
+            "_source": {
+              "traceId": "484c7636402f3b2248fdc790ec44a8e2",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.401037338Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Client",
+              "droppedEventsCount": 0,
+              "spanId": "d64e34b97c1991ce",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "lets-go",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960871Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-server, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.960994Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121401
+            ]
+          },
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "fd4eb551-18d9-4f97-9dff-75204ef2ab4b",
+            "_score": null,
+            "_timesinceepoch": 1720792121.401567755,
+            "_source": {
+              "traceId": "bc7b81f137747572042c42285b794078",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.401567755Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Server",
+              "droppedEventsCount": 0,
+              "parentSpanId": "e8cbf9a726db3b10",
+              "spanId": "e21af993f6b6535b",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "okey-dokey-0",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960876Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-client, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.960999Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121401
+            ]
+          },
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "62565891-dbdc-4c7c-85ab-0a607666a31b",
+            "_score": null,
+            "_timesinceepoch": 1720792121.400547213,
+            "_source": {
+              "traceId": "484c7636402f3b2248fdc790ec44a8e2",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.400547213Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Server",
+              "droppedEventsCount": 0,
+              "parentSpanId": "d64e34b97c1991ce",
+              "spanId": "26bdcf599add7a99",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "okey-dokey-0",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960871Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-client, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.960994Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121400
+            ]
+          },
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "ff030c79-488a-43a9-8646-d77088a9bb04",
+            "_score": null,
+            "_timesinceepoch": 1720792121.399427755,
+            "_source": {
+              "traceId": "7973e64ace58ade05afa8f6682e25c27",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.399427755Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Server",
+              "droppedEventsCount": 0,
+              "parentSpanId": "ac34f6c6305b7b50",
+              "spanId": "a9562cfff3bf27ae",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "okey-dokey-0",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960859Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-client, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.960982Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121399
+            ]
+          },
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "22dbc57a-3c8c-4b2d-8f23-a30658e941e2",
+            "_score": null,
+            "_timesinceepoch": 1720792121.399986422,
+            "_source": {
+              "traceId": "7973e64ace58ade05afa8f6682e25c27",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.399986422Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Client",
+              "droppedEventsCount": 0,
+              "spanId": "ac34f6c6305b7b50",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "lets-go",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960859Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-server, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.960982Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121399
+            ]
+          },
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "50a20815-3bd3-4175-a017-c78af34ee72f",
+            "_score": null,
+            "_timesinceepoch": 1720792121.398133005,
+            "_source": {
+              "traceId": "fcc3a5a306a08bccbf8c485616bba96e",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.398133005Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Server",
+              "droppedEventsCount": 0,
+              "parentSpanId": "01936206060f81d1",
+              "spanId": "d85c88df1a0687c0",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "okey-dokey-0",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960854Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-client, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.960977Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121398
+            ]
+          },
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "f8390924-c54f-4652-9a6c-1538e3ab3a48",
+            "_score": null,
+            "_timesinceepoch": 1720792121.398679088,
+            "_source": {
+              "traceId": "fcc3a5a306a08bccbf8c485616bba96e",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.398679088Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Client",
+              "droppedEventsCount": 0,
+              "spanId": "01936206060f81d1",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "lets-go",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960854Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-server, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.960977Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121398
+            ]
+          },
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "846f3c36-1487-49ad-94ca-37c38acc3f8c",
+            "_score": null,
+            "_timesinceepoch": 1720792121.397434172,
+            "_source": {
+              "traceId": "a70f3b88aa5b801ef5dd5249e426f588",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.397434172Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Client",
+              "droppedEventsCount": 0,
+              "spanId": "57e3c95dfed17bd6",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "lets-go",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960852Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-server, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.960975Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121397
+            ]
+          },
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "3ba1eef4-6498-416c-ac1d-94dcf4d6f2da",
+            "_score": null,
+            "_timesinceepoch": 1720792121.396645338,
+            "_source": {
+              "traceId": "a70f3b88aa5b801ef5dd5249e426f588",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.396645338Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Server",
+              "droppedEventsCount": 0,
+              "parentSpanId": "57e3c95dfed17bd6",
+              "spanId": "ee593511bec3c6b9",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "okey-dokey-0",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960852Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-client, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.960975Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121396
+            ]
+          },
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "a0ebe43c-21f4-4a9e-9489-105b26517017",
+            "_score": null,
+            "_timesinceepoch": 1720792121.395920213,
+            "_source": {
+              "traceId": "6ef7b65aa7b2361a9c6e7251f80d104a",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.395920213Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Client",
+              "droppedEventsCount": 0,
+              "spanId": "bcd66b4efbb5ca88",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "lets-go",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960508Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-server, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.960631Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121395
+            ]
+          },
+          {
+            "_index": "ss4o_traces-default-namespace",
+            "_type": "_doc",
+            "_id": "b000c57a-b4db-4a1b-b8c0-bcba232929e7",
+            "_score": null,
+            "_timesinceepoch": 1720792121.392868088,
+            "_source": {
+              "traceId": "6ef7b65aa7b2361a9c6e7251f80d104a",
+              "droppedLinksCount": 0,
+              "instrumentationScope": "{name=telemetrygen, droppedAttributesCount=0, version=, schemaUrl=}",
+              "_timesinceepoch": "2024-07-12T13:48:41.392868088Z",
+              "resource": "{service.name=telemetrygen}",
+              "service_name": "ss4o_traces-default-namespace",
+              "kind": "Server",
+              "droppedEventsCount": 0,
+              "parentSpanId": "bcd66b4efbb5ca88",
+              "spanId": "5a4c4c65e3a5bde8",
+              "@timestamp": "0001-01-01T00:00:00Z",
+              "name": "okey-dokey-0",
+              "astra_invalid_timestamp": -62135596800000000,
+              "startTime": "2024-07-12T13:48:40.960508Z",
+              "attributes": "{data_stream={namespace=namespace, type=span, dataset=default}, peer.service=telemetrygen-client, net.peer.ip=1.2.3.4}",
+              "endTime": "2024-07-12T13:48:40.960631Z",
+              "droppedAttributesCount": 0,
+              "status": "{code=Unset, message=}"
+            },
+            "sort": [
+              1720792121392
+            ]
+          },
+          {
+            "_index": "test",
+            "_type": "_doc",
+            "_id": "100",
+            "_score": null,
+            "_timesinceepoch": 1720792104.683507553,
+            "_source": {
+              "service-name": "test",
+              "@timestamp": "2024-03-07T12:00:00Z",
+              "_timesinceepoch": "2024-07-12T13:48:24.683507553Z",
+              "level": "INFO",
+              "service_name": "test",
+              "astra_invalid_timestamp": 1709812800000000,
+              "message": "This is a log message"
+            },
+            "sort": [
+              1720792104683
+            ]
+          }
+        ]
+      },
+      "aggregations": null,
+      "status": 200
+    }
+  ],
+  "_debug": {
+    "traceId": "22fc3b912c2fd5bd"
+  }
+}

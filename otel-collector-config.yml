@@ -1,0 +1,50 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+  jaeger:
+    protocols:
+      grpc:
+      thrift_http:
+      thrift_compact:
+      thrift_binary:
+
+exporters:
+  opensearch:
+    http:
+      endpoint: "http://localhost:8086"
+      tls:
+        insecure: true
+
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+
+processors:
+  batch:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 4000
+    spike_limit_mib: 500
+  resource:
+    attributes:
+      - action: insert
+        key: service.name
+        value: my-service
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
+  pprof:
+    endpoint: "0.0.0.0:1888"
+
+service:
+  extensions: [health_check, pprof]
+  pipelines:
+    traces:
+      receivers: [otlp, jaeger]
+      processors: [batch, memory_limiter, resource]
+      exporters: [opensearch]
+#  telemetry:
+#    logs:
+#      level: "debug"
