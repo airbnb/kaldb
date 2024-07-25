@@ -9,11 +9,14 @@ receivers:
       thrift_http:
       thrift_compact:
       thrift_binary:
+  zipkin:
+    endpoint: "0.0.0.0:9411"  # Default Zipkin endpoint
 
 exporters:
   opensearch:
     http:
-      endpoint: "http://localhost:8086"
+      #endpoint: "http://localhost:8086"
+      endpoint: "http://astra_preprocessor:8086"
       tls:
         insecure: true
 
@@ -42,7 +45,7 @@ service:
   extensions: [health_check, pprof]
   pipelines:
     traces:
-      receivers: [otlp, jaeger]
+      receivers: [otlp, jaeger, zipkin]
       processors: [batch, memory_limiter, resource]
       exporters: [opensearch]
 #  telemetry:
