@@ -15,8 +15,8 @@ receivers:
 exporters:
   opensearch:
     http:
-      #endpoint: "http://localhost:8086"
-      endpoint: "http://astra_preprocessor:8086"
+      endpoint: "http://localhost:8086"
+      #endpoint: "http://astra_preprocessor:8086"
       tls:
         insecure: true
 
