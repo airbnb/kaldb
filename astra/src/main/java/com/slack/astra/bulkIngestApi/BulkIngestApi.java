@@ -66,6 +66,8 @@ public class BulkIngestApi {
     Timer.Sample sample = Timer.start(meterRegistry);
     future.thenRun(() -> sample.stop(bulkIngestTimer));
 
+    //LOG.info("bulk ingest called with request: {}", bulkRequest);
+
     try {
       byte[] bulkRequestBytes = bulkRequest.getBytes(StandardCharsets.UTF_8);
       incomingByteTotal.increment(bulkRequestBytes.length);
@@ -77,14 +79,17 @@ public class BulkIngestApi {
       // so today as a limitation we reject any request that has documents against
       // multiple indexes
       // We think most indexing requests will be against 1 index
+
       if (docs.keySet().size() > 1) {
         BulkIngestResponse response =
             new BulkIngestResponse(0, 0, "request must contain only 1 unique index");
         future.complete(HttpResponse.ofJson(INTERNAL_SERVER_ERROR, response));
         return HttpResponse.of(future);
       }
+      LOG.info("bulk ingest called with number of docs: {}", docs.entrySet().size());
 
       for (Map.Entry<String, List<Trace.Span>> indexDocs : docs.entrySet()) {
+        LOG.info("\tnumber of spans: {}", indexDocs.getValue().size());
         incomingDocsTotal.increment(indexDocs.getValue().size());
         final String index = indexDocs.getKey();
         if (!datasetRateLimitingService.tryAcquire(index, indexDocs.getValue())) {

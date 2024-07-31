@@ -74,7 +74,6 @@ services:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - ZIPKIN_TRACING_ENDPOINT=http://host.docker.internal:9411/api/v2/spans
       - S3_ENDPOINT=http://dep_s3:9090
-      - LOG_LEVEL=DEBUG
     depends_on:
       - zookeeper
       - kafka

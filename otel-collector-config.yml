@@ -24,16 +24,22 @@ exporters:
     endpoint: "0.0.0.0:8889"
 
 processors:
-  batch:
   memory_limiter:
     check_interval: 1s
     limit_mib: 4000
     spike_limit_mib: 500
-  resource:
-    attributes:
-      - action: insert
-        key: service.name
-        value: my-service
+  attributes/airtrace:
+    actions:
+      - key: trace_id
+        action: insert
+        from_attribute: traceId
+      - key: span_id
+        action: insert
+        from_attribute: spanId
+  batch/airtrace:
+    send_batch_max_size: 100
+    send_batch_size: 100
+    timeout: 10s
 
 extensions:
   health_check:
@@ -46,7 +52,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp, jaeger, zipkin]
-      processors: [batch, memory_limiter, resource]
+      processors: [memory_limiter, attributes/airtrace, batch/airtrace]
       exporters: [opensearch]
 #  telemetry:
 #    logs:
