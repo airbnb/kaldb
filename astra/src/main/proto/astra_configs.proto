@@ -143,6 +143,7 @@ message ServerConfig {
   int32 server_port = 1;
   string server_address = 2;
   int32 request_timeout_ms = 3;
+  float trace_sampling_rate = 4;
 }
 
 // Configuration for cache node.

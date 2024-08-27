@@ -185,10 +185,11 @@ public class Astra {
               chunkManager,
               Duration.ofMillis(astraConfig.getIndexerConfig().getDefaultQueryTimeoutMs()));
       final int serverPort = astraConfig.getIndexerConfig().getServerConfig().getServerPort();
+      final float traceSamplingRate = astraConfig.getIndexerConfig().getServerConfig().getTraceSamplingRate();
       Duration requestTimeout =
           Duration.ofMillis(astraConfig.getIndexerConfig().getServerConfig().getRequestTimeoutMs());
       ArmeriaService armeriaService =
-          new ArmeriaService.Builder(serverPort, "astraIndex", meterRegistry)
+          new ArmeriaService.Builder(serverPort, "astraIndex", meterRegistry, traceSamplingRate)
               .withRequestTimeout(requestTimeout)
               .withTracing(astraConfig.getTracingConfig())
               .withGrpcService(searcher)
@@ -219,9 +220,10 @@ public class Astra {
       // todo - close the astraDistributedQueryService once done (depends on
       // https://github.com/slackhq/astra/pull/564)
       final int serverPort = astraConfig.getQueryConfig().getServerConfig().getServerPort();
+      final float traceSamplingRate = astraConfig.getQueryConfig().getServerConfig().getTraceSamplingRate();
 
       ArmeriaService armeriaService =
-          new ArmeriaService.Builder(serverPort, "astraQuery", meterRegistry)
+          new ArmeriaService.Builder(serverPort, "astraQuery", meterRegistry, traceSamplingRate)
               .withRequestTimeout(requestTimeout)
               .withTracing(astraConfig.getTracingConfig())
               .withAnnotatedService(new ElasticsearchApiService(astraDistributedQueryService))
@@ -256,10 +258,12 @@ public class Astra {
               chunkManager,
               Duration.ofMillis(astraConfig.getCacheConfig().getDefaultQueryTimeoutMs()));
       final int serverPort = astraConfig.getCacheConfig().getServerConfig().getServerPort();
+      final float traceSamplingRate = astraConfig.getCacheConfig().getServerConfig().getTraceSamplingRate();
+
       Duration requestTimeout =
           Duration.ofMillis(astraConfig.getCacheConfig().getServerConfig().getRequestTimeoutMs());
       ArmeriaService armeriaService =
-          new ArmeriaService.Builder(serverPort, "astraCache", meterRegistry)
+          new ArmeriaService.Builder(serverPort, "astraCache", meterRegistry, traceSamplingRate)
               .withRequestTimeout(requestTimeout)
               .withTracing(astraConfig.getTracingConfig())
               .withGrpcService(searcher)
@@ -287,9 +291,10 @@ public class Astra {
       ReplicaRestoreService replicaRestoreService =
           new ReplicaRestoreService(replicaMetadataStore, meterRegistry, managerConfig);
       services.add(replicaRestoreService);
+      final float traceSamplingRate = astraConfig.getManagerConfig().getServerConfig().getTraceSamplingRate();
 
       ArmeriaService armeriaService =
-          new ArmeriaService.Builder(serverPort, "astraManager", meterRegistry)
+          new ArmeriaService.Builder(serverPort, "astraManager", meterRegistry, traceSamplingRate)
               .withRequestTimeout(requestTimeout)
               .withTracing(astraConfig.getTracingConfig())
               .withGrpcService(
@@ -385,12 +390,13 @@ public class Astra {
     if (roles.contains(AstraConfigs.NodeRole.RECOVERY)) {
       final AstraConfigs.RecoveryConfig recoveryConfig = astraConfig.getRecoveryConfig();
       final int serverPort = recoveryConfig.getServerConfig().getServerPort();
+      final float traceSamplingRate = recoveryConfig.getServerConfig().getTraceSamplingRate();
 
       Duration requestTimeout =
           Duration.ofMillis(
               astraConfig.getRecoveryConfig().getServerConfig().getRequestTimeoutMs());
       ArmeriaService armeriaService =
-          new ArmeriaService.Builder(serverPort, "astraRecovery", meterRegistry)
+          new ArmeriaService.Builder(serverPort, "astraRecovery", meterRegistry, traceSamplingRate)
               .withRequestTimeout(requestTimeout)
               .withTracing(astraConfig.getTracingConfig())
               .build();
@@ -411,8 +417,10 @@ public class Astra {
       Duration requestTimeout =
           Duration.ofMillis(
               astraConfig.getPreprocessorConfig().getServerConfig().getRequestTimeoutMs());
+      final float traceSamplingRate = astraConfig.getPreprocessorConfig().getServerConfig().getTraceSamplingRate();
+
       ArmeriaService.Builder armeriaServiceBuilder =
-          new ArmeriaService.Builder(serverPort, "astraPreprocessor", meterRegistry)
+          new ArmeriaService.Builder(serverPort, "astraPreprocessor", meterRegistry, traceSamplingRate)
               .withRequestTimeout(requestTimeout)
               .withTracing(astraConfig.getTracingConfig());
 
