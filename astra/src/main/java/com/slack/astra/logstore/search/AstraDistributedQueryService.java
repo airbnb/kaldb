@@ -212,10 +212,10 @@ public class AstraDistributedQueryService extends AstraQueryServiceBase implemen
           AstraDistributedQueryService.pickSearchNodeToQuery(searchMetadataList);
 
       if (nodeUrlToSnapshotNames.containsKey(searchMetadata.url)) {
-        nodeUrlToSnapshotNames.get(searchMetadata.url).add(getRawSnapshotName(searchMetadata));
+        nodeUrlToSnapshotNames.get(searchMetadata.url).add(SnapshotMetadata.getRawSnapshotName(searchMetadata.snapshotName));
       } else {
         List<String> snapshotNames = new ArrayList<>();
-        snapshotNames.add(getRawSnapshotName(searchMetadata));
+        snapshotNames.add(SnapshotMetadata.getRawSnapshotName(searchMetadata.snapshotName));
         nodeUrlToSnapshotNames.put(searchMetadata.url, snapshotNames);
       }
     }
@@ -240,7 +240,7 @@ public class AstraDistributedQueryService extends AstraQueryServiceBase implemen
         continue;
       }
 
-      String rawSnapshotName = AstraDistributedQueryService.getRawSnapshotName(searchMetadata);
+      String rawSnapshotName = SnapshotMetadata.getRawSnapshotName(searchMetadata.snapshotName);
       if (searchMetadataGroupedByName.containsKey(rawSnapshotName)) {
         searchMetadataGroupedByName.get(rawSnapshotName).add(searchMetadata);
       } else {
@@ -302,12 +302,6 @@ public class AstraDistributedQueryService extends AstraQueryServiceBase implemen
     return false;
   }
 
-  private static String getRawSnapshotName(SearchMetadata searchMetadata) {
-    return searchMetadata.snapshotName.startsWith("LIVE")
-        ? searchMetadata.snapshotName.substring(5) // LIVE_
-        : searchMetadata.snapshotName;
-  }
-
   /*
    If there is only one node hosting the snapshot use that
    If the same snapshot exists on indexer and cache node prefer cache
@@ -320,7 +314,7 @@ public class AstraDistributedQueryService extends AstraQueryServiceBase implemen
     } else {
       List<SearchMetadata> cacheNodeHostedSearchMetadata = new ArrayList<>();
       for (SearchMetadata searchMetadata : queryableSearchMetadataNodes) {
-        if (!searchMetadata.snapshotName.startsWith("LIVE")) {
+        if (!SnapshotMetadata.isLiveSnapshotName(searchMetadata.snapshotName)) {
           cacheNodeHostedSearchMetadata.add(searchMetadata);
         }
       }

@@ -694,7 +694,7 @@ public class RecoveryChunkImplTest {
       List<SnapshotMetadata> afterSnapshots =
           AstraMetadataTestUtils.listSyncUncached(snapshotMetadataStore);
       assertThat(afterSnapshots.size()).isEqualTo(1);
-      assertThat(afterSnapshots).contains(ChunkInfo.toSnapshotMetadata(chunk.info(), ""));
+      assertThat(afterSnapshots).contains(ChunkInfo.toPersistentSnapshotMetadata(chunk.info()));
 
       assertThat(blobStore.listFiles(afterSnapshots.get(0).snapshotId).size()).isGreaterThan(0);
       // Only non-live snapshots. No live snapshots.

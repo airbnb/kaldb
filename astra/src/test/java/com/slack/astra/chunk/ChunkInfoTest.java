@@ -4,12 +4,13 @@ import static com.slack.astra.chunk.ChunkInfo.DEFAULT_MAX_OFFSET;
 import static com.slack.astra.chunk.ChunkInfo.MAX_FUTURE_TIME;
 import static com.slack.astra.chunk.ChunkInfo.containsDataInTimeRange;
 import static com.slack.astra.chunk.ChunkInfo.fromSnapshotMetadata;
-import static com.slack.astra.chunk.ChunkInfo.toSnapshotMetadata;
+import static com.slack.astra.chunk.ChunkInfo.toPersistentSnapshotMetadata;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+
 import org.junit.jupiter.api.Test;
 
 public class ChunkInfoTest {
@@ -332,6 +333,6 @@ public class ChunkInfoTest {
             1000,
             TEST_KAFKA_PARTITION_ID,
             0);
-    assertThat(fromSnapshotMetadata(toSnapshotMetadata(chunkInfo, ""))).isEqualTo(chunkInfo);
+    assertThat(fromSnapshotMetadata(toPersistentSnapshotMetadata(chunkInfo))).isEqualTo(chunkInfo);
   }
 }

@@ -1,6 +1,6 @@
 package com.slack.astra.chunk;
 
-import static com.slack.astra.chunk.ChunkInfo.toSnapshotMetadata;
+import static com.slack.astra.chunk.ChunkInfo.toPersistentSnapshotMetadata;
 
 import com.slack.astra.logstore.LogStore;
 import com.slack.astra.metadata.search.SearchMetadataStore;
@@ -50,7 +50,7 @@ public class RecoveryChunkImpl<T> extends ReadWriteChunk<T> {
   public void postSnapshot() {
     LOG.debug("Start post snapshot for recovery chunk {}", chunkInfo);
     // Publish a persistent snapshot for this chunk.
-    SnapshotMetadata nonLiveSnapshotMetadata = toSnapshotMetadata(chunkInfo, "");
+    SnapshotMetadata nonLiveSnapshotMetadata = toPersistentSnapshotMetadata(chunkInfo);
     snapshotMetadataStore.createSync(nonLiveSnapshotMetadata);
     LOG.debug("Post snapshot operation completed for recovery chunk {}", chunkInfo);
   }

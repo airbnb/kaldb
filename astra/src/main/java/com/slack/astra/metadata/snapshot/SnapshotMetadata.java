@@ -3,6 +3,7 @@ package com.slack.astra.metadata.snapshot;
 import static com.google.common.base.Preconditions.checkArgument;
 
 import com.slack.astra.metadata.core.AstraPartitionedMetadata;
+
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -22,12 +23,45 @@ import java.time.temporal.ChronoField;
  * here.
  */
 public class SnapshotMetadata extends AstraPartitionedMetadata {
+  public static final String LIVE_SNAPSHOT_PREFIX = "LIVE_";
+
   public final String snapshotId;
   public final long startTimeEpochMs;
   public final long endTimeEpochMs;
   public final String partitionId;
   public long maxOffset;
   public long sizeInBytesOnDisk;
+
+  public static SnapshotMetadata createLiveSnapshotMetadata(
+    String snapshotId,
+    long startTimeEpochMs,
+    long endTimeEpochMs,
+    long maxOffset,
+    String partitionId,
+    long sizeInBytesOnDisk) {
+    return new SnapshotMetadata(
+      LIVE_SNAPSHOT_PREFIX + snapshotId,
+      startTimeEpochMs,
+      endTimeEpochMs,
+      maxOffset,
+      partitionId,
+      sizeInBytesOnDisk);
+  }
+  public static SnapshotMetadata createPersistentSnapshotMetadata(
+    String snapshotId,
+    long startTimeEpochMs,
+    long endTimeEpochMs,
+    long maxOffset,
+    String partitionId,
+    long sizeInBytesOnDisk) {
+    return new SnapshotMetadata(
+      snapshotId,
+      startTimeEpochMs,
+      endTimeEpochMs,
+      maxOffset,
+      partitionId,
+      sizeInBytesOnDisk);
+  }
 
   public SnapshotMetadata(
       String snapshotId,
@@ -71,6 +105,16 @@ public class SnapshotMetadata extends AstraPartitionedMetadata {
     this.maxOffset = maxOffset;
     this.partitionId = partitionId;
     this.sizeInBytesOnDisk = sizeInBytesOnDisk;
+  }
+
+  public static boolean isLiveSnapshotName(String snapshotId) {
+    return snapshotId.startsWith(LIVE_SNAPSHOT_PREFIX);
+  }
+
+  public static String getRawSnapshotName(String snapshotId) {
+    return isLiveSnapshotName(snapshotId)
+      ? snapshotId.substring(LIVE_SNAPSHOT_PREFIX.length())
+      : snapshotId;
   }
 
   @Override
@@ -142,6 +186,6 @@ public class SnapshotMetadata extends AstraPartitionedMetadata {
   //  variable but not by a lot. The "isLive" functionality should be reconsidered more broadly.
   //  The ideal way is likely to reconsider the ZK type for "LIVE" snapshots
   public boolean isLive() {
-    return this.sizeInBytesOnDisk == 0;
+    return this.sizeInBytesOnDisk == 0 && snapshotId.startsWith(LIVE_SNAPSHOT_PREFIX);
   }
 }

@@ -2,7 +2,6 @@ package com.slack.astra.chunk;
 
 import static com.slack.astra.chunk.ReadWriteChunk.INDEX_FILES_UPLOAD;
 import static com.slack.astra.chunk.ReadWriteChunk.INDEX_FILES_UPLOAD_FAILED;
-import static com.slack.astra.chunk.ReadWriteChunk.LIVE_SNAPSHOT_PREFIX;
 import static com.slack.astra.chunk.ReadWriteChunk.SCHEMA_FILE_NAME;
 import static com.slack.astra.chunk.ReadWriteChunk.SNAPSHOT_TIMER;
 import static com.slack.astra.logstore.LuceneIndexStoreImpl.COMMITS_TIMER;
@@ -76,7 +75,7 @@ public class IndexingChunkImplTest {
       SearchMetadataStore searchMetadataStore,
       ReadWriteChunk<LogMessage> chunk) {
     assertThat(AstraMetadataTestUtils.listSyncUncached(snapshotMetadataStore))
-        .containsOnly(ChunkInfo.toSnapshotMetadata(chunk.info(), LIVE_SNAPSHOT_PREFIX));
+        .containsOnly(ChunkInfo.toLiveSnapshotMetadata(chunk.info()));
     final List<SearchMetadata> beforeSearchNodes =
         AstraMetadataTestUtils.listSyncUncached(searchMetadataStore);
     assertThat(beforeSearchNodes.size()).isEqualTo(1);
@@ -731,7 +730,7 @@ public class IndexingChunkImplTest {
       List<SnapshotMetadata> afterSnapshots =
           AstraMetadataTestUtils.listSyncUncached(snapshotMetadataStore);
       assertThat(afterSnapshots.size()).isEqualTo(2);
-      assertThat(afterSnapshots).contains(ChunkInfo.toSnapshotMetadata(chunk.info(), ""));
+      assertThat(afterSnapshots).contains(ChunkInfo.toPersistentSnapshotMetadata(chunk.info()));
       SnapshotMetadata liveSnapshot =
           afterSnapshots.stream().filter(SnapshotMetadata::isLive).findFirst().get();
       assertThat(liveSnapshot.partitionId).isEqualTo(TEST_KAFKA_PARTITION_ID);

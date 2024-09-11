@@ -1,6 +1,7 @@
 package com.slack.astra.chunk;
 
-import static com.slack.astra.chunk.ChunkInfo.toSnapshotMetadata;
+import static com.slack.astra.chunk.ChunkInfo.toLiveSnapshotMetadata;
+import static com.slack.astra.chunk.ChunkInfo.toPersistentSnapshotMetadata;
 
 import com.slack.astra.logstore.LogStore;
 import com.slack.astra.metadata.search.SearchMetadataStore;
@@ -62,19 +63,11 @@ public class IndexingChunkImpl<T> extends ReadWriteChunk<T> {
   public void postSnapshot() {
     LOG.debug("Start post snapshot chunk {}", chunkInfo);
     // Publish a persistent snapshot for this chunk.
-    SnapshotMetadata nonLiveSnapshotMetadata = toSnapshotMetadata(chunkInfo, "");
+    SnapshotMetadata nonLiveSnapshotMetadata = toPersistentSnapshotMetadata(chunkInfo);
     snapshotMetadataStore.createSync(nonLiveSnapshotMetadata);
 
-    // Update the live snapshot. Keep the same snapshotId to
-    // ensure it's a live snapshot.
-    SnapshotMetadata updatedSnapshotMetadata =
-        new SnapshotMetadata(
-            liveSnapshotMetadata.snapshotId,
-            chunkInfo.getDataStartTimeEpochMs(),
-            chunkInfo.getDataEndTimeEpochMs(),
-            chunkInfo.getMaxOffset(),
-            chunkInfo.getKafkaPartitionId(),
-            liveSnapshotMetadata.sizeInBytesOnDisk);
+    // Update the live snapshot.
+    SnapshotMetadata updatedSnapshotMetadata = toLiveSnapshotMetadata(chunkInfo);
     snapshotMetadataStore.updateSync(updatedSnapshotMetadata);
     liveSnapshotMetadata = updatedSnapshotMetadata;
 

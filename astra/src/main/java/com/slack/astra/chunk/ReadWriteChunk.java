@@ -1,6 +1,5 @@
 package com.slack.astra.chunk;
 
-import static com.slack.astra.chunk.ChunkInfo.toSnapshotMetadata;
 import static com.slack.astra.writer.SpanFormatter.isValidTimestamp;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -68,7 +67,6 @@ public abstract class ReadWriteChunk<T> implements Chunk<T> {
   public static final String INDEX_FILES_UPLOAD = "index_files_upload";
   public static final String INDEX_FILES_UPLOAD_FAILED = "index_files_upload_failed";
   public static final String SNAPSHOT_TIMER = "snapshot.timer";
-  public static final String LIVE_SNAPSHOT_PREFIX = "LIVE_";
   public static final String SCHEMA_FILE_NAME = "schema.json";
 
   private final LogStore logStore;
@@ -116,7 +114,7 @@ public abstract class ReadWriteChunk<T> implements Chunk<T> {
     readOnly = false;
     this.meterRegistry = meterRegistry;
     fileUploadAttempts = meterRegistry.counter(INDEX_FILES_UPLOAD);
-    liveSnapshotMetadata = toSnapshotMetadata(chunkInfo, LIVE_SNAPSHOT_PREFIX);
+    liveSnapshotMetadata = ChunkInfo.toLiveSnapshotMetadata(chunkInfo);
     liveSearchMetadata = toSearchMetadata(liveSnapshotMetadata.snapshotId, searchContext);
     this.searchMetadataStore = searchMetadataStore;
     this.snapshotMetadataStore = snapshotMetadataStore;

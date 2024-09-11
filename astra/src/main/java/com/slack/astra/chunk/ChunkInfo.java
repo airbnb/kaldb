@@ -33,9 +33,19 @@ public class ChunkInfo {
         snapshotMetadata.sizeInBytesOnDisk);
   }
 
-  public static SnapshotMetadata toSnapshotMetadata(ChunkInfo chunkInfo, String chunkPrefix) {
-    return new SnapshotMetadata(
-        chunkPrefix + chunkInfo.chunkId,
+  public static SnapshotMetadata toPersistentSnapshotMetadata(ChunkInfo chunkInfo) {
+    return SnapshotMetadata.createPersistentSnapshotMetadata(
+        chunkInfo.chunkId,
+        chunkInfo.getDataStartTimeEpochMs(),
+        chunkInfo.getDataEndTimeEpochMs(),
+        chunkInfo.maxOffset,
+        chunkInfo.kafkaPartitionId,
+        chunkInfo.sizeInBytesOnDisk);
+  }
+
+  public static SnapshotMetadata toLiveSnapshotMetadata(ChunkInfo chunkInfo) {
+    return SnapshotMetadata.createLiveSnapshotMetadata(
+        chunkInfo.chunkId,
         chunkInfo.getDataStartTimeEpochMs(),
         chunkInfo.getDataEndTimeEpochMs(),
         chunkInfo.maxOffset,

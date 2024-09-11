@@ -1,7 +1,7 @@
 package com.slack.astra.logstore.search;
 
-import static com.slack.astra.chunk.ChunkInfo.toSnapshotMetadata;
-import static com.slack.astra.chunk.ReadWriteChunk.LIVE_SNAPSHOT_PREFIX;
+import static com.slack.astra.chunk.ChunkInfo.toLiveSnapshotMetadata;
+import static com.slack.astra.chunk.ChunkInfo.toPersistentSnapshotMetadata;
 import static com.slack.astra.chunk.ReadWriteChunk.toSearchMetadata;
 import static com.slack.astra.logstore.search.AstraDistributedQueryService.getMatchingSearchMetadata;
 import static com.slack.astra.logstore.search.AstraDistributedQueryService.getMatchingSnapshots;
@@ -966,14 +966,14 @@ public class AstraDistributedQueryServiceTest {
             1234,
             partition,
             0);
-    SnapshotMetadata snapshotMetadata =
-        toSnapshotMetadata(chunkInfo, isLive ? LIVE_SNAPSHOT_PREFIX : "");
+    SnapshotMetadata snapshotMetadata = isLive ? toLiveSnapshotMetadata(chunkInfo) : toPersistentSnapshotMetadata(chunkInfo);
 
     snapshotMetadataStore.createSync(snapshotMetadata);
 
     if (isLive) {
       // create non-live as well to simulate postClose of IndexingChunkImpl
-      SnapshotMetadata nonLiveSnapshotMetadata = toSnapshotMetadata(chunkInfo, "");
+      SnapshotMetadata nonLiveSnapshotMetadata;
+      nonLiveSnapshotMetadata = toPersistentSnapshotMetadata(chunkInfo);
       snapshotMetadataStore.createSync(nonLiveSnapshotMetadata);
     }
 
