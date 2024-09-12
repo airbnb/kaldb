@@ -23,14 +23,14 @@ import java.time.temporal.ChronoField;
  * here.
  */
 public class SnapshotMetadata extends AstraPartitionedMetadata {
-  public static final String LIVE_SNAPSHOT_PREFIX = "LIVE_";
+  private static final String LIVE_SNAPSHOT_PREFIX = "LIVE_";
 
   public final String snapshotId;
   public final long startTimeEpochMs;
   public final long endTimeEpochMs;
   public final String partitionId;
+  public final long sizeInBytesOnDisk;
   public long maxOffset;
-  public long sizeInBytesOnDisk;
 
   public static SnapshotMetadata createLiveSnapshotMetadata(
     String snapshotId,
