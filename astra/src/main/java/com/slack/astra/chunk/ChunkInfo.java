@@ -50,7 +50,7 @@ public class ChunkInfo {
         chunkInfo.getDataEndTimeEpochMs(),
         chunkInfo.maxOffset,
         chunkInfo.kafkaPartitionId,
-        chunkInfo.sizeInBytesOnDisk);
+        0);
   }
 
   /* A unique identifier for a the chunk. */
