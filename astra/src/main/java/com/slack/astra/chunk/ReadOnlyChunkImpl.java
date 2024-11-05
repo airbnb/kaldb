@@ -6,7 +6,7 @@ import static com.slack.astra.server.AstraConfig.DEFAULT_ZK_TIMEOUT_SECS;
 import com.google.common.annotations.VisibleForTesting;
 import com.slack.astra.blobfs.BlobStore;
 import com.slack.astra.logstore.search.LogIndexSearcher;
-import com.slack.astra.logstore.search.LogIndexSearcherImpl;
+import com.slack.astra.logstore.search.RocksdbIndexSearcherImpl;
 import com.slack.astra.logstore.search.SearchQuery;
 import com.slack.astra.logstore.search.SearchResult;
 import com.slack.astra.metadata.cache.CacheNodeAssignment;
@@ -227,11 +227,13 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
 
       if (USE_S3_STREAMING) {
         this.chunkSchema = ChunkSchema.deserializeBytes(blobStore.getSchema(chunkInfo.chunkId));
-        this.logSearcher =
-            (LogIndexSearcher<T>)
-                new LogIndexSearcherImpl(
-                    LogIndexSearcherImpl.searcherManagerFromChunkId(chunkInfo.chunkId, blobStore),
-                    chunkSchema.fieldDefMap);
+        throw new UnsupportedOperationException("Streaming on s3 rocksdb is not supported");
+        //        this.logSearcher =
+        //            (LogIndexSearcher<T>)
+        //                new LogIndexSearcherImpl(
+        //                    LogIndexSearcherImpl.searcherManagerFromChunkId(chunkInfo.chunkId,
+        // blobStore),
+        //                    chunkSchema.fieldDefMap);
       } else {
         // get data directory
         dataDirectory =
@@ -261,11 +263,7 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
         }
         this.chunkSchema = ChunkSchema.deserializeFile(schemaPath);
 
-        this.logSearcher =
-            (LogIndexSearcher<T>)
-                new LogIndexSearcherImpl(
-                    LogIndexSearcherImpl.searcherManagerFromPath(dataDirectory),
-                    chunkSchema.fieldDefMap);
+        this.logSearcher = (LogIndexSearcher<T>) new RocksdbIndexSearcherImpl(dataDirectory);
       }
 
       // set chunk state
@@ -411,11 +409,7 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
       this.chunkSchema = ChunkSchema.deserializeFile(schemaPath);
 
       this.chunkInfo = ChunkInfo.fromSnapshotMetadata(snapshotMetadata);
-      this.logSearcher =
-          (LogIndexSearcher<T>)
-              new LogIndexSearcherImpl(
-                  LogIndexSearcherImpl.searcherManagerFromPath(dataDirectory),
-                  chunkSchema.fieldDefMap);
+      this.logSearcher = (LogIndexSearcher<T>) new RocksdbIndexSearcherImpl(dataDirectory);
 
       // we first mark the slot LIVE before registering the search metadata as available
       if (!setChunkMetadataState(
