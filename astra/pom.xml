@@ -285,6 +285,13 @@
             <version>${micrometer.version}</version>
         </dependency>
 
+        <!-- Rocksdb deps -->
+        <dependency>
+            <groupId>org.rocksdb</groupId>
+            <artifactId>rocksdbjni</artifactId>
+            <version>8.8.1</version>
+        </dependency>
+
         <!-- AWS SDK -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
