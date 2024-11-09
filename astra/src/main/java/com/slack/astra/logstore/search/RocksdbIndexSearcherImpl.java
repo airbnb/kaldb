@@ -22,8 +22,13 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
   // private static final Logger LOG = LoggerFactory.getLogger(RocksdbIndexSearcherImpl.class);
   private final RocksDB db;
 
+  // TODO: Remove?
   public RocksdbIndexSearcherImpl(Path path) throws RocksDBException {
     this.db = RocksDB.open(new Options(), path.toString());
+  }
+
+  public RocksdbIndexSearcherImpl(RocksDB db) {
+    this.db = db;
   }
 
   @Override
@@ -35,7 +40,13 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
       AggregatorFactories.Builder aggregatorFactoriesBuilder) {
     try {
       Stopwatch elapsedTime = Stopwatch.createStarted();
-      byte[] result = db.get(dataset.getBytes());
+      byte[] key = dataset.getBytes();
+      System.out.println(dataset);
+      if (!db.keyExists(key)) {
+        throw new IllegalStateException("missing key");
+      }
+
+      byte[] result = db.get(key);
       elapsedTime.stop();
       List<LogMessage> results =
           List.of(

@@ -402,11 +402,12 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
         }
       }
 
-      Path schemaPath = Path.of(dataDirectory.toString(), ReadWriteChunk.SCHEMA_FILE_NAME);
-      if (!Files.exists(schemaPath)) {
-        throw new RuntimeException("We expect a schema.json file to exist within the index");
-      }
-      this.chunkSchema = ChunkSchema.deserializeFile(schemaPath);
+//      Path schemaPath = Path.of(dataDirectory.toString(), ReadWriteChunk.SCHEMA_FILE_NAME);
+//      if (!Files.exists(schemaPath)) {
+//        throw new RuntimeException("We expect a schema.json file to exist within the index");
+//      }
+//      this.chunkSchema = ChunkSchema.deserializeFile(schemaPath);
+      this.chunkSchema = null;
 
       this.chunkInfo = ChunkInfo.fromSnapshotMetadata(snapshotMetadata);
       this.logSearcher = (LogIndexSearcher<T>) new RocksdbIndexSearcherImpl(dataDirectory);
