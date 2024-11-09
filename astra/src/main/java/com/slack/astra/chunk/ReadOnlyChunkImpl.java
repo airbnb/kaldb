@@ -40,6 +40,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.commons.io.FileUtils;
 import org.apache.curator.x.async.AsyncCuratorFramework;
+import org.rocksdb.RocksDBException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -226,14 +227,7 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
       this.chunkInfo = ChunkInfo.fromSnapshotMetadata(snapshotMetadata);
 
       if (USE_S3_STREAMING) {
-        this.chunkSchema = ChunkSchema.deserializeBytes(blobStore.getSchema(chunkInfo.chunkId));
-        throw new UnsupportedOperationException("Streaming on s3 rocksdb is not supported");
-        //        this.logSearcher =
-        //            (LogIndexSearcher<T>)
-        //                new LogIndexSearcherImpl(
-        //                    LogIndexSearcherImpl.searcherManagerFromChunkId(chunkInfo.chunkId,
-        // blobStore),
-        //                    chunkSchema.fieldDefMap);
+        setUpS3StreamingSearcher();
       } else {
         // get data directory
         dataDirectory =
@@ -257,13 +251,7 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
           }
         }
 
-        Path schemaPath = Path.of(dataDirectory.toString(), ReadWriteChunk.SCHEMA_FILE_NAME);
-        if (!Files.exists(schemaPath)) {
-          throw new RuntimeException("We expect a schema.json file to exist within the index");
-        }
-        this.chunkSchema = ChunkSchema.deserializeFile(schemaPath);
-
-        this.logSearcher = (LogIndexSearcher<T>) new RocksdbIndexSearcherImpl(dataDirectory);
+        setupDynamicAssignmentSearcher();
       }
 
       // set chunk state
@@ -298,6 +286,27 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
     } finally {
       chunkAssignmentLock.unlock();
     }
+  }
+
+  private void setupDynamicAssignmentSearcher() throws Exception {
+    Path schemaPath = Path.of(dataDirectory.toString(), ReadWriteChunk.SCHEMA_FILE_NAME);
+    if (!Files.exists(schemaPath)) {
+      throw new RuntimeException("We expect a schema.json file to exist within the index");
+    }
+    this.chunkSchema = ChunkSchema.deserializeFile(schemaPath);
+
+    this.logSearcher = (LogIndexSearcher<T>) new RocksdbIndexSearcherImpl(dataDirectory);
+  }
+
+  private void setUpS3StreamingSearcher() throws IOException {
+    this.chunkSchema = ChunkSchema.deserializeBytes(blobStore.getSchema(chunkInfo.chunkId));
+    throw new UnsupportedOperationException("Streaming on s3 rocksdb is not supported");
+    //        this.logSearcher =
+    //            (LogIndexSearcher<T>)
+    //                new LogIndexSearcherImpl(
+    //                    LogIndexSearcherImpl.searcherManagerFromChunkId(chunkInfo.chunkId,
+    // blobStore),
+    //                    chunkSchema.fieldDefMap);
   }
 
   private boolean setAssignmentState(
@@ -402,16 +411,7 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
         }
       }
 
-      //      Path schemaPath = Path.of(dataDirectory.toString(), ReadWriteChunk.SCHEMA_FILE_NAME);
-      //      if (!Files.exists(schemaPath)) {
-      //        throw new RuntimeException("We expect a schema.json file to exist within the
-      // index");
-      //      }
-      //      this.chunkSchema = ChunkSchema.deserializeFile(schemaPath);
-      this.chunkSchema = null;
-
-      this.chunkInfo = ChunkInfo.fromSnapshotMetadata(snapshotMetadata);
-      this.logSearcher = (LogIndexSearcher<T>) new RocksdbIndexSearcherImpl(dataDirectory);
+      setUpStaticChunkLogSearcher(snapshotMetadata);
 
       // we first mark the slot LIVE before registering the search metadata as available
       if (!setChunkMetadataState(
@@ -437,6 +437,20 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
     } finally {
       chunkAssignmentLock.unlock();
     }
+  }
+
+  private void setUpStaticChunkLogSearcher(SnapshotMetadata snapshotMetadata)
+      throws RocksDBException {
+    //      Path schemaPath = Path.of(dataDirectory.toString(), ReadWriteChunk.SCHEMA_FILE_NAME);
+    //      if (!Files.exists(schemaPath)) {
+    //        throw new RuntimeException("We expect a schema.json file to exist within the
+    // index");
+    //      }
+    //      this.chunkSchema = ChunkSchema.deserializeFile(schemaPath);
+    this.chunkSchema = null;
+
+    this.chunkInfo = ChunkInfo.fromSnapshotMetadata(snapshotMetadata);
+    this.logSearcher = (LogIndexSearcher<T>) new RocksdbIndexSearcherImpl(dataDirectory);
   }
 
   @VisibleForTesting
