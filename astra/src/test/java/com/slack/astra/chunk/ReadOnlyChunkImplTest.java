@@ -14,7 +14,7 @@ import com.adobe.testing.s3mock.junit5.S3MockExtension;
 import com.slack.astra.blobfs.BlobStore;
 import com.slack.astra.blobfs.S3TestUtils;
 import com.slack.astra.logstore.LogMessage;
-import com.slack.astra.logstore.RocksDbStore;
+import com.slack.astra.logstore.rocksdb.RocksDbStore;
 import com.slack.astra.logstore.search.SearchQuery;
 import com.slack.astra.logstore.search.SearchResult;
 import com.slack.astra.metadata.cache.CacheSlotMetadata;
@@ -42,7 +42,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.curator.test.TestingServer;
 import org.apache.curator.x.async.AsyncCuratorFramework;
@@ -85,156 +84,145 @@ public class ReadOnlyChunkImplTest {
     meterRegistry.close();
   }
 
-    @Test
-    public void shouldHandleRocksdbChunkLifecycle() throws Exception {
-      AstraConfigs.AstraConfig AstraConfig = makeCacheConfig();
-      AstraConfigs.ZookeeperConfig zkConfig =
-          AstraConfigs.ZookeeperConfig.newBuilder()
-              .setZkConnectString(testingServer.getConnectString())
-              .setZkPathPrefix("shouldHandleChunkLivecycle")
-              .setZkSessionTimeoutMs(1000)
-              .setZkConnectionTimeoutMs(1000)
-              .setSleepBetweenRetriesMs(1000)
-              .build();
+  @Test
+  public void shouldHandleRocksdbChunkLifecycle() throws Exception {
+    AstraConfigs.AstraConfig AstraConfig = makeCacheConfig();
+    AstraConfigs.ZookeeperConfig zkConfig =
+        AstraConfigs.ZookeeperConfig.newBuilder()
+            .setZkConnectString(testingServer.getConnectString())
+            .setZkPathPrefix("shouldHandleChunkLivecycle")
+            .setZkSessionTimeoutMs(1000)
+            .setZkConnectionTimeoutMs(1000)
+            .setSleepBetweenRetriesMs(1000)
+            .build();
 
-      AsyncCuratorFramework curatorFramework = CuratorBuilder.build(meterRegistry, zkConfig);
-      ReplicaMetadataStore replicaMetadataStore = new ReplicaMetadataStore(curatorFramework);
-      SnapshotMetadataStore snapshotMetadataStore = new SnapshotMetadataStore(curatorFramework);
-      SearchMetadataStore searchMetadataStore = new SearchMetadataStore(curatorFramework, true);
-      CacheSlotMetadataStore cacheSlotMetadataStore = new
-   CacheSlotMetadataStore(curatorFramework);
+    AsyncCuratorFramework curatorFramework = CuratorBuilder.build(meterRegistry, zkConfig);
+    ReplicaMetadataStore replicaMetadataStore = new ReplicaMetadataStore(curatorFramework);
+    SnapshotMetadataStore snapshotMetadataStore = new SnapshotMetadataStore(curatorFramework);
+    SearchMetadataStore searchMetadataStore = new SearchMetadataStore(curatorFramework, true);
+    CacheSlotMetadataStore cacheSlotMetadataStore = new CacheSlotMetadataStore(curatorFramework);
 
-      String replicaId = "foo";
-      String snapshotId = "bar";
+    String replicaId = "foo";
+    String snapshotId = "bar";
 
-      // setup Zk, BlobFs so data can be loaded
-      initializeZkReplica(curatorFramework, replicaId, snapshotId);
-      initializeZkSnapshot(curatorFramework, snapshotId, 0);
-      initializeBlobStorageWithRocksdbIndex(snapshotId);
+    // setup Zk, BlobFs so data can be loaded
+    initializeZkReplica(curatorFramework, replicaId, snapshotId);
+    initializeZkSnapshot(curatorFramework, snapshotId, 0);
+    initializeBlobStorageWithRocksdbIndex(snapshotId);
 
-      SearchContext searchContext =
-          SearchContext.fromConfig(AstraConfig.getCacheConfig().getServerConfig());
-      ReadOnlyChunkImpl<LogMessage> readOnlyChunk =
-          new ReadOnlyChunkImpl<>(
-              curatorFramework,
-              meterRegistry,
-              blobStore,
-              searchContext,
-              AstraConfig.getS3Config().getS3Bucket(),
-              AstraConfig.getCacheConfig().getDataDirectory(),
-              AstraConfig.getCacheConfig().getReplicaSet(),
-              cacheSlotMetadataStore,
-              replicaMetadataStore,
-              snapshotMetadataStore,
-              searchMetadataStore);
+    SearchContext searchContext =
+        SearchContext.fromConfig(AstraConfig.getCacheConfig().getServerConfig());
+    ReadOnlyChunkImpl<LogMessage> readOnlyChunk =
+        new ReadOnlyChunkImpl<>(
+            curatorFramework,
+            meterRegistry,
+            blobStore,
+            searchContext,
+            AstraConfig.getS3Config().getS3Bucket(),
+            AstraConfig.getCacheConfig().getDataDirectory(),
+            AstraConfig.getCacheConfig().getReplicaSet(),
+            cacheSlotMetadataStore,
+            replicaMetadataStore,
+            snapshotMetadataStore,
+            searchMetadataStore);
 
-      // wait for chunk to register
-      await()
-          .until(
-              () ->
-                  readOnlyChunk.getChunkMetadataState()
-                      == Metadata.CacheSlotMetadata.CacheSlotState.FREE);
+    // wait for chunk to register
+    await()
+        .until(
+            () ->
+                readOnlyChunk.getChunkMetadataState()
+                    == Metadata.CacheSlotMetadata.CacheSlotState.FREE);
 
-      assignReplicaToChunk(cacheSlotMetadataStore, replicaId, readOnlyChunk);
+    assignReplicaToChunk(cacheSlotMetadataStore, replicaId, readOnlyChunk);
 
-      // ensure that the chunk was marked LIVE
-      await().until(() -> AstraMetadataTestUtils.listSyncUncached(searchMetadataStore).size() ==
-   1);
-      assertThat(readOnlyChunk.getChunkMetadataState())
-          .isEqualTo(Metadata.CacheSlotMetadata.CacheSlotState.LIVE);
+    // ensure that the chunk was marked LIVE
+    await().until(() -> AstraMetadataTestUtils.listSyncUncached(searchMetadataStore).size() == 1);
+    assertThat(readOnlyChunk.getChunkMetadataState())
+        .isEqualTo(Metadata.CacheSlotMetadata.CacheSlotState.LIVE);
 
-      SearchResult<LogMessage> logMessageSearchResult =
-          readOnlyChunk.query(
-              new SearchQuery(
-                  "Message1",
-                  Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
-                  Instant.now().toEpochMilli(),
-                  500,
-                  Collections.emptyList(),
-                  QueryBuilderUtil.generateQueryBuilder(
-                      "Message1",
-                      Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
-                      Instant.now().toEpochMilli()),
-                  null,
-                  createGenericDateHistogramAggregatorFactoriesBuilder()));
-      assertThat(logMessageSearchResult.hits.size()).isEqualTo(1);
-      assertThat(logMessageSearchResult.hits.get(0).getId()).isEqualTo("Message1");
+    SearchResult<LogMessage> logMessageSearchResult =
+        readOnlyChunk.query(
+            new SearchQuery(
+                "Message1",
+                Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
+                Instant.now().toEpochMilli(),
+                500,
+                Collections.emptyList(),
+                QueryBuilderUtil.generateQueryBuilder(
+                    "Message1",
+                    Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
+                    Instant.now().toEpochMilli()),
+                null,
+                createGenericDateHistogramAggregatorFactoriesBuilder()));
+    assertThat(logMessageSearchResult.hits.size()).isEqualTo(1);
+    assertThat(logMessageSearchResult.hits.get(0).getId()).isEqualTo("Message1");
 
-      await()
-          .until(
-              () ->
-                  meterRegistry.get(CHUNK_ASSIGNMENT_TIMER).tag("successful",
-   "true").timer().count()
-                      == 1);
-      assertThat(meterRegistry.get(CHUNK_ASSIGNMENT_TIMER).tag("successful",
-   "false").timer().count())
-          .isEqualTo(0);
-      assertThat(meterRegistry.get(CHUNK_EVICTION_TIMER).tag("successful",
-   "true").timer().count())
-          .isEqualTo(0);
-      assertThat(meterRegistry.get(CHUNK_EVICTION_TIMER).tag("successful",
-   "false").timer().count())
-          .isEqualTo(0);
+    await()
+        .until(
+            () ->
+                meterRegistry.get(CHUNK_ASSIGNMENT_TIMER).tag("successful", "true").timer().count()
+                    == 1);
+    assertThat(meterRegistry.get(CHUNK_ASSIGNMENT_TIMER).tag("successful", "false").timer().count())
+        .isEqualTo(0);
+    assertThat(meterRegistry.get(CHUNK_EVICTION_TIMER).tag("successful", "true").timer().count())
+        .isEqualTo(0);
+    assertThat(meterRegistry.get(CHUNK_EVICTION_TIMER).tag("successful", "false").timer().count())
+        .isEqualTo(0);
 
-      // ensure we registered a search node for this cache slot
-      await().until(() -> searchMetadataStore.listSync().size() == 1);
-      assertThat(searchMetadataStore.listSync().get(0).snapshotName).isEqualTo(snapshotId);
+    // ensure we registered a search node for this cache slot
+    await().until(() -> searchMetadataStore.listSync().size() == 1);
+    assertThat(searchMetadataStore.listSync().get(0).snapshotName).isEqualTo(snapshotId);
 
+    assertThat(searchMetadataStore.listSync().get(0).url).isEqualTo("gproto+http://localhost:8080");
+    assertThat(searchMetadataStore.listSync().get(0).name)
+        .isEqualTo(SearchMetadata.generateSearchContextSnapshotId(snapshotId, "localhost"));
 
-   assertThat(searchMetadataStore.listSync().get(0).url).isEqualTo("gproto+http://localhost:8080");
-      assertThat(searchMetadataStore.listSync().get(0).name)
-          .isEqualTo(SearchMetadata.generateSearchContextSnapshotId(snapshotId, "localhost"));
+    // mark the chunk for eviction
+    CacheSlotMetadata cacheSlotMetadata =
+        cacheSlotMetadataStore.getSync(searchContext.hostname, readOnlyChunk.slotId);
+    cacheSlotMetadataStore
+        .updateNonFreeCacheSlotState(
+            cacheSlotMetadata, Metadata.CacheSlotMetadata.CacheSlotState.EVICT)
+        .get(1, TimeUnit.SECONDS);
 
-      // mark the chunk for eviction
-      CacheSlotMetadata cacheSlotMetadata =
-          cacheSlotMetadataStore.getSync(searchContext.hostname, readOnlyChunk.slotId);
-      cacheSlotMetadataStore
-          .updateNonFreeCacheSlotState(
-              cacheSlotMetadata, Metadata.CacheSlotMetadata.CacheSlotState.EVICT)
-          .get(1, TimeUnit.SECONDS);
+    // ensure that the evicted chunk was released
+    await()
+        .until(
+            () ->
+                readOnlyChunk.getChunkMetadataState()
+                    == Metadata.CacheSlotMetadata.CacheSlotState.FREE);
 
-      // ensure that the evicted chunk was released
-      await()
-          .until(
-              () ->
-                  readOnlyChunk.getChunkMetadataState()
-                      == Metadata.CacheSlotMetadata.CacheSlotState.FREE);
+    // ensure the search metadata node was unregistered
+    await().until(() -> searchMetadataStore.listSync().size() == 0);
 
-      // ensure the search metadata node was unregistered
-      await().until(() -> searchMetadataStore.listSync().size() == 0);
+    SearchResult<LogMessage> logMessageEmptySearchResult =
+        readOnlyChunk.query(
+            new SearchQuery(
+                MessageUtil.TEST_DATASET_NAME,
+                Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
+                Instant.now().toEpochMilli(),
+                500,
+                Collections.emptyList(),
+                QueryBuilderUtil.generateQueryBuilder(
+                    "*:*",
+                    Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
+                    Instant.now().toEpochMilli()),
+                null,
+                createGenericDateHistogramAggregatorFactoriesBuilder()));
+    assertThat(logMessageEmptySearchResult).isEqualTo(SearchResult.empty());
+    assertThat(readOnlyChunk.info()).isNull();
 
-      SearchResult<LogMessage> logMessageEmptySearchResult =
-          readOnlyChunk.query(
-              new SearchQuery(
-                  MessageUtil.TEST_DATASET_NAME,
-                  Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
-                  Instant.now().toEpochMilli(),
-                  500,
-                  Collections.emptyList(),
-                  QueryBuilderUtil.generateQueryBuilder(
-                      "*:*",
-                      Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
-                      Instant.now().toEpochMilli()),
-                  null,
-                  createGenericDateHistogramAggregatorFactoriesBuilder()));
-      assertThat(logMessageEmptySearchResult).isEqualTo(SearchResult.empty());
-      assertThat(readOnlyChunk.info()).isNull();
+    assertThat(meterRegistry.get(CHUNK_EVICTION_TIMER).tag("successful", "true").timer().count())
+        .isEqualTo(1);
+    assertThat(meterRegistry.get(CHUNK_EVICTION_TIMER).tag("successful", "false").timer().count())
+        .isEqualTo(0);
+    assertThat(meterRegistry.get(CHUNK_ASSIGNMENT_TIMER).tag("successful", "true").timer().count())
+        .isEqualTo(1);
+    assertThat(meterRegistry.get(CHUNK_ASSIGNMENT_TIMER).tag("successful", "false").timer().count())
+        .isEqualTo(0);
 
-      assertThat(meterRegistry.get(CHUNK_EVICTION_TIMER).tag("successful",
-   "true").timer().count())
-          .isEqualTo(1);
-      assertThat(meterRegistry.get(CHUNK_EVICTION_TIMER).tag("successful",
-   "false").timer().count())
-          .isEqualTo(0);
-      assertThat(meterRegistry.get(CHUNK_ASSIGNMENT_TIMER).tag("successful",
-   "true").timer().count())
-          .isEqualTo(1);
-      assertThat(meterRegistry.get(CHUNK_ASSIGNMENT_TIMER).tag("successful",
-   "false").timer().count())
-          .isEqualTo(0);
-
-      curatorFramework.unwrap().close();
-    }
+    curatorFramework.unwrap().close();
+  }
 
   @Test
   public void shouldHandleMissingS3Assets() throws Exception {
