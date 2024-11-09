@@ -1,8 +1,9 @@
-package com.slack.astra.logstore;
+package com.slack.astra.logstore.rocksdb;
 
 import static com.slack.astra.logstore.LuceneIndexStoreImpl.MESSAGES_FAILED_COUNTER;
 import static com.slack.astra.logstore.LuceneIndexStoreImpl.MESSAGES_RECEIVED_COUNTER;
 
+import com.slack.astra.logstore.LogStore;
 import com.slack.astra.metadata.schema.LuceneFieldDef;
 import com.slack.service.murron.trace.Trace;
 import io.micrometer.core.instrument.Counter;

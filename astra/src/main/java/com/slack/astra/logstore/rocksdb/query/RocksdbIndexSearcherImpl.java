@@ -1,7 +1,10 @@
-package com.slack.astra.logstore.search;
+package com.slack.astra.logstore.rocksdb.query;
 
 import com.google.common.base.Stopwatch;
 import com.slack.astra.logstore.LogMessage;
+import com.slack.astra.logstore.search.LogIndexSearcher;
+import com.slack.astra.logstore.search.SearchResult;
+import com.slack.astra.logstore.search.SourceFieldFilter;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;

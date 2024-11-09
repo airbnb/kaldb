@@ -5,8 +5,8 @@ import static com.slack.astra.server.AstraConfig.DEFAULT_ZK_TIMEOUT_SECS;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.slack.astra.blobfs.BlobStore;
+import com.slack.astra.logstore.rocksdb.query.RocksdbIndexSearcherImpl;
 import com.slack.astra.logstore.search.LogIndexSearcher;
-import com.slack.astra.logstore.search.RocksdbIndexSearcherImpl;
 import com.slack.astra.logstore.search.SearchQuery;
 import com.slack.astra.logstore.search.SearchResult;
 import com.slack.astra.metadata.cache.CacheNodeAssignment;
@@ -402,11 +402,12 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
         }
       }
 
-//      Path schemaPath = Path.of(dataDirectory.toString(), ReadWriteChunk.SCHEMA_FILE_NAME);
-//      if (!Files.exists(schemaPath)) {
-//        throw new RuntimeException("We expect a schema.json file to exist within the index");
-//      }
-//      this.chunkSchema = ChunkSchema.deserializeFile(schemaPath);
+      //      Path schemaPath = Path.of(dataDirectory.toString(), ReadWriteChunk.SCHEMA_FILE_NAME);
+      //      if (!Files.exists(schemaPath)) {
+      //        throw new RuntimeException("We expect a schema.json file to exist within the
+      // index");
+      //      }
+      //      this.chunkSchema = ChunkSchema.deserializeFile(schemaPath);
       this.chunkSchema = null;
 
       this.chunkInfo = ChunkInfo.fromSnapshotMetadata(snapshotMetadata);
