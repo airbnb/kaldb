@@ -632,7 +632,6 @@ public class ReadOnlyChunkImplTest {
   }
 
   private void initializeBlobStorageWithRocksdbIndex(String snapshotId) throws Exception {
-    System.out.println("start test");
     File dataDirectory = Files.newTemporaryFolder();
     RocksDbStore rocksDbStore = new RocksDbStore(dataDirectory, meterRegistry);
     Trace.Span span = SpanUtil.makeSpan(1);
@@ -650,8 +649,6 @@ public class ReadOnlyChunkImplTest {
 
     List<String> s3Files = blobStore.listFiles(snapshotId);
     assertThat(s3Files.size()).isGreaterThanOrEqualTo(dataDirectory.listFiles().length);
-
-    System.out.println("Done upload");
   }
 
   //  @Test
