@@ -1,5 +1,14 @@
 package com.slack.astra.chunk;
 
+import static com.slack.astra.chunk.ReadOnlyChunkImpl.CHUNK_ASSIGNMENT_TIMER;
+import static com.slack.astra.chunk.ReadOnlyChunkImpl.CHUNK_EVICTION_TIMER;
+import static com.slack.astra.logstore.LuceneIndexStoreImpl.MESSAGES_FAILED_COUNTER;
+import static com.slack.astra.logstore.LuceneIndexStoreImpl.MESSAGES_RECEIVED_COUNTER;
+import static com.slack.astra.testlib.MetricsUtil.getCount;
+import static com.slack.astra.util.AggregatorFactoriesUtil.createGenericDateHistogramAggregatorFactoriesBuilder;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+
 import brave.Tracing;
 import com.adobe.testing.s3mock.junit5.S3MockExtension;
 import com.slack.astra.blobfs.BlobStore;
@@ -26,6 +35,13 @@ import com.slack.astra.util.QueryBuilderUtil;
 import com.slack.service.murron.trace.Trace;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.io.File;
+import java.io.IOException;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.curator.test.TestingServer;
 import org.apache.curator.x.async.AsyncCuratorFramework;
@@ -35,23 +51,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
-
-import java.io.File;
-import java.io.IOException;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-
-import static com.slack.astra.chunk.ReadOnlyChunkImpl.CHUNK_ASSIGNMENT_TIMER;
-import static com.slack.astra.chunk.ReadOnlyChunkImpl.CHUNK_EVICTION_TIMER;
-import static com.slack.astra.logstore.LuceneIndexStoreImpl.MESSAGES_FAILED_COUNTER;
-import static com.slack.astra.logstore.LuceneIndexStoreImpl.MESSAGES_RECEIVED_COUNTER;
-import static com.slack.astra.testlib.MetricsUtil.getCount;
-import static com.slack.astra.util.AggregatorFactoriesUtil.createGenericDateHistogramAggregatorFactoriesBuilder;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
 
 public class RocksDbReadOnlyChunkImplTest {
   private static final String TEST_S3_BUCKET = "read-only-chunk-impl-test";
@@ -357,111 +356,108 @@ public class RocksDbReadOnlyChunkImplTest {
     curatorFramework.unwrap().close();
   }
 
-  //  @Test
-  //  public void closeShouldCleanupLiveChunkCorrectly() throws Exception {
-  //    AstraConfigs.AstraConfig AstraConfig = makeCacheConfig();
-  //    AstraConfigs.ZookeeperConfig zkConfig =
-  //        AstraConfigs.ZookeeperConfig.newBuilder()
-  //            .setZkConnectString(testingServer.getConnectString())
-  //            .setZkPathPrefix("shouldHandleChunkLivecycle")
-  //            .setZkSessionTimeoutMs(1000)
-  //            .setZkConnectionTimeoutMs(1000)
-  //            .setSleepBetweenRetriesMs(1000)
-  //            .build();
-  //
-  //    AsyncCuratorFramework curatorFramework = CuratorBuilder.build(meterRegistry, zkConfig);
-  //    ReplicaMetadataStore replicaMetadataStore = new ReplicaMetadataStore(curatorFramework);
-  //    SnapshotMetadataStore snapshotMetadataStore = new SnapshotMetadataStore(curatorFramework);
-  //    SearchMetadataStore searchMetadataStore = new SearchMetadataStore(curatorFramework, true);
-  //    CacheSlotMetadataStore cacheSlotMetadataStore = new
-  // CacheSlotMetadataStore(curatorFramework);
-  //
-  //    String replicaId = "foo";
-  //    String snapshotId = "bar";
-  //
-  //    // setup Zk, BlobFs so data can be loaded
-  //    initializeZkReplica(curatorFramework, replicaId, snapshotId);
-  //    initializeZkSnapshot(curatorFramework, snapshotId, 0);
-  //    initializeBlobStorageWithIndex(snapshotId);
-  //
-  //    ReadOnlyChunkImpl<LogMessage> readOnlyChunk =
-  //        new ReadOnlyChunkImpl<>(
-  //            curatorFramework,
-  //            meterRegistry,
-  //            blobStore,
-  //            SearchContext.fromConfig(AstraConfig.getCacheConfig().getServerConfig()),
-  //            AstraConfig.getS3Config().getS3Bucket(),
-  //            AstraConfig.getCacheConfig().getDataDirectory(),
-  //            AstraConfig.getCacheConfig().getReplicaSet(),
-  //            cacheSlotMetadataStore,
-  //            replicaMetadataStore,
-  //            snapshotMetadataStore,
-  //            searchMetadataStore);
-  //
-  //    // wait for chunk to register
-  //    await()
-  //        .until(
-  //            () ->
-  //                readOnlyChunk.getChunkMetadataState()
-  //                    == Metadata.CacheSlotMetadata.CacheSlotState.FREE);
-  //
-  //    assignReplicaToChunk(cacheSlotMetadataStore, replicaId, readOnlyChunk);
-  //
-  //    // ensure that the chunk was marked LIVE
-  //    await()
-  //        .until(
-  //            () ->
-  //                readOnlyChunk.getChunkMetadataState()
-  //                    == Metadata.CacheSlotMetadata.CacheSlotState.LIVE);
-  //
-  //    SearchQuery query =
-  //        new SearchQuery(
-  //            MessageUtil.TEST_DATASET_NAME,
-  //            Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
-  //            Instant.now().toEpochMilli(),
-  //            500,
-  //            Collections.emptyList(),
-  //            QueryBuilderUtil.generateQueryBuilder(
-  //                "*:*",
-  //                Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
-  //                Instant.now().toEpochMilli()),
-  //            null,
-  //            createGenericDateHistogramAggregatorFactoriesBuilder());
-  //    SearchResult<LogMessage> logMessageSearchResult = readOnlyChunk.query(query);
-  //    assertThat(logMessageSearchResult.hits.size()).isEqualTo(10);
-  //    assertThat(meterRegistry.get(CHUNK_ASSIGNMENT_TIMER).tag("successful",
-  // "true").timer().count())
-  //        .isEqualTo(1);
-  //
-  //    // ensure we registered a search node for this cache slot
-  //    await().until(() -> searchMetadataStore.listSync().size() == 1);
-  //    assertThat(searchMetadataStore.listSync().get(0).snapshotName).isEqualTo(snapshotId);
-  //
-  //
-  // assertThat(searchMetadataStore.listSync().get(0).url).isEqualTo("gproto+http://localhost:8080");
-  //    assertThat(searchMetadataStore.listSync().get(0).name)
-  //        .isEqualTo(SearchMetadata.generateSearchContextSnapshotId(snapshotId, "localhost"));
-  //
-  //    // verify we have files on disk
-  //    try (var files = java.nio.file.Files.list(readOnlyChunk.getDataDirectory())) {
-  //      assertThat(files.findFirst().isPresent()).isTrue();
-  //    }
-  //
-  //    // attempt to close the readOnlyChunk
-  //    readOnlyChunk.close();
-  //
-  //    // verify no results are returned for the exact same query we did above
-  //    SearchResult<LogMessage> logMessageSearchResultEmpty = readOnlyChunk.query(query);
-  //    assertThat(logMessageSearchResultEmpty).isEqualTo(SearchResult.empty());
-  //    assertThat(readOnlyChunk.info()).isNull();
-  //
-  //    // verify that the directory has been cleaned up
-  //    try (var files = java.nio.file.Files.list(readOnlyChunk.getDataDirectory())) {
-  //      assertThat(files.findFirst().isPresent()).isFalse();
-  //    }
-  //
-  //    curatorFramework.unwrap().close();
-  //  }
+  @Test
+  public void closeShouldCleanupLiveChunkCorrectly() throws Exception {
+    AstraConfigs.AstraConfig AstraConfig = makeCacheConfig();
+    AstraConfigs.ZookeeperConfig zkConfig =
+        AstraConfigs.ZookeeperConfig.newBuilder()
+            .setZkConnectString(testingServer.getConnectString())
+            .setZkPathPrefix("shouldHandleChunkLivecycle")
+            .setZkSessionTimeoutMs(1000)
+            .setZkConnectionTimeoutMs(1000)
+            .setSleepBetweenRetriesMs(1000)
+            .build();
+
+    AsyncCuratorFramework curatorFramework = CuratorBuilder.build(meterRegistry, zkConfig);
+    ReplicaMetadataStore replicaMetadataStore = new ReplicaMetadataStore(curatorFramework);
+    SnapshotMetadataStore snapshotMetadataStore = new SnapshotMetadataStore(curatorFramework);
+    SearchMetadataStore searchMetadataStore = new SearchMetadataStore(curatorFramework, true);
+    CacheSlotMetadataStore cacheSlotMetadataStore = new CacheSlotMetadataStore(curatorFramework);
+
+    String replicaId = "foo";
+    String snapshotId = "bar";
+
+    // setup Zk, BlobFs so data can be loaded
+    initializeZkReplica(curatorFramework, replicaId, snapshotId);
+    initializeZkSnapshot(curatorFramework, snapshotId, 0);
+    initializeBlobStorageWithRocksdbIndex(snapshotId);
+
+    ReadOnlyChunkImpl<LogMessage> readOnlyChunk =
+        new RocksDbReadOnlyChunkImpl<>(
+            curatorFramework,
+            meterRegistry,
+            blobStore,
+            SearchContext.fromConfig(AstraConfig.getCacheConfig().getServerConfig()),
+            AstraConfig.getS3Config().getS3Bucket(),
+            AstraConfig.getCacheConfig().getDataDirectory(),
+            AstraConfig.getCacheConfig().getReplicaSet(),
+            cacheSlotMetadataStore,
+            replicaMetadataStore,
+            snapshotMetadataStore,
+            searchMetadataStore);
+
+    // wait for chunk to register
+    await()
+        .until(
+            () ->
+                readOnlyChunk.getChunkMetadataState()
+                    == Metadata.CacheSlotMetadata.CacheSlotState.FREE);
+
+    assignReplicaToChunk(cacheSlotMetadataStore, replicaId, readOnlyChunk);
+
+    // ensure that the chunk was marked LIVE
+    await()
+        .until(
+            () ->
+                readOnlyChunk.getChunkMetadataState()
+                    == Metadata.CacheSlotMetadata.CacheSlotState.LIVE);
+
+    SearchQuery query =
+        new SearchQuery(
+            "Message1",
+            Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
+            Instant.now().toEpochMilli(),
+            500,
+            Collections.emptyList(),
+            QueryBuilderUtil.generateQueryBuilder(
+                "Message1",
+                Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
+                Instant.now().toEpochMilli()),
+            null,
+            createGenericDateHistogramAggregatorFactoriesBuilder());
+    SearchResult<LogMessage> logMessageSearchResult = readOnlyChunk.query(query);
+    assertThat(logMessageSearchResult.hits.size()).isEqualTo(1);
+    assertThat(meterRegistry.get(CHUNK_ASSIGNMENT_TIMER).tag("successful", "true").timer().count())
+        .isEqualTo(1);
+
+    // ensure we registered a search node for this cache slot
+    await().until(() -> searchMetadataStore.listSync().size() == 1);
+    assertThat(searchMetadataStore.listSync().get(0).snapshotName).isEqualTo(snapshotId);
+
+    assertThat(searchMetadataStore.listSync().get(0).url).isEqualTo("gproto+http://localhost:8080");
+    assertThat(searchMetadataStore.listSync().get(0).name)
+        .isEqualTo(SearchMetadata.generateSearchContextSnapshotId(snapshotId, "localhost"));
+
+    // verify we have files on disk
+    try (var files = java.nio.file.Files.list(readOnlyChunk.getDataDirectory())) {
+      assertThat(files.findFirst().isPresent()).isTrue();
+    }
+
+    // attempt to close the readOnlyChunk
+    readOnlyChunk.close();
+
+    // verify no results are returned for the exact same query we did above
+    SearchResult<LogMessage> logMessageSearchResultEmpty = readOnlyChunk.query(query);
+    assertThat(logMessageSearchResultEmpty).isEqualTo(SearchResult.empty());
+    assertThat(readOnlyChunk.info()).isNull();
+
+    // verify that the directory has been cleaned up
+    try (var files = java.nio.file.Files.list(readOnlyChunk.getDataDirectory())) {
+      assertThat(files.findFirst().isPresent()).isFalse();
+    }
+
+    curatorFramework.unwrap().close();
+  }
 
   //  @Test
   //  public void shouldHandleDynamicChunkSizeLifecycle() throws Exception {

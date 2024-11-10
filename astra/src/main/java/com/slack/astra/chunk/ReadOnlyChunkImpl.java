@@ -403,6 +403,8 @@ public abstract class ReadOnlyChunkImpl<T> implements Chunk<T> {
         if (fileList.findAny().isEmpty()) {
           throw new IOException("No files found on blob storage, released slot for re-assignment");
         }
+      } catch (IOException e) {
+        throw new IOException("No files found on blob storage, released slot for re-assignment", e);
       }
 
       setUpStaticChunkLogSearcher(snapshotMetadata, dataDirectory);

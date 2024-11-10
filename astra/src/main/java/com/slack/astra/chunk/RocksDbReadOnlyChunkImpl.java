@@ -7,13 +7,11 @@ import com.slack.astra.metadata.cache.CacheNodeAssignment;
 import com.slack.astra.metadata.cache.CacheNodeAssignmentStore;
 import com.slack.astra.metadata.cache.CacheSlotMetadataStore;
 import com.slack.astra.metadata.replica.ReplicaMetadataStore;
-import com.slack.astra.metadata.schema.ChunkSchema;
 import com.slack.astra.metadata.search.SearchMetadataStore;
 import com.slack.astra.metadata.snapshot.SnapshotMetadata;
 import com.slack.astra.metadata.snapshot.SnapshotMetadataStore;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import org.apache.curator.x.async.AsyncCuratorFramework;
 
@@ -80,11 +78,11 @@ public class RocksDbReadOnlyChunkImpl<T> extends ReadOnlyChunkImpl<T> {
 
   @Override
   public void setupDynamicAssignmentSearcher(Path dataDirectory) throws Exception {
-    Path schemaPath = Path.of(dataDirectory.toString(), ReadWriteChunk.SCHEMA_FILE_NAME);
-    if (!Files.exists(schemaPath)) {
-      throw new RuntimeException("We expect a schema.json file to exist within the index");
-    }
-    setChunkSchema(ChunkSchema.deserializeFile(schemaPath));
+    //    Path schemaPath = Path.of(dataDirectory.toString(), ReadWriteChunk.SCHEMA_FILE_NAME);
+    //    if (!Files.exists(schemaPath)) {
+    //      throw new RuntimeException("We expect a schema.json file to exist within the index");
+    //    }
+    //    setChunkSchema(ChunkSchema.deserializeFile(schemaPath));
 
     setLogSearcher((LogIndexSearcher<T>) new RocksdbIndexSearcherImpl(dataDirectory));
   }
