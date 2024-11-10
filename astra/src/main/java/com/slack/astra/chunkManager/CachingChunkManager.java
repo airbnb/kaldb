@@ -6,6 +6,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.slack.astra.blobfs.BlobStore;
 import com.slack.astra.chunk.Chunk;
 import com.slack.astra.chunk.ReadOnlyChunkImpl;
+import com.slack.astra.chunk.RocksDbReadOnlyChunkImpl;
 import com.slack.astra.chunk.SearchContext;
 import com.slack.astra.logstore.LogMessage;
 import com.slack.astra.metadata.cache.CacheNodeAssignment;
@@ -107,7 +108,7 @@ public class CachingChunkManager<T> extends ChunkManagerBase<T> {
     } else {
       for (int i = 0; i < slotCountPerInstance; i++) {
         ReadOnlyChunkImpl<T> newChunk =
-            new ReadOnlyChunkImpl<>(
+            new RocksDbReadOnlyChunkImpl<>(
                 curatorFramework,
                 meterRegistry,
                 blobStore,
@@ -215,7 +216,7 @@ public class CachingChunkManager<T> extends ChunkManagerBase<T> {
                 assignment.assignmentId,
                 cacheNodeId);
             ReadOnlyChunkImpl<T> newChunk =
-                new ReadOnlyChunkImpl<>(
+                new RocksDbReadOnlyChunkImpl<>(
                     curatorFramework,
                     meterRegistry,
                     blobStore,

@@ -5,7 +5,6 @@ import static com.slack.astra.server.AstraConfig.DEFAULT_ZK_TIMEOUT_SECS;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.slack.astra.blobfs.BlobStore;
-import com.slack.astra.logstore.rocksdb.query.RocksdbIndexSearcherImpl;
 import com.slack.astra.logstore.search.LogIndexSearcher;
 import com.slack.astra.logstore.search.SearchQuery;
 import com.slack.astra.logstore.search.SearchResult;
@@ -40,7 +39,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.commons.io.FileUtils;
 import org.apache.curator.x.async.AsyncCuratorFramework;
-import org.rocksdb.RocksDBException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,7 +48,7 @@ import org.slf4j.LoggerFactory;
  * received from ZK each ReadOnlyChunkImpl will appropriately hydrate or evict a chunk from the
  * BlobFs.
  */
-public class ReadOnlyChunkImpl<T> implements Chunk<T> {
+public abstract class ReadOnlyChunkImpl<T> implements Chunk<T> {
   private static final Logger LOG = LoggerFactory.getLogger(ReadOnlyChunkImpl.class);
   public static final String ASTRA_S3_STREAMING_FLAG = "astra.s3Streaming.enabled";
 
@@ -77,6 +75,18 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
 
   public static final String CHUNK_ASSIGNMENT_TIMER = "chunk_assignment_timer";
   public static final String CHUNK_EVICTION_TIMER = "chunk_eviction_timer";
+
+  protected void setLogSearcher(LogIndexSearcher<T> logSearcher) {
+    this.logSearcher = logSearcher;
+  }
+
+  public void setChunkInfo(ChunkInfo chunkInfo) {
+    this.chunkInfo = chunkInfo;
+  }
+
+  protected void setChunkSchema(ChunkSchema chunkSchema) {
+    this.chunkSchema = chunkSchema;
+  }
 
   private final Timer chunkAssignmentTimerSuccess;
   private final Timer chunkAssignmentTimerFailure;
@@ -227,7 +237,7 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
       this.chunkInfo = ChunkInfo.fromSnapshotMetadata(snapshotMetadata);
 
       if (USE_S3_STREAMING) {
-        setUpS3StreamingSearcher();
+        setUpS3StreamingSearcher(blobStore, chunkInfo.chunkId);
       } else {
         // get data directory
         dataDirectory =
@@ -251,7 +261,7 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
           }
         }
 
-        setupDynamicAssignmentSearcher();
+        setupDynamicAssignmentSearcher(dataDirectory);
       }
 
       // set chunk state
@@ -288,26 +298,10 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
     }
   }
 
-  private void setupDynamicAssignmentSearcher() throws Exception {
-    Path schemaPath = Path.of(dataDirectory.toString(), ReadWriteChunk.SCHEMA_FILE_NAME);
-    if (!Files.exists(schemaPath)) {
-      throw new RuntimeException("We expect a schema.json file to exist within the index");
-    }
-    this.chunkSchema = ChunkSchema.deserializeFile(schemaPath);
+  protected abstract void setupDynamicAssignmentSearcher(Path dataDirectory) throws Exception;
 
-    this.logSearcher = (LogIndexSearcher<T>) new RocksdbIndexSearcherImpl(dataDirectory);
-  }
-
-  private void setUpS3StreamingSearcher() throws IOException {
-    this.chunkSchema = ChunkSchema.deserializeBytes(blobStore.getSchema(chunkInfo.chunkId));
-    throw new UnsupportedOperationException("Streaming on s3 rocksdb is not supported");
-    //        this.logSearcher =
-    //            (LogIndexSearcher<T>)
-    //                new LogIndexSearcherImpl(
-    //                    LogIndexSearcherImpl.searcherManagerFromChunkId(chunkInfo.chunkId,
-    // blobStore),
-    //                    chunkSchema.fieldDefMap);
-  }
+  protected abstract void setUpS3StreamingSearcher(BlobStore blobStore, String chunkId)
+      throws IOException;
 
   private boolean setAssignmentState(
       CacheNodeAssignment cacheNodeAssignment,
@@ -411,7 +405,7 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
         }
       }
 
-      setUpStaticChunkLogSearcher(snapshotMetadata);
+      setUpStaticChunkLogSearcher(snapshotMetadata, dataDirectory);
 
       // we first mark the slot LIVE before registering the search metadata as available
       if (!setChunkMetadataState(
@@ -439,19 +433,8 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
     }
   }
 
-  private void setUpStaticChunkLogSearcher(SnapshotMetadata snapshotMetadata)
-      throws RocksDBException {
-    //      Path schemaPath = Path.of(dataDirectory.toString(), ReadWriteChunk.SCHEMA_FILE_NAME);
-    //      if (!Files.exists(schemaPath)) {
-    //        throw new RuntimeException("We expect a schema.json file to exist within the
-    // index");
-    //      }
-    //      this.chunkSchema = ChunkSchema.deserializeFile(schemaPath);
-    this.chunkSchema = null;
-
-    this.chunkInfo = ChunkInfo.fromSnapshotMetadata(snapshotMetadata);
-    this.logSearcher = (LogIndexSearcher<T>) new RocksdbIndexSearcherImpl(dataDirectory);
-  }
+  protected abstract void setUpStaticChunkLogSearcher(
+      SnapshotMetadata snapshotMetadata, Path dataDirectory) throws Exception;
 
   @VisibleForTesting
   public static SearchMetadata registerSearchMetadata(
