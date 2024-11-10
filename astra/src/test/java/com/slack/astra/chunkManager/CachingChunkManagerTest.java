@@ -42,6 +42,7 @@ import org.apache.curator.x.async.AsyncCuratorFramework;
 import org.assertj.core.util.Files;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
@@ -256,8 +257,32 @@ public class CachingChunkManagerTest {
   }
 
   @Test
+  public void testStaticCreatesChunksOnAssignment() throws Exception {
+    String snapshotId = "abcd";
+
+    cachingChunkManager = initChunkManager();
+    initializeBlobStorageWithRocksdbIndex(snapshotId);
+    await()
+            .ignoreExceptions()
+            .until(
+                    () -> {
+                      Path path = Path.of("/tmp/test1");
+                      blobStore.download(snapshotId, path);
+                      return Objects.requireNonNull(path.toFile().listFiles()).length > 0;
+                    });
+    initAssignment(snapshotId);
+
+    await()
+            .timeout(10000, TimeUnit.MILLISECONDS)
+            .until(() -> cachingChunkManager.getChunksMap().size() == 1);
+    assertThat(cachingChunkManager.getChunksMap().size()).isEqualTo(1);
+  }
+
+  // Disable dynamic tests.
+  @Disabled
+  @Test
   public void testCreatesChunksOnAssignment() throws Exception {
-   // enableDynamicChunksFlag();
+    enableDynamicChunksFlag();
     String snapshotId = "abcd";
 
     cachingChunkManager = initChunkManager();
@@ -296,8 +321,42 @@ public class CachingChunkManagerTest {
   }
 
   @Test
+  public void testStaticAssignmentBasicChunkEviction() throws Exception {
+    String snapshotId = "abcd";
+
+    cachingChunkManager = initChunkManager();
+    initializeBlobStorageWithRocksdbIndex(snapshotId);
+    await()
+            .ignoreExceptions()
+            .until(
+                    () -> {
+                      Path path = Path.of("/tmp/test2");
+                      blobStore.download(snapshotId, path);
+                      return Objects.requireNonNull(path.toFile().listFiles()).length > 0;
+                    });
+
+    CacheNodeAssignment assignment = initAssignment(snapshotId);
+
+    // assert chunks created
+    await()
+            .timeout(10000, TimeUnit.MILLISECONDS)
+            .until(() -> cachingChunkManager.getChunksMap().size() == 1);
+    assertThat(cachingChunkManager.getChunksMap().size()).isEqualTo(1);
+
+    cacheNodeAssignmentStore.updateAssignmentState(
+            assignment, Metadata.CacheNodeAssignment.CacheNodeAssignmentState.EVICT);
+
+    await()
+            .timeout(10000, TimeUnit.MILLISECONDS)
+            .until(() -> cachingChunkManager.getChunksMap().isEmpty());
+    assertThat(cacheNodeAssignmentStore.listSync().size()).isEqualTo(0);
+  }
+
+  // Disable dynamic assignment tests.
+  @Disabled
+  @Test
   public void testBasicChunkEviction() throws Exception {
-    //enableDynamicChunksFlag();
+    enableDynamicChunksFlag();
     String snapshotId = "abcd";
 
     cachingChunkManager = initChunkManager();

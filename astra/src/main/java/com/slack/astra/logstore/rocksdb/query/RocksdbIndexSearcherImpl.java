@@ -25,7 +25,6 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
   // private static final Logger LOG = LoggerFactory.getLogger(RocksdbIndexSearcherImpl.class);
   private final RocksDB db;
 
-  // TODO: Remove?
   public RocksdbIndexSearcherImpl(Path path) throws RocksDBException {
     this.db = RocksDB.open(new Options(), path.toString());
   }
