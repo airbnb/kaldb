@@ -1,14 +1,5 @@
 package com.slack.astra.chunk;
 
-import static com.slack.astra.chunk.ReadOnlyChunkImpl.CHUNK_ASSIGNMENT_TIMER;
-import static com.slack.astra.chunk.ReadOnlyChunkImpl.CHUNK_EVICTION_TIMER;
-import static com.slack.astra.logstore.LuceneIndexStoreImpl.MESSAGES_FAILED_COUNTER;
-import static com.slack.astra.logstore.LuceneIndexStoreImpl.MESSAGES_RECEIVED_COUNTER;
-import static com.slack.astra.testlib.MetricsUtil.getCount;
-import static com.slack.astra.util.AggregatorFactoriesUtil.createGenericDateHistogramAggregatorFactoriesBuilder;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
-
 import brave.Tracing;
 import com.adobe.testing.s3mock.junit5.S3MockExtension;
 import com.slack.astra.blobfs.BlobStore;
@@ -35,13 +26,6 @@ import com.slack.astra.util.QueryBuilderUtil;
 import com.slack.service.murron.trace.Trace;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import java.io.File;
-import java.io.IOException;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.curator.test.TestingServer;
 import org.apache.curator.x.async.AsyncCuratorFramework;
@@ -52,7 +36,24 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 
-public class ReadOnlyChunkImplTest {
+import java.io.File;
+import java.io.IOException;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+
+import static com.slack.astra.chunk.ReadOnlyChunkImpl.CHUNK_ASSIGNMENT_TIMER;
+import static com.slack.astra.chunk.ReadOnlyChunkImpl.CHUNK_EVICTION_TIMER;
+import static com.slack.astra.logstore.LuceneIndexStoreImpl.MESSAGES_FAILED_COUNTER;
+import static com.slack.astra.logstore.LuceneIndexStoreImpl.MESSAGES_RECEIVED_COUNTER;
+import static com.slack.astra.testlib.MetricsUtil.getCount;
+import static com.slack.astra.util.AggregatorFactoriesUtil.createGenericDateHistogramAggregatorFactoriesBuilder;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+
+public class RocksDbReadOnlyChunkImplTest {
   private static final String TEST_S3_BUCKET = "read-only-chunk-impl-test";
 
   private TestingServer testingServer;
