@@ -113,7 +113,7 @@ public class ReadOnlyChunkImplTest {
     SearchContext searchContext =
         SearchContext.fromConfig(AstraConfig.getCacheConfig().getServerConfig());
     ReadOnlyChunkImpl<LogMessage> readOnlyChunk =
-        new ReadOnlyChunkImpl<>(
+        new RocksDbReadOnlyChunkImpl<>(
             curatorFramework,
             meterRegistry,
             blobStore,
@@ -250,7 +250,7 @@ public class ReadOnlyChunkImplTest {
     initializeZkSnapshot(curatorFramework, snapshotId, 0);
 
     ReadOnlyChunkImpl<LogMessage> readOnlyChunk =
-        new ReadOnlyChunkImpl<>(
+        new RocksDbReadOnlyChunkImpl<>(
             curatorFramework,
             meterRegistry,
             blobStore,
@@ -316,7 +316,7 @@ public class ReadOnlyChunkImplTest {
     // we intentionally do not initialize a Snapshot, so the lookup is expected to fail
 
     ReadOnlyChunkImpl<LogMessage> readOnlyChunk =
-        new ReadOnlyChunkImpl<>(
+        new RocksDbReadOnlyChunkImpl<>(
             curatorFramework,
             meterRegistry,
             blobStore,
