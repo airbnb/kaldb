@@ -46,7 +46,7 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
       byte[] key = dataset.getBytes();
       System.out.println(dataset);
       if (!db.keyExists(key)) {
-        throw new IllegalStateException("missing key");
+        throw new IllegalStateException("missing key: " + dataset);
       }
 
       byte[] result = db.get(key);

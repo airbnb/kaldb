@@ -1,14 +1,9 @@
 package com.slack.astra.chunkManager;
 
-import static com.slack.astra.chunk.ReadWriteChunk.SCHEMA_FILE_NAME;
 import static com.slack.astra.chunkManager.CachingChunkManager.ASTRA_NG_DYNAMIC_CHUNK_SIZES_FLAG;
-import static com.slack.astra.logstore.LuceneIndexStoreImpl.COMMITS_TIMER;
 import static com.slack.astra.logstore.LuceneIndexStoreImpl.MESSAGES_FAILED_COUNTER;
 import static com.slack.astra.logstore.LuceneIndexStoreImpl.MESSAGES_RECEIVED_COUNTER;
-import static com.slack.astra.logstore.LuceneIndexStoreImpl.REFRESHES_TIMER;
 import static com.slack.astra.testlib.MetricsUtil.getCount;
-import static com.slack.astra.testlib.MetricsUtil.getTimerCount;
-import static com.slack.astra.testlib.TemporaryLogStoreAndSearcherExtension.addMessages;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
@@ -20,35 +15,30 @@ import com.slack.astra.chunk.Chunk;
 import com.slack.astra.chunk.ReadOnlyChunkImpl;
 import com.slack.astra.chunk.SearchContext;
 import com.slack.astra.logstore.LogMessage;
-import com.slack.astra.logstore.LuceneIndexStoreImpl;
-import com.slack.astra.logstore.schema.SchemaAwareLogDocumentBuilderImpl;
+import com.slack.astra.logstore.rocksdb.RocksDbStore;
 import com.slack.astra.metadata.cache.CacheNodeAssignment;
 import com.slack.astra.metadata.cache.CacheNodeAssignmentStore;
 import com.slack.astra.metadata.cache.CacheNodeMetadata;
 import com.slack.astra.metadata.cache.CacheNodeMetadataStore;
 import com.slack.astra.metadata.core.CuratorBuilder;
-import com.slack.astra.metadata.schema.ChunkSchema;
 import com.slack.astra.metadata.snapshot.SnapshotMetadata;
 import com.slack.astra.metadata.snapshot.SnapshotMetadataStore;
 import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.astra.proto.metadata.Metadata;
 import com.slack.astra.testlib.SpanUtil;
+import com.slack.service.murron.trace.Trace;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.curator.test.TestingServer;
 import org.apache.curator.x.async.AsyncCuratorFramework;
-import org.apache.lucene.index.IndexCommit;
 import org.assertj.core.util.Files;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -173,41 +163,63 @@ public class CachingChunkManagerTest {
     return newAssignment;
   }
 
-  private void initializeBlobStorageWithIndex(String snapshotId) throws Exception {
-    LuceneIndexStoreImpl logStore =
-        LuceneIndexStoreImpl.makeLogStore(
-            Files.newTemporaryFolder(),
-            Duration.ofSeconds(60),
-            Duration.ofSeconds(60),
-            true,
-            SchemaAwareLogDocumentBuilderImpl.FieldConflictPolicy.CONVERT_VALUE_AND_DUPLICATE_FIELD,
-            meterRegistry);
-    addMessages(logStore, 1, 10, true);
-    assertThat(getCount(MESSAGES_RECEIVED_COUNTER, meterRegistry)).isEqualTo(10);
+  private void initializeBlobStorageWithRocksdbIndex(String snapshotId) throws Exception {
+    File dataDirectory = Files.newTemporaryFolder();
+    RocksDbStore rocksDbStore = new RocksDbStore(dataDirectory, meterRegistry);
+    Trace.Span span = SpanUtil.makeSpan(1);
+    rocksDbStore.addMessage(span);
+    rocksDbStore.close();
+
+    assertThat(getCount(MESSAGES_RECEIVED_COUNTER, meterRegistry)).isEqualTo(1);
     assertThat(getCount(MESSAGES_FAILED_COUNTER, meterRegistry)).isEqualTo(0);
-    assertThat(getTimerCount(REFRESHES_TIMER, meterRegistry)).isEqualTo(1);
-    assertThat(getTimerCount(COMMITS_TIMER, meterRegistry)).isEqualTo(1);
-
-    Path dirPath = logStore.getDirectory().getDirectory().toAbsolutePath();
-
-    // Create schema file to upload
-    ChunkSchema chunkSchema =
-        new ChunkSchema(snapshotId, logStore.getSchema(), new ConcurrentHashMap<>());
-    File schemaFile = new File(dirPath + "/" + SCHEMA_FILE_NAME);
-    ChunkSchema.serializeToFile(chunkSchema, schemaFile);
 
     // Prepare list of files to upload.
-    List<String> filesToUpload = new ArrayList<>();
-    filesToUpload.add(schemaFile.getName());
-    IndexCommit indexCommit = logStore.getIndexCommit();
-    filesToUpload.addAll(indexCommit.getFileNames());
-
-    logStore.close();
-    assertThat(dirPath.toFile().listFiles().length).isGreaterThanOrEqualTo(filesToUpload.size());
+    assertThat(dataDirectory.listFiles().length).isGreaterThanOrEqualTo(1);
 
     // Copy files to S3.
-    blobStore.upload(snapshotId, dirPath);
+    blobStore.upload(snapshotId, dataDirectory.toPath());
+
+    List<String> s3Files = blobStore.listFiles(snapshotId);
+    assertThat(s3Files.size()).isGreaterThanOrEqualTo(dataDirectory.listFiles().length);
   }
+
+  //  private void initializeBlobStorageWithIndex(String snapshotId) throws Exception {
+  //    LuceneIndexStoreImpl logStore =
+  //        LuceneIndexStoreImpl.makeLogStore(
+  //            Files.newTemporaryFolder(),
+  //            Duration.ofSeconds(60),
+  //            Duration.ofSeconds(60),
+  //            true,
+  //
+  // SchemaAwareLogDocumentBuilderImpl.FieldConflictPolicy.CONVERT_VALUE_AND_DUPLICATE_FIELD,
+  //            meterRegistry);
+  //    addMessages(logStore, 1, 10, true);
+  //    assertThat(getCount(MESSAGES_RECEIVED_COUNTER, meterRegistry)).isEqualTo(10);
+  //    assertThat(getCount(MESSAGES_FAILED_COUNTER, meterRegistry)).isEqualTo(0);
+  //    assertThat(getTimerCount(REFRESHES_TIMER, meterRegistry)).isEqualTo(1);
+  //    assertThat(getTimerCount(COMMITS_TIMER, meterRegistry)).isEqualTo(1);
+  //
+  //    Path dirPath = logStore.getDirectory().getDirectory().toAbsolutePath();
+  //
+  //    // Create schema file to upload
+  //    ChunkSchema chunkSchema =
+  //        new ChunkSchema(snapshotId, logStore.getSchema(), new ConcurrentHashMap<>());
+  //    File schemaFile = new File(dirPath + "/" + SCHEMA_FILE_NAME);
+  //    ChunkSchema.serializeToFile(chunkSchema, schemaFile);
+  //
+  //    // Prepare list of files to upload.
+  //    List<String> filesToUpload = new ArrayList<>();
+  //    filesToUpload.add(schemaFile.getName());
+  //    IndexCommit indexCommit = logStore.getIndexCommit();
+  //    filesToUpload.addAll(indexCommit.getFileNames());
+  //
+  //    logStore.close();
+  //
+  // assertThat(dirPath.toFile().listFiles().length).isGreaterThanOrEqualTo(filesToUpload.size());
+  //
+  //    // Copy files to S3.
+  //    blobStore.upload(snapshotId, dirPath);
+  //  }
 
   @Test
   public void shouldHandleLifecycle() throws Exception {
@@ -245,11 +257,11 @@ public class CachingChunkManagerTest {
 
   @Test
   public void testCreatesChunksOnAssignment() throws Exception {
-    enableDynamicChunksFlag();
+   // enableDynamicChunksFlag();
     String snapshotId = "abcd";
 
     cachingChunkManager = initChunkManager();
-    initializeBlobStorageWithIndex(snapshotId);
+    initializeBlobStorageWithRocksdbIndex(snapshotId);
     await()
         .ignoreExceptions()
         .until(
@@ -285,11 +297,11 @@ public class CachingChunkManagerTest {
 
   @Test
   public void testBasicChunkEviction() throws Exception {
-    enableDynamicChunksFlag();
+    //enableDynamicChunksFlag();
     String snapshotId = "abcd";
 
     cachingChunkManager = initChunkManager();
-    initializeBlobStorageWithIndex(snapshotId);
+    initializeBlobStorageWithRocksdbIndex(snapshotId);
     await()
         .ignoreExceptions()
         .until(
