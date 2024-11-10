@@ -84,6 +84,7 @@ public class RocksDbReadOnlyChunkImpl<T> extends ReadOnlyChunkImpl<T> {
     //    }
     //    setChunkSchema(ChunkSchema.deserializeFile(schemaPath));
 
+    setChunkSchema(null);
     setLogSearcher((LogIndexSearcher<T>) new RocksdbIndexSearcherImpl(dataDirectory));
   }
 
