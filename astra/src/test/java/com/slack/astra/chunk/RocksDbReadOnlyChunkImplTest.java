@@ -17,6 +17,8 @@ import com.slack.astra.logstore.LogMessage;
 import com.slack.astra.logstore.rocksdb.RocksDbStore;
 import com.slack.astra.logstore.search.SearchQuery;
 import com.slack.astra.logstore.search.SearchResult;
+import com.slack.astra.metadata.cache.CacheNodeAssignment;
+import com.slack.astra.metadata.cache.CacheNodeAssignmentStore;
 import com.slack.astra.metadata.cache.CacheSlotMetadata;
 import com.slack.astra.metadata.cache.CacheSlotMetadataStore;
 import com.slack.astra.metadata.core.AstraMetadataTestUtils;
@@ -37,11 +39,13 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.curator.test.TestingServer;
 import org.apache.curator.x.async.AsyncCuratorFramework;
@@ -459,118 +463,116 @@ public class RocksDbReadOnlyChunkImplTest {
     curatorFramework.unwrap().close();
   }
 
-  //  @Test
-  //  public void shouldHandleDynamicChunkSizeLifecycle() throws Exception {
-  //    AstraConfigs.AstraConfig AstraConfig = makeCacheConfig();
-  //    AstraConfigs.ZookeeperConfig zkConfig =
-  //        AstraConfigs.ZookeeperConfig.newBuilder()
-  //            .setZkConnectString(testingServer.getConnectString())
-  //            .setZkPathPrefix("shouldHandleChunkLivecycle")
-  //            .setZkSessionTimeoutMs(1000)
-  //            .setZkConnectionTimeoutMs(1000)
-  //            .setSleepBetweenRetriesMs(1000)
-  //            .build();
-  //
-  //    AsyncCuratorFramework curatorFramework = CuratorBuilder.build(meterRegistry, zkConfig);
-  //    ReplicaMetadataStore replicaMetadataStore = new ReplicaMetadataStore(curatorFramework);
-  //    SnapshotMetadataStore snapshotMetadataStore = new SnapshotMetadataStore(curatorFramework);
-  //    SearchMetadataStore searchMetadataStore = new SearchMetadataStore(curatorFramework, true);
-  //    CacheSlotMetadataStore cacheSlotMetadataStore = new
-  // CacheSlotMetadataStore(curatorFramework);
-  //    CacheNodeAssignmentStore cacheNodeAssignmentStore =
-  //        new CacheNodeAssignmentStore(curatorFramework);
-  //
-  //    String replicaId = "foo";
-  //    String snapshotId = "boo";
-  //    String assignmentId = "dog";
-  //    String cacheNodeId = "baz";
-  //    String replicaSet = "cat";
-  //
-  //    // setup Zk, BlobFs so data can be loaded
-  //    initializeZkReplica(curatorFramework, replicaId, snapshotId);
-  //    initializeZkSnapshot(curatorFramework, snapshotId, 29);
-  //    initializeBlobStorageWithIndex(snapshotId);
-  //    initializeCacheNodeAssignment(
-  //        cacheNodeAssignmentStore, assignmentId, snapshotId, cacheNodeId, replicaSet, replicaId);
-  //
-  //    SearchContext searchContext =
-  //        SearchContext.fromConfig(AstraConfig.getCacheConfig().getServerConfig());
-  //    ReadOnlyChunkImpl<LogMessage> readOnlyChunk =
-  //        new ReadOnlyChunkImpl<>(
-  //            curatorFramework,
-  //            meterRegistry,
-  //            blobStore,
-  //            searchContext,
-  //            AstraConfig.getS3Config().getS3Bucket(),
-  //            AstraConfig.getCacheConfig().getDataDirectory(),
-  //            AstraConfig.getCacheConfig().getReplicaSet(),
-  //            cacheSlotMetadataStore,
-  //            replicaMetadataStore,
-  //            snapshotMetadataStore,
-  //            searchMetadataStore,
-  //            cacheNodeAssignmentStore,
-  //            cacheNodeAssignmentStore.getSync(cacheNodeId, assignmentId),
-  //            snapshotMetadataStore.findSync(snapshotId));
-  //
-  //    // wait for chunk to register
-  //    // ignoreExceptions is workaround for https://github.com/aws/aws-sdk-java-v2/issues/3658
-  //    await()
-  //        .ignoreExceptions()
-  //        .until(
-  //            () -> {
-  //              Path dataDirectory =
-  //                  Path.of(
-  //                      String.format(
-  //                          "%s/astra-chunk-%s",
-  //                          AstraConfig.getCacheConfig().getDataDirectory(), assignmentId));
-  //
-  //              if (java.nio.file.Files.isDirectory(dataDirectory)) {
-  //                FileUtils.cleanDirectory(dataDirectory.toFile());
-  //              }
-  //              readOnlyChunk.downloadChunkData();
-  //
-  //              return cacheNodeAssignmentStore.getSync(
-  //                          readOnlyChunk.getCacheNodeAssignment().cacheNodeId,
-  //                          readOnlyChunk.getCacheNodeAssignment().assignmentId)
-  //                      .state
-  //                  == Metadata.CacheNodeAssignment.CacheNodeAssignmentState.LIVE;
-  //            });
-  //
-  //    SearchResult<LogMessage> logMessageSearchResult =
-  //        readOnlyChunk.query(
-  //            new SearchQuery(
-  //                MessageUtil.TEST_DATASET_NAME,
-  //                Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
-  //                Instant.now().toEpochMilli(),
-  //                500,
-  //                Collections.emptyList(),
-  //                QueryBuilderUtil.generateQueryBuilder(
-  //                    "*:*",
-  //                    Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
-  //                    Instant.now().toEpochMilli()),
-  //                null,
-  //                createGenericDateHistogramAggregatorFactoriesBuilder()));
-  //    assertThat(logMessageSearchResult.hits.size()).isEqualTo(10);
-  //
-  //    // ensure we registered a search node for this cache assignment
-  //    await().until(() -> searchMetadataStore.listSync().size() == 1);
-  //    assertThat(searchMetadataStore.listSync().get(0).snapshotName).isEqualTo(snapshotId);
-  //
-  //
-  // assertThat(searchMetadataStore.listSync().get(0).url).isEqualTo("gproto+http://localhost:8080");
-  //    assertThat(searchMetadataStore.listSync().get(0).name)
-  //        .isEqualTo(SearchMetadata.generateSearchContextSnapshotId(snapshotId, "localhost"));
-  //
-  //    // simulate eviction
-  //    readOnlyChunk.evictChunk(cacheNodeAssignmentStore.findSync(assignmentId));
-  //
-  //    // verify that the directory has been cleaned up
-  //    try (var files = java.nio.file.Files.list(readOnlyChunk.getDataDirectory())) {
-  //      assertThat(files.findFirst().isPresent()).isFalse();
-  //    }
-  //
-  //    curatorFramework.unwrap().close();
-  //  }
+  @Test
+  public void shouldHandleDynamicChunkSizeLifecycle() throws Exception {
+    AstraConfigs.AstraConfig AstraConfig = makeCacheConfig();
+    AstraConfigs.ZookeeperConfig zkConfig =
+        AstraConfigs.ZookeeperConfig.newBuilder()
+            .setZkConnectString(testingServer.getConnectString())
+            .setZkPathPrefix("shouldHandleChunkLivecycle")
+            .setZkSessionTimeoutMs(1000)
+            .setZkConnectionTimeoutMs(1000)
+            .setSleepBetweenRetriesMs(1000)
+            .build();
+
+    AsyncCuratorFramework curatorFramework = CuratorBuilder.build(meterRegistry, zkConfig);
+    ReplicaMetadataStore replicaMetadataStore = new ReplicaMetadataStore(curatorFramework);
+    SnapshotMetadataStore snapshotMetadataStore = new SnapshotMetadataStore(curatorFramework);
+    SearchMetadataStore searchMetadataStore = new SearchMetadataStore(curatorFramework, true);
+    CacheSlotMetadataStore cacheSlotMetadataStore = new CacheSlotMetadataStore(curatorFramework);
+    CacheNodeAssignmentStore cacheNodeAssignmentStore =
+        new CacheNodeAssignmentStore(curatorFramework);
+
+    String replicaId = "foo";
+    String snapshotId = "boo";
+    String assignmentId = "dog";
+    String cacheNodeId = "baz";
+    String replicaSet = "cat";
+
+    // setup Zk, BlobFs so data can be loaded
+    initializeZkReplica(curatorFramework, replicaId, snapshotId);
+    initializeZkSnapshot(curatorFramework, snapshotId, 29);
+    initializeBlobStorageWithRocksdbIndex(snapshotId);
+    initializeCacheNodeAssignment(
+        cacheNodeAssignmentStore, assignmentId, snapshotId, cacheNodeId, replicaSet, replicaId);
+
+    SearchContext searchContext =
+        SearchContext.fromConfig(AstraConfig.getCacheConfig().getServerConfig());
+    ReadOnlyChunkImpl<LogMessage> readOnlyChunk =
+        new RocksDbReadOnlyChunkImpl<>(
+            curatorFramework,
+            meterRegistry,
+            blobStore,
+            searchContext,
+            AstraConfig.getS3Config().getS3Bucket(),
+            AstraConfig.getCacheConfig().getDataDirectory(),
+            AstraConfig.getCacheConfig().getReplicaSet(),
+            cacheSlotMetadataStore,
+            replicaMetadataStore,
+            snapshotMetadataStore,
+            searchMetadataStore,
+            cacheNodeAssignmentStore,
+            cacheNodeAssignmentStore.getSync(cacheNodeId, assignmentId),
+            snapshotMetadataStore.findSync(snapshotId));
+
+    // wait for chunk to register
+    // ignoreExceptions is workaround for https://github.com/aws/aws-sdk-java-v2/issues/3658
+    await()
+        .ignoreExceptions()
+        .until(
+            () -> {
+              Path dataDirectory =
+                  Path.of(
+                      String.format(
+                          "%s/astra-chunk-%s",
+                          AstraConfig.getCacheConfig().getDataDirectory(), assignmentId));
+
+              if (java.nio.file.Files.isDirectory(dataDirectory)) {
+                FileUtils.cleanDirectory(dataDirectory.toFile());
+              }
+              readOnlyChunk.downloadChunkData();
+
+              return cacheNodeAssignmentStore.getSync(
+                          readOnlyChunk.getCacheNodeAssignment().cacheNodeId,
+                          readOnlyChunk.getCacheNodeAssignment().assignmentId)
+                      .state
+                  == Metadata.CacheNodeAssignment.CacheNodeAssignmentState.LIVE;
+            });
+
+    SearchResult<LogMessage> logMessageSearchResult =
+        readOnlyChunk.query(
+            new SearchQuery(
+                "Message1",
+                Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
+                Instant.now().toEpochMilli(),
+                500,
+                Collections.emptyList(),
+                QueryBuilderUtil.generateQueryBuilder(
+                    "Message1",
+                    Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
+                    Instant.now().toEpochMilli()),
+                null,
+                createGenericDateHistogramAggregatorFactoriesBuilder()));
+    assertThat(logMessageSearchResult.hits.size()).isEqualTo(1);
+
+    // ensure we registered a search node for this cache assignment
+    await().until(() -> searchMetadataStore.listSync().size() == 1);
+    assertThat(searchMetadataStore.listSync().get(0).snapshotName).isEqualTo(snapshotId);
+
+    assertThat(searchMetadataStore.listSync().get(0).url).isEqualTo("gproto+http://localhost:8080");
+    assertThat(searchMetadataStore.listSync().get(0).name)
+        .isEqualTo(SearchMetadata.generateSearchContextSnapshotId(snapshotId, "localhost"));
+
+    // simulate eviction
+    readOnlyChunk.evictChunk(cacheNodeAssignmentStore.findSync(assignmentId));
+
+    // verify that the directory has been cleaned up
+    try (var files = java.nio.file.Files.list(readOnlyChunk.getDataDirectory())) {
+      assertThat(files.findFirst().isPresent()).isFalse();
+    }
+
+    curatorFramework.unwrap().close();
+  }
 
   private void assignReplicaToChunk(
       CacheSlotMetadataStore cacheSlotMetadataStore,
@@ -636,62 +638,24 @@ public class RocksDbReadOnlyChunkImplTest {
     assertThat(s3Files.size()).isGreaterThanOrEqualTo(dataDirectory.listFiles().length);
   }
 
-  //  @Test
-  //  public void initializeBlobStorageWithIndex(String snapshotId) throws Exception {
-  //    LuceneIndexStoreImpl logStore =
-  //        LuceneIndexStoreImpl.makeLogStore(
-  //            Files.newTemporaryFolder(),
-  //            Duration.ofSeconds(60),
-  //            Duration.ofSeconds(60),
-  //            true,
-  //
-  // SchemaAwareLogDocumentBuilderImpl.FieldConflictPolicy.CONVERT_VALUE_AND_DUPLICATE_FIELD,
-  //            meterRegistry);
-  //    addMessages(logStore, 1, 10, true);
-  //    assertThat(getCount(MESSAGES_RECEIVED_COUNTER, meterRegistry)).isEqualTo(10);
-  //    assertThat(getCount(MESSAGES_FAILED_COUNTER, meterRegistry)).isEqualTo(0);
-  //    assertThat(getTimerCount(REFRESHES_TIMER, meterRegistry)).isEqualTo(1);
-  //    assertThat(getTimerCount(COMMITS_TIMER, meterRegistry)).isEqualTo(1);
-  //
-  //    Path dirPath = logStore.getDirectory().getDirectory().toAbsolutePath();
-  //
-  //    // Create schema file to upload
-  //    ChunkSchema chunkSchema =
-  //        new ChunkSchema(snapshotId, logStore.getSchema(), new ConcurrentHashMap<>());
-  //    File schemaFile = new File(dirPath + "/" + SCHEMA_FILE_NAME);
-  //    ChunkSchema.serializeToFile(chunkSchema, schemaFile);
-  //
-  //    // Prepare list of files to upload.
-  //    List<String> filesToUpload = new ArrayList<>();
-  //    filesToUpload.add(schemaFile.getName());
-  //    IndexCommit indexCommit = logStore.getIndexCommit();
-  //    filesToUpload.addAll(indexCommit.getFileNames());
-  //
-  //
-  // assertThat(dirPath.toFile().listFiles().length).isGreaterThanOrEqualTo(filesToUpload.size());
-  //
-  //    // Copy files to S3.
-  //    blobStore.upload(snapshotId, dirPath);
-  //  }
-
-  //  private void initializeCacheNodeAssignment(
-  //      CacheNodeAssignmentStore cacheNodeAssignmentStore,
-  //      String assignmentId,
-  //      String snapshotId,
-  //      String cacheNodeId,
-  //      String replicaSet,
-  //      String replicaId)
-  //      throws Exception {
-  //    cacheNodeAssignmentStore.createSync(
-  //        new CacheNodeAssignment(
-  //            assignmentId,
-  //            cacheNodeId,
-  //            snapshotId,
-  //            replicaId,
-  //            replicaSet,
-  //            0,
-  //            Metadata.CacheNodeAssignment.CacheNodeAssignmentState.LOADING));
-  //  }
+  private void initializeCacheNodeAssignment(
+      CacheNodeAssignmentStore cacheNodeAssignmentStore,
+      String assignmentId,
+      String snapshotId,
+      String cacheNodeId,
+      String replicaSet,
+      String replicaId)
+      throws Exception {
+    cacheNodeAssignmentStore.createSync(
+        new CacheNodeAssignment(
+            assignmentId,
+            cacheNodeId,
+            snapshotId,
+            replicaId,
+            replicaSet,
+            0,
+            Metadata.CacheNodeAssignment.CacheNodeAssignmentState.LOADING));
+  }
 
   private AstraConfigs.AstraConfig makeCacheConfig() {
     AstraConfigs.CacheConfig cacheConfig =

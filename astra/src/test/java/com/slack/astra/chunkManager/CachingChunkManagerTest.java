@@ -263,18 +263,18 @@ public class CachingChunkManagerTest {
     cachingChunkManager = initChunkManager();
     initializeBlobStorageWithRocksdbIndex(snapshotId);
     await()
-            .ignoreExceptions()
-            .until(
-                    () -> {
-                      Path path = Path.of("/tmp/test1");
-                      blobStore.download(snapshotId, path);
-                      return Objects.requireNonNull(path.toFile().listFiles()).length > 0;
-                    });
+        .ignoreExceptions()
+        .until(
+            () -> {
+              Path path = Path.of("/tmp/test1");
+              blobStore.download(snapshotId, path);
+              return Objects.requireNonNull(path.toFile().listFiles()).length > 0;
+            });
     initAssignment(snapshotId);
 
     await()
-            .timeout(10000, TimeUnit.MILLISECONDS)
-            .until(() -> cachingChunkManager.getChunksMap().size() == 1);
+        .timeout(10000, TimeUnit.MILLISECONDS)
+        .until(() -> cachingChunkManager.getChunksMap().size() == 1);
     assertThat(cachingChunkManager.getChunksMap().size()).isEqualTo(1);
   }
 
@@ -327,28 +327,28 @@ public class CachingChunkManagerTest {
     cachingChunkManager = initChunkManager();
     initializeBlobStorageWithRocksdbIndex(snapshotId);
     await()
-            .ignoreExceptions()
-            .until(
-                    () -> {
-                      Path path = Path.of("/tmp/test2");
-                      blobStore.download(snapshotId, path);
-                      return Objects.requireNonNull(path.toFile().listFiles()).length > 0;
-                    });
+        .ignoreExceptions()
+        .until(
+            () -> {
+              Path path = Path.of("/tmp/test2");
+              blobStore.download(snapshotId, path);
+              return Objects.requireNonNull(path.toFile().listFiles()).length > 0;
+            });
 
     CacheNodeAssignment assignment = initAssignment(snapshotId);
 
     // assert chunks created
     await()
-            .timeout(10000, TimeUnit.MILLISECONDS)
-            .until(() -> cachingChunkManager.getChunksMap().size() == 1);
+        .timeout(10000, TimeUnit.MILLISECONDS)
+        .until(() -> cachingChunkManager.getChunksMap().size() == 1);
     assertThat(cachingChunkManager.getChunksMap().size()).isEqualTo(1);
 
     cacheNodeAssignmentStore.updateAssignmentState(
-            assignment, Metadata.CacheNodeAssignment.CacheNodeAssignmentState.EVICT);
+        assignment, Metadata.CacheNodeAssignment.CacheNodeAssignmentState.EVICT);
 
     await()
-            .timeout(10000, TimeUnit.MILLISECONDS)
-            .until(() -> cachingChunkManager.getChunksMap().isEmpty());
+        .timeout(10000, TimeUnit.MILLISECONDS)
+        .until(() -> cachingChunkManager.getChunksMap().isEmpty());
     assertThat(cacheNodeAssignmentStore.listSync().size()).isEqualTo(0);
   }
 
