@@ -16,17 +16,22 @@ import org.opensearch.search.aggregations.AggregatorFactories;
 import org.rocksdb.Options;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
+  private static final Logger LOG = LoggerFactory.getLogger(RocksdbIndexSearcherImpl.class);
+
   static {
     RocksDB.loadLibrary();
   }
 
-  // private static final Logger LOG = LoggerFactory.getLogger(RocksdbIndexSearcherImpl.class);
   private final RocksDB db;
 
   public RocksdbIndexSearcherImpl(Path path) throws RocksDBException {
+    LOG.info("Rocksdb file path is {}", path.toString());
     this.db = RocksDB.open(new Options(), path.toString());
+    LOG.info("opened path is {}", path.toString());
   }
 
   public RocksdbIndexSearcherImpl(RocksDB db) {
