@@ -1,16 +1,12 @@
 package com.slack.astra.logstore.rocksdb.query;
 
-import com.google.common.base.Stopwatch;
-import com.slack.astra.logstore.LogMessage;
-import com.slack.astra.logstore.search.LogIndexSearcher;
-import com.slack.astra.logstore.search.SearchResult;
-import com.slack.astra.logstore.search.SourceFieldFilter;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+
 import org.opensearch.index.query.QueryBuilder;
 import org.opensearch.search.aggregations.AggregatorFactories;
 import org.rocksdb.Options;
@@ -18,6 +14,12 @@ import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.base.Stopwatch;
+import com.slack.astra.logstore.LogMessage;
+import com.slack.astra.logstore.search.LogIndexSearcher;
+import com.slack.astra.logstore.search.SearchResult;
+import com.slack.astra.logstore.search.SourceFieldFilter;
 
 public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
   private static final Logger LOG = LoggerFactory.getLogger(RocksdbIndexSearcherImpl.class);
@@ -55,10 +57,16 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
 
       byte[] result = db.get(key);
       elapsedTime.stop();
-      List<LogMessage> results =
-          List.of(
+      List<LogMessage> results;
+      if (result == null) {
+        results = List.of(
+              new LogMessage(
+                  "test", "test_type", new String(key), Instant.now(), Collections.emptyMap()));
+      } else {
+        results = List.of(
               new LogMessage(
                   "test", "test_type", new String(result), Instant.now(), Collections.emptyMap()));
+      }
       return new SearchResult<>(
           results, elapsedTime.elapsed(TimeUnit.MICROSECONDS), 0, 0, 1, 1, null);
     } catch (RocksDBException ex) {
