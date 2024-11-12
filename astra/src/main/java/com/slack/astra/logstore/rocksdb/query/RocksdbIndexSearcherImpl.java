@@ -55,6 +55,9 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
 
       byte[] result = db.get(key);
       elapsedTime.stop();
+      if (result == null) {
+        result = key;
+      }
       List<LogMessage> results =
           List.of(
               new LogMessage(
