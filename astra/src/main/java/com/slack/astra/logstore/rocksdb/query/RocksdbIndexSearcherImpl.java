@@ -9,7 +9,6 @@ import java.util.concurrent.TimeUnit;
 
 import org.opensearch.index.query.QueryBuilder;
 import org.opensearch.search.aggregations.AggregatorFactories;
-import org.rocksdb.Options;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.slf4j.Logger;
@@ -34,7 +33,7 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
 
   public RocksdbIndexSearcherImpl(Path path) throws RocksDBException {
     LOG.info("Rocksdb file path is {}", path.toString());
-    this.db = RocksDB.open(new Options(), path.toString());
+    this.db = RocksDB.open(path.toString());
     LOG.info("opened path is {}", path.toString());
   }
 
