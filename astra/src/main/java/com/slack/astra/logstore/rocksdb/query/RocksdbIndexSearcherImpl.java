@@ -1,6 +1,27 @@
 package com.slack.astra.logstore.rocksdb.query;
 
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import static java.util.stream.Collectors.toList;
+import java.util.stream.Stream;
+
+import org.opensearch.index.query.QueryBuilder;
+import org.opensearch.search.aggregations.AggregatorFactories;
+import org.rocksdb.IngestExternalFileOptions;
+import org.rocksdb.RocksDB;
+import org.rocksdb.RocksDBException;
+import org.rocksdb.RocksIterator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -9,24 +30,6 @@ import com.slack.astra.logstore.LogMessage;
 import com.slack.astra.logstore.search.LogIndexSearcher;
 import com.slack.astra.logstore.search.SearchResult;
 import com.slack.astra.logstore.search.SourceFieldFilter;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Instant;
-import java.util.Base64;
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
-import org.opensearch.index.query.QueryBuilder;
-import org.opensearch.search.aggregations.AggregatorFactories;
-import org.rocksdb.IngestExternalFileOptions;
-import org.rocksdb.RocksDB;
-import org.rocksdb.RocksDBException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
   private static final Logger LOG = LoggerFactory.getLogger(RocksdbIndexSearcherImpl.class);
@@ -111,36 +114,59 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
       AggregatorFactories.Builder aggregatorFactoriesBuilder) {
     try {
       Stopwatch elapsedTime = Stopwatch.createStarted();
-      byte[] key = extractKeyFromQueryBuilder(queryBuilder);
+      byte[] prefix_key = extractKeyFromQueryBuilder(queryBuilder);
       System.out.println(dataset);
+      boolean found = false;
 
-      byte[] result = db.get(key);
-      elapsedTime.stop();
-      List<LogMessage> results;
-      if (result == null) {
-        results =
-            List.of(
-                new LogMessage(
-                    "test", "test_type", new String(key), Instant.now(), Collections.emptyMap()));
-      } else {
-        results =
+      List<LogMessage> results = new ArrayList<>();
+      try (RocksIterator iterator = db.newIterator()) {
+        for (iterator.seek(prefix_key);
+            iterator.isValid() && startsWith(iterator.key(), prefix_key);
+            iterator.next()) {
+          byte[] value = iterator.value();
+          results.add(
+              new LogMessage(
+                  "test", "test_type", new String(value), Instant.now(), Collections.emptyMap()));
+          found = true;
+        }
+      } catch (Exception e) {
+        throw new RuntimeException("Failed to perform prefix query in RocksDB", e);
+      }
+
+      if (!found) {
+        return new SearchResult<>(
             List.of(
                 new LogMessage(
                     "test",
                     "test_type",
-                    new String(result),
+                    new String(prefix_key),
                     Instant.now(),
-                    Collections.emptyMap()));
+                    Collections.emptyMap())),
+            elapsedTime.elapsed(TimeUnit.MICROSECONDS),
+            0,
+            0,
+            1,
+            1,
+            null);
       }
       return new SearchResult<>(
           results, elapsedTime.elapsed(TimeUnit.MICROSECONDS), 0, 0, 1, 1, null);
-    } catch (RocksDBException ex) {
-      throw new IllegalStateException(
-          "Error fetching and parsing a result from rocksdb index for key: " + dataset, ex);
     } catch (IOException ex) {
       throw new IllegalStateException(
           "Error fetching and parsing a result from rocksdb index for key: " + dataset, ex);
     }
+  }
+
+  private boolean startsWith(byte[] key, byte[] prefix) {
+    if (key.length < prefix.length) {
+      return false;
+    }
+    for (int i = 0; i < prefix.length; i++) {
+      if (key[i] != prefix[i]) {
+        return false;
+      }
+    }
+    return true;
   }
 
   @Override
