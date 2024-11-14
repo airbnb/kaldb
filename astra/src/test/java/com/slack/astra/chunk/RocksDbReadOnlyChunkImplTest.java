@@ -151,13 +151,13 @@ public class RocksDbReadOnlyChunkImplTest {
                 500,
                 Collections.emptyList(),
                 QueryBuilderUtil.generateQueryBuilder(
-                    "keyField:PRIMARY_KEY_HEX:SECONDARY_KEY_HEX",
+                    String.format("keyField:%s:%s", PRIMARY_KEY_HEX, SECONDARY_KEY_HEX),
                     Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
                     Instant.now().toEpochMilli()),
                 null,
                 createGenericDateHistogramAggregatorFactoriesBuilder()));
     assertThat(logMessageSearchResult.hits.size()).isEqualTo(2);
-    //  assertThat(logMessageSearchResult.hits.get(0).getId()).isEqualTo("Message1");
+    // assertThat(logMessageSearchResult.hits.get(0).getId()).isEqualTo("Message1");
 
     await()
         .until(
