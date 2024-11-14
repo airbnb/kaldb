@@ -71,7 +71,14 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
 
     // Extract the key from the JSON
     String key =
-        rootNode.path("keyField").asText(); // Replace "keyField" with the actual field name
+        rootNode
+            .path("bool")
+            .path("filter")
+            .get(1)
+            .path("query_string")
+            .path("query")
+            .asText()
+            .split(":")[1];
 
     return key.getBytes();
   }
