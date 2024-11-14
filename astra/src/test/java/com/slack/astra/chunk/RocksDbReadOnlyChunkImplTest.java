@@ -6,15 +6,23 @@ import static com.slack.astra.logstore.LuceneIndexStoreImpl.MESSAGES_FAILED_COUN
 import static com.slack.astra.logstore.LuceneIndexStoreImpl.MESSAGES_RECEIVED_COUNTER;
 import static com.slack.astra.testlib.MetricsUtil.getCount;
 import static com.slack.astra.util.AggregatorFactoriesUtil.createGenericDateHistogramAggregatorFactoriesBuilder;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import brave.Tracing;
+
 import com.adobe.testing.s3mock.junit5.S3MockExtension;
 import com.slack.astra.blobfs.BlobStore;
 import com.slack.astra.blobfs.S3TestUtils;
 import com.slack.astra.logstore.LogMessage;
 import com.slack.astra.logstore.rocksdb.RocksDbStore;
+import org.rocksdb.Options;
+import org.rocksdb.Options;
+import org.rocksdb.RocksDB;
+import org.rocksdb.RocksDBException;
+import org.rocksdb.SstFileWriter;
+import org.rocksdb.EnvOptions;
 import com.slack.astra.logstore.search.SearchQuery;
 import com.slack.astra.logstore.search.SearchResult;
 import com.slack.astra.metadata.cache.CacheNodeAssignment;
@@ -35,8 +43,10 @@ import com.slack.astra.testlib.MessageUtil;
 import com.slack.astra.testlib.SpanUtil;
 import com.slack.astra.util.QueryBuilderUtil;
 import com.slack.service.murron.trace.Trace;
+
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -45,15 +55,20 @@ import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.curator.test.TestingServer;
 import org.apache.curator.x.async.AsyncCuratorFramework;
+import org.apache.lucene.index.CheckIndex.Options;
 import org.assertj.core.util.Files;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.rocksdb.EnvOptions;
+import org.rocksdb.SstFileWriter;
+
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 
 public class RocksDbReadOnlyChunkImplTest {
@@ -620,10 +635,26 @@ public class RocksDbReadOnlyChunkImplTest {
 
   private void initializeBlobStorageWithRocksdbIndex(String snapshotId) throws Exception {
     File dataDirectory = Files.newTemporaryFolder();
-    RocksDbStore rocksDbStore = new RocksDbStore(dataDirectory, meterRegistry);
-    Trace.Span span = SpanUtil.makeSpan(1);
-    rocksDbStore.addMessage(span);
-    rocksDbStore.close();
+    Trace.Span message = SpanUtil.makeSpan(1);
+    String key = message.getId().toStringUtf8();
+    System.out.println("key added is: " + key);
+    byte[] value = key.getBytes();
+
+    try (org.rocksdb.Options options = new org.rocksdb.Options();
+        EnvOptions envOptions = new EnvOptions();
+        SstFileWriter sstFileWriter = new SstFileWriter(envOptions, options)) {
+
+        // Open the SST file
+        sstFileWriter.open(dataDirectory.toString());
+
+        // Write the key-value pair
+        sstFileWriter.put(key.getBytes(), value);
+
+        // Finish writing the SST file
+        sstFileWriter.finish();
+
+        System.out.println("Generated SST file: " + dataDirectory.toString());
+    }
 
     assertThat(getCount(MESSAGES_RECEIVED_COUNTER, meterRegistry)).isEqualTo(1);
     assertThat(getCount(MESSAGES_FAILED_COUNTER, meterRegistry)).isEqualTo(0);
