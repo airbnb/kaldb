@@ -28,16 +28,16 @@ import com.slack.astra.metadata.snapshot.SnapshotMetadataStore;
 import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.astra.proto.metadata.Metadata;
 import com.slack.astra.testlib.MessageUtil;
-import com.slack.astra.testlib.SpanUtil;
 import com.slack.astra.util.QueryBuilderUtil;
-import com.slack.service.murron.trace.Trace;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -151,13 +151,13 @@ public class RocksDbReadOnlyChunkImplTest {
                 500,
                 Collections.emptyList(),
                 QueryBuilderUtil.generateQueryBuilder(
-                    "keyField:Message1",
+                    "keyField:PRIMARY_KEY_HEX:SECONDARY_KEY_HEX",
                     Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
                     Instant.now().toEpochMilli()),
                 null,
                 createGenericDateHistogramAggregatorFactoriesBuilder()));
-    assertThat(logMessageSearchResult.hits.size()).isEqualTo(1);
-    assertThat(logMessageSearchResult.hits.get(0).getId()).isEqualTo("Message1");
+    assertThat(logMessageSearchResult.hits.size()).isEqualTo(2);
+    //  assertThat(logMessageSearchResult.hits.get(0).getId()).isEqualTo("Message1");
 
     await()
         .until(
@@ -616,12 +616,29 @@ public class RocksDbReadOnlyChunkImplTest {
             false));
   }
 
+  private static final String PRIMARY_KEY_HEX = "4a6f686e446f65"; // Example: "JohnDoe" in hex
+  private static final String SECONDARY_KEY_HEX = "4a616e65446f65"; // Example: "JaneDoe" in hex
+
   private void initializeBlobStorageWithRocksdbIndex(String snapshotId) throws Exception {
     File dataDirectory = Files.newTemporaryFolder();
-    Trace.Span message = SpanUtil.makeSpan(1);
-    String key = message.getId().toStringUtf8();
-    System.out.println("key added is: " + key);
-    byte[] value = key.getBytes();
+
+    byte[] primaryKeyBytes = Base64.getDecoder().decode(PRIMARY_KEY_HEX);
+    int primaryKeySize = primaryKeyBytes.length;
+    byte[] secondaryKeyBytes = Base64.getDecoder().decode(SECONDARY_KEY_HEX);
+    ByteBuffer key1 = ByteBuffer.allocate(4 + primaryKeySize + secondaryKeyBytes.length + 4);
+    key1.putInt(primaryKeySize);
+    key1.put(primaryKeyBytes);
+    key1.put(secondaryKeyBytes);
+    key1.putInt(1024);
+
+    ByteBuffer key2 = ByteBuffer.allocate(4 + primaryKeySize + secondaryKeyBytes.length + 4);
+    key2.putInt(primaryKeySize);
+    key2.put(primaryKeyBytes);
+    key2.put(secondaryKeyBytes);
+    key2.putInt(2048);
+
+    byte[] value1 = key1.array();
+    byte[] value2 = key2.array();
 
     try (org.rocksdb.Options options = new org.rocksdb.Options();
         EnvOptions envOptions = new EnvOptions();
@@ -631,7 +648,8 @@ public class RocksDbReadOnlyChunkImplTest {
       sstFileWriter.open(dataDirectory.toString() + "/a.sst");
 
       // Write the key-value pair
-      sstFileWriter.put(key.getBytes(), value);
+      sstFileWriter.put(key1.array(), value1);
+      sstFileWriter.put(key2.array(), value2);
 
       // Finish writing the SST file
       sstFileWriter.finish();

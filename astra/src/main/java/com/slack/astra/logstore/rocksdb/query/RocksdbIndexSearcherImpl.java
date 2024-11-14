@@ -10,9 +10,11 @@ import com.slack.astra.logstore.search.LogIndexSearcher;
 import com.slack.astra.logstore.search.SearchResult;
 import com.slack.astra.logstore.search.SourceFieldFilter;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -70,7 +72,7 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
     JsonNode rootNode = objectMapper.readTree(queryJson);
 
     // Extract the key from the JSON
-    String key =
+    String primaryKeyBase64 =
         rootNode
             .path("bool")
             .path("filter")
@@ -79,8 +81,25 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
             .path("query")
             .asText()
             .split(":")[1];
+    String secondaryKeyBase64 =
+        rootNode
+            .path("bool")
+            .path("filter")
+            .get(1)
+            .path("query_string")
+            .path("query")
+            .asText()
+            .split(":")[2];
 
-    return key.getBytes();
+    byte[] primaryKeyBytes = Base64.getDecoder().decode(primaryKeyBase64);
+    byte[] secondaryKeyBytes = Base64.getDecoder().decode(secondaryKeyBase64);
+    int primaryKeySize = primaryKeyBytes.length;
+    ByteBuffer buffer = ByteBuffer.allocate(4 + primaryKeySize + secondaryKeyBytes.length);
+    buffer.putInt(primaryKeySize);
+    buffer.put(primaryKeyBytes);
+    buffer.put(secondaryKeyBytes);
+
+    return buffer.array();
   }
 
   @Override
@@ -94,9 +113,6 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
       Stopwatch elapsedTime = Stopwatch.createStarted();
       byte[] key = extractKeyFromQueryBuilder(queryBuilder);
       System.out.println(dataset);
-      if (!db.keyExists(key)) {
-        throw new IllegalStateException("missing key: " + dataset);
-      }
 
       byte[] result = db.get(key);
       elapsedTime.stop();
