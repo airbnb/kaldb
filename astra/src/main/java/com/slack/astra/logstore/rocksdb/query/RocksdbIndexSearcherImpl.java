@@ -1,18 +1,6 @@
 package com.slack.astra.logstore.rocksdb.query;
 
-import java.io.IOException;
-import java.nio.file.Path;
-import java.time.Instant;
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-
-import org.opensearch.index.query.QueryBuilder;
-import org.opensearch.search.aggregations.AggregatorFactories;
-import org.rocksdb.RocksDB;
-import org.rocksdb.RocksDBException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static java.util.stream.Collectors.toList;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,6 +9,22 @@ import com.slack.astra.logstore.LogMessage;
 import com.slack.astra.logstore.search.LogIndexSearcher;
 import com.slack.astra.logstore.search.SearchResult;
 import com.slack.astra.logstore.search.SourceFieldFilter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import org.opensearch.index.query.QueryBuilder;
+import org.opensearch.search.aggregations.AggregatorFactories;
+import org.rocksdb.IngestExternalFileOptions;
+import org.rocksdb.RocksDB;
+import org.rocksdb.RocksDBException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
   private static final Logger LOG = LoggerFactory.getLogger(RocksdbIndexSearcherImpl.class);
@@ -31,10 +35,26 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
 
   private final RocksDB db;
 
-  public RocksdbIndexSearcherImpl(Path path) throws RocksDBException {
+  public RocksdbIndexSearcherImpl(Path path) throws RocksDBException, IOException {
     LOG.info("Rocksdb file path is {}", path.toString());
-    this.db = RocksDB.open(path.toString());
+    this.db = RocksDB.open(path.toString() + "rocksdb");
     LOG.info("opened path is {}", path.toString());
+    // Ingest all SST files in the directory
+    try (Stream<Path> files = Files.list(path)) {
+      List<Path> sstFiles =
+          files.filter(file -> file.toString().endsWith(".sst")).collect(toList());
+      ingestSstFiles(sstFiles);
+    }
+  }
+
+  // Method to ingest SST files
+  public final void ingestSstFiles(List<Path> sstFiles) throws RocksDBException {
+    IngestExternalFileOptions ingestOptions = new IngestExternalFileOptions();
+    ingestOptions.setMoveFiles(true); // Move files instead of copying
+    LOG.info("Ingesting SST files: {}", sstFiles);
+    List<String> sstFilePaths = sstFiles.stream().map(Path::toString).collect(Collectors.toList());
+    db.ingestExternalFile(sstFilePaths, ingestOptions);
+    LOG.info("Ingested SST files: {}", sstFiles);
   }
 
   public RocksdbIndexSearcherImpl(RocksDB db) {
@@ -50,11 +70,12 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
     JsonNode rootNode = objectMapper.readTree(queryJson);
 
     // Extract the key from the JSON
-    String key = rootNode.path("keyField").asText(); // Replace "keyField" with the actual field name
+    String key =
+        rootNode.path("keyField").asText(); // Replace "keyField" with the actual field name
 
     return key.getBytes();
   }
-  
+
   @Override
   public SearchResult<LogMessage> search(
       String dataset,
@@ -64,7 +85,7 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
       AggregatorFactories.Builder aggregatorFactoriesBuilder) {
     try {
       Stopwatch elapsedTime = Stopwatch.createStarted();
-      byte[] key =extractKeyFromQueryBuilder(queryBuilder);
+      byte[] key = extractKeyFromQueryBuilder(queryBuilder);
       System.out.println(dataset);
       if (!db.keyExists(key)) {
         throw new IllegalStateException("missing key: " + dataset);
@@ -74,13 +95,19 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
       elapsedTime.stop();
       List<LogMessage> results;
       if (result == null) {
-        results = List.of(
-              new LogMessage(
-                  "test", "test_type", new String(key), Instant.now(), Collections.emptyMap()));
+        results =
+            List.of(
+                new LogMessage(
+                    "test", "test_type", new String(key), Instant.now(), Collections.emptyMap()));
       } else {
-        results = List.of(
-              new LogMessage(
-                  "test", "test_type", new String(result), Instant.now(), Collections.emptyMap()));
+        results =
+            List.of(
+                new LogMessage(
+                    "test",
+                    "test_type",
+                    new String(result),
+                    Instant.now(),
+                    Collections.emptyMap()));
       }
       return new SearchResult<>(
           results, elapsedTime.elapsed(TimeUnit.MICROSECONDS), 0, 0, 1, 1, null);
