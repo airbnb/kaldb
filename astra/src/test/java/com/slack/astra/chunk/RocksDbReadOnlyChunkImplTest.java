@@ -789,7 +789,7 @@ public class RocksDbReadOnlyChunkImplTest {
   }
 
   private void initializeBlobStorageWithLocalSST(String snapshotId) throws Exception {
-    String dataDirectory = "/Users/rishabh_mittal/Downloads/sst_file_000181.sst";
+    String dataDirectory = "/Users/suman_karumuri/temp/test_rocksdb_sst/";
     // create a new path
     Path path = Paths.get(dataDirectory);
     // Copy files to S3.
