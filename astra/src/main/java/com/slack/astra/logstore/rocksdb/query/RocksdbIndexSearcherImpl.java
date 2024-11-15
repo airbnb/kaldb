@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.apache.commons.io.FileUtils;
 import org.opensearch.index.query.QueryBuilder;
 import org.opensearch.search.aggregations.AggregatorFactories;
 import org.rocksdb.IngestExternalFileOptions;
@@ -40,9 +41,13 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
   private final RocksDB db;
 
   public RocksdbIndexSearcherImpl(Path path) throws RocksDBException, IOException {
-    LOG.info("Rocksdb file path is {}", path.toString());
-    this.db = RocksDB.open(path.toString() + "rocksdb");
-    LOG.info("opened path is {}", path.toString());
+    Path dbPath = path.resolve("rocksdb");
+    LOG.info("Rocksdb file path is {}", dbPath);
+    if (!dbPath.toFile().exists()) {
+      FileUtils.forceMkdir(dbPath.toFile());
+    }
+    this.db = RocksDB.open(dbPath.toString());
+    LOG.info("opened path is {}", dbPath);
     // Ingest all SST files in the directory
     try (Stream<Path> files = Files.list(path)) {
       List<Path> sstFiles =
