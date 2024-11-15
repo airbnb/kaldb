@@ -616,8 +616,8 @@ public class RocksDbReadOnlyChunkImplTest {
             false));
   }
 
-  private static final String PRIMARY_KEY_HEX = "4a6f686e446f65"; // Example: "JohnDoe" in hex
-  private static final String SECONDARY_KEY_HEX = "4a616e65446f65"; // Example: "JaneDoe" in hex
+  private static final String PRIMARY_KEY_HEX = "Sm9oblRvZQ=="; // Example: "JohnDoe" in hex
+  private static final String SECONDARY_KEY_HEX = "Sm9oblRvZQ=="; // Example: "JaneDoe" in hex
 
   private void initializeBlobStorageWithRocksdbIndex(String snapshotId) throws Exception {
     File dataDirectory = Files.newTemporaryFolder();
