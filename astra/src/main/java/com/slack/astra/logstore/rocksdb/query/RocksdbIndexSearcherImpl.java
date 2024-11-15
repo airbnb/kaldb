@@ -146,7 +146,7 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
           byte[] value = iterator.value();
           results.add(
               new LogMessage(
-                  "test", "found", new String(value), Instant.now(), Collections.emptyMap()));
+                  "found", "found", new String(value), Instant.now(), Collections.emptyMap()));
           found = true;
         }
       } catch (Exception e) {
@@ -157,7 +157,7 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
         return new SearchResult<>(
             List.of(
                 new LogMessage(
-                    "test",
+                    "notfound",
                     "notfound",
                     new String(prefix_key),
                     Instant.now(),
