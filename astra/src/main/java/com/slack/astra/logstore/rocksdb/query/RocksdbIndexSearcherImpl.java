@@ -1,14 +1,5 @@
 package com.slack.astra.logstore.rocksdb.query;
 
-import static java.util.stream.Collectors.toList;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.base.Stopwatch;
-import com.slack.astra.logstore.LogMessage;
-import com.slack.astra.logstore.search.LogIndexSearcher;
-import com.slack.astra.logstore.search.SearchResult;
-import com.slack.astra.logstore.search.SourceFieldFilter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -21,7 +12,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import static java.util.stream.Collectors.toList;
 import java.util.stream.Stream;
+
 import org.opensearch.index.query.QueryBuilder;
 import org.opensearch.search.aggregations.AggregatorFactories;
 import org.rocksdb.IngestExternalFileOptions;
@@ -30,6 +23,14 @@ import org.rocksdb.RocksDBException;
 import org.rocksdb.RocksIterator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Stopwatch;
+import com.slack.astra.logstore.LogMessage;
+import com.slack.astra.logstore.search.LogIndexSearcher;
+import com.slack.astra.logstore.search.SearchResult;
+import com.slack.astra.logstore.search.SourceFieldFilter;
 
 public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
   private static final Logger LOG = LoggerFactory.getLogger(RocksdbIndexSearcherImpl.class);
@@ -159,6 +160,7 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
       return new SearchResult<>(
           results, elapsedTime.elapsed(TimeUnit.MICROSECONDS), 0, 0, 1, 1, null);
     } catch (IOException ex) {
+      LOG.error("Error fetching and parsing a result from rocksdb index for key: {}", dataset, ex);
       throw new IllegalStateException(
           "Error fetching and parsing a result from rocksdb index for key: " + dataset, ex);
     }
