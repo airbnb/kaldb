@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
@@ -47,7 +48,10 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
     try (Stream<Path> files = Files.list(path)) {
       List<Path> sstFiles =
           files.filter(file -> file.toString().endsWith(".sst")).collect(toList());
-      ingestSstFiles(sstFiles);
+      // add for loop to ingest all sst files
+      for (Path sstFile : sstFiles) {
+        ingestSstFiles(List.of(sstFile));
+      }
     }
   }
 
@@ -57,7 +61,11 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
     ingestOptions.setMoveFiles(true); // Move files instead of copying
     LOG.info("Ingesting SST files: {}", sstFiles);
     List<String> sstFilePaths = sstFiles.stream().map(Path::toString).collect(Collectors.toList());
-    db.ingestExternalFile(sstFilePaths, ingestOptions);
+    try {
+      db.ingestExternalFile(sstFilePaths, ingestOptions);
+    } catch (RocksDBException e) {
+      LOG.error("Failed to ingest SST files: {}", sstFiles, e);
+    }
     LOG.info("Ingested SST files: {}", sstFiles);
   }
 
@@ -114,7 +122,7 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
     try {
       Stopwatch elapsedTime = Stopwatch.createStarted();
       byte[] prefix_key = extractKeyFromQueryBuilder(queryBuilder);
-      System.out.println(dataset);
+      System.out.println(Arrays.toString(prefix_key) + " is the prefix key");
       boolean found = false;
 
       List<LogMessage> results = new ArrayList<>();
