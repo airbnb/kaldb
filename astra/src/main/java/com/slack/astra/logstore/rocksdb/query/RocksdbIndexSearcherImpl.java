@@ -107,10 +107,10 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
 
     byte[] primaryKeyBytes = Base64.getDecoder().decode(primaryKeyBase64);
     byte[] secondaryKeyBytes = Base64.getDecoder().decode(secondaryKeyBase64);
-    int primaryKeySize = primaryKeyBytes.length;
+    byte primaryKeySize = (byte) primaryKeyBytes.length;
     LOG.info("primaryKeySize: {}", primaryKeySize);
-    ByteBuffer buffer = ByteBuffer.allocate(8 + primaryKeySize + secondaryKeyBytes.length);
-    buffer.putLong(primaryKeySize);
+    ByteBuffer buffer = ByteBuffer.allocate(1 + primaryKeySize + secondaryKeyBytes.length);
+    buffer.put(primaryKeySize);
     buffer.put(primaryKeyBytes);
     buffer.put(secondaryKeyBytes);
 

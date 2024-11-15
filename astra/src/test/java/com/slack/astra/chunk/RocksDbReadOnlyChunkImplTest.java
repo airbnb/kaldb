@@ -428,7 +428,7 @@ public class RocksDbReadOnlyChunkImplTest {
             null,
             createGenericDateHistogramAggregatorFactoriesBuilder());
     SearchResult<LogMessage> logMessageSearchResult = readOnlyChunk.query(query);
-    assertThat(logMessageSearchResult.hits.size()).isEqualTo(1);
+    assertThat(logMessageSearchResult.hits.size()).isEqualTo(2);
     assertThat(meterRegistry.get(CHUNK_ASSIGNMENT_TIMER).tag("successful", "true").timer().count())
         .isEqualTo(1);
 
@@ -546,12 +546,12 @@ public class RocksDbReadOnlyChunkImplTest {
                 500,
                 Collections.emptyList(),
                 QueryBuilderUtil.generateQueryBuilder(
-                    "Message1",
+                    String.format("keyField:%s:%s", PRIMARY_KEY_HEX, SECONDARY_KEY_HEX),
                     Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
                     Instant.now().toEpochMilli()),
                 null,
                 createGenericDateHistogramAggregatorFactoriesBuilder()));
-    assertThat(logMessageSearchResult.hits.size()).isEqualTo(1);
+    assertThat(logMessageSearchResult.hits.size()).isEqualTo(2);
 
     // ensure we registered a search node for this cache assignment
     await().until(() -> searchMetadataStore.listSync().size() == 1);
@@ -625,14 +625,14 @@ public class RocksDbReadOnlyChunkImplTest {
     byte[] primaryKeyBytes = Base64.getDecoder().decode(PRIMARY_KEY_HEX);
     int primaryKeySize = primaryKeyBytes.length;
     byte[] secondaryKeyBytes = Base64.getDecoder().decode(SECONDARY_KEY_HEX);
-    ByteBuffer key1 = ByteBuffer.allocate(8 + primaryKeySize + secondaryKeyBytes.length + 4);
-    key1.putLong(primaryKeySize);
+    ByteBuffer key1 = ByteBuffer.allocate(1 + primaryKeySize + secondaryKeyBytes.length + 4);
+    key1.put((byte) primaryKeySize);
     key1.put(primaryKeyBytes);
     key1.put(secondaryKeyBytes);
     key1.putInt(1024);
 
-    ByteBuffer key2 = ByteBuffer.allocate(8 + primaryKeySize + secondaryKeyBytes.length + 4);
-    key2.putLong(primaryKeySize);
+    ByteBuffer key2 = ByteBuffer.allocate(1 + primaryKeySize + secondaryKeyBytes.length + 4);
+    key2.put((byte) primaryKeySize);
     key2.put(primaryKeyBytes);
     key2.put(secondaryKeyBytes);
     key2.putInt(2048);
