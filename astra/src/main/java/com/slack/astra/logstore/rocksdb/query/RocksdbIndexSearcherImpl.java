@@ -77,6 +77,7 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
   private byte[] extractKeyFromQueryBuilder(QueryBuilder queryBuilder) throws IOException {
     // Convert the QueryBuilder to a JSON string
     String queryJson = queryBuilder.toString();
+    LOG.info("queryJson: {}", queryJson);
 
     // Parse the JSON string
     ObjectMapper objectMapper = new ObjectMapper();
@@ -102,9 +103,13 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
             .asText()
             .split(":")[2];
 
+    LOG.info("primaryKeyBase64: {}", primaryKeyBase64);
+    LOG.info("secondaryKeyBase64: {}", secondaryKeyBase64);
+
     byte[] primaryKeyBytes = Base64.getDecoder().decode(primaryKeyBase64);
     byte[] secondaryKeyBytes = Base64.getDecoder().decode(secondaryKeyBase64);
     int primaryKeySize = primaryKeyBytes.length;
+    LOG.info("primaryKeySize: {}", primaryKeySize);
     ByteBuffer buffer = ByteBuffer.allocate(8 + primaryKeySize + secondaryKeyBytes.length);
     buffer.putLong(primaryKeySize);
     buffer.put(primaryKeyBytes);
