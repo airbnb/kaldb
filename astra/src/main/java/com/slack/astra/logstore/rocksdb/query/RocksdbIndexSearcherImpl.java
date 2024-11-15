@@ -100,7 +100,8 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
     String[] subs = queryValue.split(":");
 
     String primaryKeyBase64 = subs[1];
-    String secondaryKeyBase64 = subs[2];
+
+    String secondaryKeyBase64 = subs.length > 2 ? subs[2] : "";
 
     LOG.info("primaryKeyBase64: {}", primaryKeyBase64);
     LOG.info("secondaryKeyBase64: {}", secondaryKeyBase64);
@@ -109,12 +110,18 @@ public class RocksdbIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
     byte[] secondaryKeyBytes = Base64.getDecoder().decode(secondaryKeyBase64);
     byte primaryKeySize = (byte) primaryKeyBytes.length;
     LOG.info("primaryKeySize: {}", primaryKeySize);
-    ByteBuffer buffer = ByteBuffer.allocate(1 + primaryKeySize + secondaryKeyBytes.length);
-    buffer.put(primaryKeySize);
-    buffer.put(primaryKeyBytes);
-    buffer.put(secondaryKeyBytes);
-
-    return buffer.array();
+    if (secondaryKeyBase64.isEmpty()) {
+      ByteBuffer buffer = ByteBuffer.allocate(1 + primaryKeySize);
+      buffer.put(primaryKeySize);
+      buffer.put(primaryKeyBytes);
+      return buffer.array();
+    } else {
+      ByteBuffer buffer = ByteBuffer.allocate(1 + primaryKeySize + secondaryKeyBytes.length);
+      buffer.put(primaryKeySize);
+      buffer.put(primaryKeyBytes);
+      buffer.put(secondaryKeyBytes);
+      return buffer.array();
+    }
   }
 
   @Override

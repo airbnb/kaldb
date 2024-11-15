@@ -151,7 +151,7 @@ public class RocksDbReadOnlyChunkImplTest {
                 500,
                 Collections.emptyList(),
                 QueryBuilderUtil.generateQueryBuilder(
-                    String.format("keyField:%s:%s", PRIMARY_KEY_HEX, SECONDARY_KEY_HEX),
+                    String.format("keyField:%s:", PRIMARY_KEY_HEX),
                     Instant.now().minus(1, ChronoUnit.MINUTES).toEpochMilli(),
                     Instant.now().toEpochMilli()),
                 null,
