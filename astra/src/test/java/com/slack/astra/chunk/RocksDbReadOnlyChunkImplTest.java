@@ -625,14 +625,14 @@ public class RocksDbReadOnlyChunkImplTest {
     byte[] primaryKeyBytes = Base64.getDecoder().decode(PRIMARY_KEY_HEX);
     int primaryKeySize = primaryKeyBytes.length;
     byte[] secondaryKeyBytes = Base64.getDecoder().decode(SECONDARY_KEY_HEX);
-    ByteBuffer key1 = ByteBuffer.allocate(4 + primaryKeySize + secondaryKeyBytes.length + 4);
-    key1.putInt(primaryKeySize);
+    ByteBuffer key1 = ByteBuffer.allocate(8 + primaryKeySize + secondaryKeyBytes.length + 4);
+    key1.putLong(primaryKeySize);
     key1.put(primaryKeyBytes);
     key1.put(secondaryKeyBytes);
     key1.putInt(1024);
 
-    ByteBuffer key2 = ByteBuffer.allocate(4 + primaryKeySize + secondaryKeyBytes.length + 4);
-    key2.putInt(primaryKeySize);
+    ByteBuffer key2 = ByteBuffer.allocate(8 + primaryKeySize + secondaryKeyBytes.length + 4);
+    key2.putLong(primaryKeySize);
     key2.put(primaryKeyBytes);
     key2.put(secondaryKeyBytes);
     key2.putInt(2048);
