@@ -7,6 +7,7 @@ import com.slack.astra.blobfs.BlobStore;
 import com.slack.astra.blobfs.S3AsyncUtil;
 import com.slack.astra.bulkIngestApi.BulkIngestApi;
 import com.slack.astra.bulkIngestApi.BulkIngestKafkaProducer;
+import com.slack.astra.bulkIngestApi.BulkLocalIngestApi;
 import com.slack.astra.bulkIngestApi.DatasetRateLimitingService;
 import com.slack.astra.chunkManager.CachingChunkManager;
 import com.slack.astra.chunkManager.IndexingChunkManager;
@@ -185,13 +186,22 @@ public class Astra {
       final int serverPort = astraConfig.getIndexerConfig().getServerConfig().getServerPort();
       Duration requestTimeout =
           Duration.ofMillis(astraConfig.getIndexerConfig().getServerConfig().getRequestTimeoutMs());
-      ArmeriaService armeriaService =
+      ArmeriaService.Builder armeriaServiceBuilder =
           new ArmeriaService.Builder(serverPort, "astraIndex", meterRegistry)
               .withRequestTimeout(requestTimeout)
+              .maxContentLength(2000000000)
               .withTracing(astraConfig.getTracingConfig())
-              .withGrpcService(searcher)
-              .build();
-      services.add(armeriaService);
+              .withGrpcService(searcher);
+      Schema.IngestSchema schema = SchemaUtil.parseSchema(Path.of(""));
+      LOG.info(
+              "Loaded schema with fields count: {}, defaults count: {}",
+              schema.getFieldsCount(),
+              schema.getDefaultsCount());
+      schema = ReservedFields.addPredefinedFields(schema);
+      BulkLocalIngestApi localOpenSearchBulkApiService =
+              new BulkLocalIngestApi(chunkManager, schema);
+      armeriaServiceBuilder.withAnnotatedService(localOpenSearchBulkApiService);
+      services.add(armeriaServiceBuilder.build());
     }
 
     if (roles.contains(AstraConfigs.NodeRole.QUERY)) {
