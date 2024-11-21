@@ -35,6 +35,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.commons.io.FileUtils;
 import org.apache.lucene.document.Document;
@@ -155,6 +156,44 @@ public class SpanFormatterWithSchemaTest {
                 .get()
                 .getVStr())
         .isEqualTo("subsubvalue1");
+  }
+
+  @Test
+  @SuppressWarnings("OptionalGetWithoutIsPresent")
+  public void stopsAtDepthN() throws Exception {
+
+    Function<List<String>, Map<String, Object>> nestedMap =
+        (keyPath) -> {
+          Object value = "value";
+          for (String k : keyPath.reversed()) {
+            value = Map.of(k, value);
+          }
+          return (Map<String, Object>) value;
+        };
+    Map<String, Object> head = nestedMap.apply(List.of("a", "b", "c", "d", "e", "f"));
+    List<Trace.KeyValue> list;
+    list = SpanFormatter.convertKVtoProtoDefault("init", head, schema);
+    assertThat(list.size()).isEqualTo(0);
+
+    list = SpanFormatter.convertKVtoProtoDefault("init", head, schema, 1);
+    assertThat(list.size()).isEqualTo(0);
+
+    list = SpanFormatter.convertKVtoProtoDefault("init", head, schema, 2);
+    assertThat(list.size()).isEqualTo(0);
+
+    list = SpanFormatter.convertKVtoProtoDefault("init", head, schema, 6);
+    assertThat(list.size()).isEqualTo(1);
+    assertThat(list.getFirst().getKey()).isEqualTo("init.a.b.c.d.e.f");
+
+    list =
+        SpanFormatter.convertKVtoProtoDefault("init", nestedMap.apply(List.of("a", "b")), schema);
+    assertThat(list.size()).isEqualTo(1);
+    assertThat(list.getFirst().getKey()).isEqualTo("init.a.b");
+
+    list =
+        SpanFormatter.convertKVtoProtoDefault(
+            "init", nestedMap.apply(List.of("a", "b", "c")), schema);
+    assertThat(list.size()).isEqualTo(0);
   }
 
   @Test

@@ -21,6 +21,7 @@ public class SpanFormatter {
 
   public static final String DEFAULT_LOG_MESSAGE_TYPE = "INFO";
   public static final String DEFAULT_INDEX_NAME = "unknown";
+  public static final int DEPTH_LIMIT = 3;
 
   public static Timestamp parseDate(String dateStr, Schema.SchemaFieldType type) {
     Instant instant;
@@ -148,14 +149,24 @@ public class SpanFormatter {
   @VisibleForTesting
   public static List<Trace.KeyValue> convertKVtoProtoDefault(
       String key, Object value, Schema.IngestSchema schema) {
+    return convertKVtoProtoDefault(key, value, schema, DEPTH_LIMIT - 1);
+  }
+
+  @VisibleForTesting
+  public static List<Trace.KeyValue> convertKVtoProtoDefault(
+      String key, Object value, Schema.IngestSchema schema, int depthLimit) {
     List<Trace.KeyValue> tags = new ArrayList<>();
     if (value instanceof Map) {
-      // todo - consider adding a depth param to prevent excessively nested fields
+      if (depthLimit <= 0) {
+        return tags;
+      }
+
       ((Map<?, ?>) value)
           .forEach(
               (key1, value1) -> {
                 List<Trace.KeyValue> nestedValues =
-                    convertKVtoProtoDefault(String.format("%s.%s", key, key1), value1, schema);
+                    convertKVtoProtoDefault(
+                        String.format("%s.%s", key, key1), value1, schema, depthLimit - 1);
                 tags.addAll(nestedValues);
               });
     } else if (value instanceof String || value instanceof List) {
