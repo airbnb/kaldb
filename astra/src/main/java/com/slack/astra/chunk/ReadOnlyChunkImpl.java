@@ -440,8 +440,8 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
       // also clean up downloaded files if the chunk could not be assigned as we're marking the as
       // FREE / available
       if (Files.isDirectory(dataDirectory)) {
-        LOG.info("Cleaning up directory after failed chunk assignment{}", dataDirectory);
-        cleanDirectory();
+        LOG.info("Deleting directory after failed chunk assignment{}", dataDirectory);
+        deleteDirectory();
       }
       assignmentTimer.stop(chunkAssignmentTimerFailure);
     } finally {
@@ -522,6 +522,16 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
         FileUtils.cleanDirectory(dataDirectory.toFile());
       } catch (Exception e) {
         LOG.error("Error removing files {}", dataDirectory.toString(), e);
+      }
+    }
+  }
+
+  private void deleteDirectory() {
+    if (dataDirectory != null) {
+      try {
+        FileUtils.deleteDirectory(dataDirectory.toFile());
+      } catch (Exception e) {
+        LOG.error("Error deleting directory {}", dataDirectory.toString(), e);
       }
     }
   }
