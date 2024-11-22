@@ -173,13 +173,22 @@ public class SpanFormatterWithSchemaTest {
     Map<String, Object> head = nestedMap.apply(List.of("a", "b", "c", "d", "e", "f"));
     List<Trace.KeyValue> list;
     list = SpanFormatter.convertKVtoProtoDefault("init", head, schema);
-    assertThat(list.size()).isEqualTo(0);
+    assertThat(list.size()).isEqualTo(1);
+    assertThat(list.getFirst().getKey()).isEqualTo("init.a.b");
+    assertThat(list.getFirst().getVBinary().toString(StandardCharsets.UTF_8))
+        .isEqualTo("{c={d={e={f=value}}}}");
+
+    list = SpanFormatter.convertKVtoProtoDefault("init", head, schema, 0);
+    assertThat(list.size()).isEqualTo(1);
+    assertThat(list.getFirst().getKey()).isEqualTo("init");
 
     list = SpanFormatter.convertKVtoProtoDefault("init", head, schema, 1);
-    assertThat(list.size()).isEqualTo(0);
+    assertThat(list.size()).isEqualTo(1);
+    assertThat(list.getFirst().getKey()).isEqualTo("init.a");
 
     list = SpanFormatter.convertKVtoProtoDefault("init", head, schema, 2);
-    assertThat(list.size()).isEqualTo(0);
+    assertThat(list.size()).isEqualTo(1);
+    assertThat(list.getFirst().getKey()).isEqualTo("init.a.b");
 
     list = SpanFormatter.convertKVtoProtoDefault("init", head, schema, 6);
     assertThat(list.size()).isEqualTo(1);
@@ -193,7 +202,8 @@ public class SpanFormatterWithSchemaTest {
     list =
         SpanFormatter.convertKVtoProtoDefault(
             "init", nestedMap.apply(List.of("a", "b", "c")), schema);
-    assertThat(list.size()).isEqualTo(0);
+    assertThat(list.size()).isEqualTo(1);
+    assertThat(list.getFirst().getKey()).isEqualTo("init.a.b");
   }
 
   @Test
