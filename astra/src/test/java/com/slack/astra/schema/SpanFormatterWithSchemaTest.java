@@ -175,8 +175,7 @@ public class SpanFormatterWithSchemaTest {
     list = SpanFormatter.convertKVtoProtoDefault("init", head, schema);
     assertThat(list.size()).isEqualTo(1);
     assertThat(list.getFirst().getKey()).isEqualTo("init.a.b");
-    assertThat(list.getFirst().getVBinary().toString(StandardCharsets.UTF_8))
-        .isEqualTo("{c={d={e={f=value}}}}");
+    assertThat(list.getFirst().getVBinary().toStringUtf8()).isEqualTo("{c={d={e={f=value}}}}");
 
     list = SpanFormatter.convertKVtoProtoDefault("init", head, schema, 0);
     assertThat(list.size()).isEqualTo(1);
