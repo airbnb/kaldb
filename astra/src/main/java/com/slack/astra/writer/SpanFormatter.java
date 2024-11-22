@@ -158,6 +158,9 @@ public class SpanFormatter {
     List<Trace.KeyValue> tags = new ArrayList<>();
     if (value instanceof Map) {
       if (depthLimit <= 0) {
+        // We could encode the value with json instead of toString to make it more friendly to API consumers.
+        // NB: Using BINARY here to ensure it is not indexed.
+        tags.add(makeTraceKV(key, value.toString(), Schema.SchemaFieldType.BINARY));
         return tags;
       }
 
