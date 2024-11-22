@@ -437,6 +437,11 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
       // disregarding any errors
       setChunkMetadataState(cacheSlotMetadata, Metadata.CacheSlotMetadata.CacheSlotState.FREE);
       LOG.error("Error handling chunk assignment", e);
+      // also clean up downloaded files if the chunk could not be assigned as we're marking the as FREE / available
+      if (Files.isDirectory(dataDirectory)) {
+        LOG.info("Cleaning up directory after failed chunk assignment{}", dataDirectory);
+        cleanDirectory();
+      }
       assignmentTimer.stop(chunkAssignmentTimerFailure);
     } finally {
       chunkAssignmentLock.unlock();
