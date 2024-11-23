@@ -534,6 +534,8 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
         LOG.error("Error deleting directory {}", dataDirectory.toString(), e);
       }
     }
+    // Force garbage collection to release file handles
+    System.gc();
   }
 
   @VisibleForTesting
