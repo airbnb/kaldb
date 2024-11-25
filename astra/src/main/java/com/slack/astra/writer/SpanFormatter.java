@@ -21,7 +21,7 @@ public class SpanFormatter {
 
   public static final String DEFAULT_LOG_MESSAGE_TYPE = "INFO";
   public static final String DEFAULT_INDEX_NAME = "unknown";
-  public static final int DEPTH_LIMIT = 3;
+  public static final int DEPTH_LIMIT = 1;
 
   public static Timestamp parseDate(String dateStr, Schema.SchemaFieldType type) {
     Instant instant;
