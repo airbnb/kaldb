@@ -62,7 +62,7 @@ public class ArmeriaService extends AbstractIdleService {
 
     public Builder(int port, String serviceName, PrometheusMeterRegistry prometheusMeterRegistry) {
       this.serviceName = serviceName;
-      this.serverBuilder = Server.builder().http(port);
+      this.serverBuilder = Server.builder().maxRequestLength(50 * 1024 * 1024).http(port);
 
       initializeCompression();
       initializeLogging();
@@ -131,6 +131,7 @@ public class ArmeriaService extends AbstractIdleService {
     public Builder withGrpcService(BindableService grpcService) {
       GrpcServiceBuilder searchBuilder =
           GrpcService.builder()
+              .maxRequestMessageLength(50 * 1024 * 1024) // 50MB
               .addService(grpcService)
               .enableUnframedRequests(true)
               // if not using the client timeout header - separate, lower timeouts
