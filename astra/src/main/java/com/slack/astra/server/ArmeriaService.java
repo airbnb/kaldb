@@ -62,7 +62,11 @@ public class ArmeriaService extends AbstractIdleService {
 
     public Builder(int port, String serviceName, PrometheusMeterRegistry prometheusMeterRegistry) {
       this.serviceName = serviceName;
-      this.serverBuilder = Server.builder().maxRequestLength(50 * 1024 * 1024).http(port);
+      this.serverBuilder =
+          Server.builder()
+              .maxRequestLength(50 * 1024 * 1024)
+              .requestTimeout(Duration.ofSeconds(30))
+              .http(port);
 
       initializeCompression();
       initializeLogging();
