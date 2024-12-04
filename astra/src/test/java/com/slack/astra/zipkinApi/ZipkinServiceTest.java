@@ -34,7 +34,7 @@ public class ZipkinServiceTest {
   @BeforeEach
   public void setup() throws IOException {
     MockitoAnnotations.openMocks(this);
-    zipkinService = spy(new ZipkinService(searcher));
+    zipkinService = spy(new ZipkinService(searcher, 20000));
     // Build mockSearchResult
     ObjectMapper objectMapper = new ObjectMapper();
     JsonNode jsonNode =
