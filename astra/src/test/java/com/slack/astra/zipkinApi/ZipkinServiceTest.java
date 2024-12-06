@@ -32,7 +32,7 @@ public class ZipkinServiceTest {
   private ZipkinService zipkinService;
   private AstraSearch.SearchResult mockSearchResult;
 
-  private static final int defaultMaxSpans = 100;
+  private static final int defaultMaxSpans = 2000;
 
   @BeforeEach
   public void setup() throws IOException {
@@ -109,7 +109,7 @@ public class ZipkinServiceTest {
 
       String traceId = "test_trace_2";
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
-      int maxSpansParam = 200;
+      int maxSpansParam = 10000;
 
       zipkinService.getTraceByTraceId(
           traceId, Optional.empty(), Optional.empty(), Optional.of(maxSpansParam));
