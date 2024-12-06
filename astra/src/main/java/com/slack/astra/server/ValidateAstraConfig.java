@@ -53,7 +53,6 @@ public class ValidateAstraConfig {
     checkArgument(
         queryConfig.getZipkinDefaultMaxSpans() >= 1000,
         "QueryConfig zipkinDefaultMaxSpans cannot less than 1000");
-
     checkArgument(
         queryConfig.getZipkinDefaultLookbackMins() >= 1440,
         "QueryConfig zipkinDefaultLookbackMins cannot less than 1440");
