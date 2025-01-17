@@ -344,19 +344,16 @@ public class OpenSearchAdapter {
     try {
       XContentBuilder builder =
           XContentFactory.jsonBuilder().startObject().startObject("_doc").startObject("properties");
-      // Filter out fields that start with a dot (.). This is a hack. Probably want to sanitize
-      // elsewhere, potentially in the index node. Maybe the indexing library has a bug? Or we
-      // should sanitize before
-      // sending to preprocessor or in preprocessor.
-      //
-      // I don't love this, but given the opensearch library implementation, I think this would be
-      // the way to handle
-      // this issue in the cache node.
+      // Filter out fields that start with a dot (.), e.g. ".ipv4". This is a temporary fix until we
+      // sanitize
+      // elsewhere in the pipeline. It is currently possible for index nodes to publish a
+      // segment/snapshot
+      // with this data, which causes cache nodes to fail to load the segment.
       rootNode
           .fields()
           .forEachRemaining(
               (entry) -> {
-                // if the root node includes a field that is empty, we need to skip it
+                // if the root node includes a field that is empty, we need to skip it.
                 if (!entry.getKey().equals("")) {
                   buildObject(builder, entry);
                 } else {
