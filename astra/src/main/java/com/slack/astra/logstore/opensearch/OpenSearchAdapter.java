@@ -360,7 +360,8 @@ public class OpenSearchAdapter {
                 if (!entry.getKey().equals("")) {
                   buildObject(builder, entry);
                 } else {
-                  LOG.warn("Skipping invalid field name '{}'", entry.getValue().toString());
+                  LOG.warn(
+                      "Skipping empty field name with value '{}'", entry.getValue().toString());
                 }
               });
 
