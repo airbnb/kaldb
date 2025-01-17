@@ -181,4 +181,23 @@ public class OpenSearchAdapterTest {
     assertThat(filterNullEndQuery.get().toString()).contains(String.valueOf(100L));
     assertThat(filterNullEndQuery.get().toString()).contains(String.valueOf(Long.MAX_VALUE));
   }
+
+  @Test
+  public void shouldHandleFieldsStartingWithDot() throws IOException {
+    // Define a schema with a field name starting with a dot
+    ImmutableMap<String, LuceneFieldDef> chunkSchema =
+        ImmutableMap.of(".ipv4", new LuceneFieldDef(".ipv4", FieldType.IP.name, false, true, true));
+
+    // Create a new OpenSearchAdapter instance with this schema
+    OpenSearchAdapter adapter = new OpenSearchAdapter(chunkSchema);
+
+    // Run loadSchema and assert it passes (does not throw an exception)
+    try {
+      adapter.loadSchema(); // This should pass
+    } catch (RuntimeException e) {
+      // The test fails if the exception message contains "name cannot be empty string"
+      assertThat(e.getMessage()).doesNotContain("name cannot be empty string");
+      org.junit.jupiter.api.Assertions.fail("Unexpected exception thrown: " + e.getMessage());
+    }
+  }
 }
