@@ -344,7 +344,26 @@ public class OpenSearchAdapter {
     try {
       XContentBuilder builder =
           XContentFactory.jsonBuilder().startObject().startObject("_doc").startObject("properties");
-      rootNode.fields().forEachRemaining((entry) -> buildObject(builder, entry));
+      // Filter out fields that start with a dot (.). This is a hack. Probably want to sanitize
+      // elsewhere, potentially in the index node. Maybe the indexing library has a bug? Or we
+      // should sanitize before
+      // sending to preprocessor or in preprocessor.
+      //
+      // I don't love this, but given the opensearch library implementation, I think this would be
+      // the way to handle
+      // this issue in the cache node.
+      rootNode
+          .fields()
+          .forEachRemaining(
+              (entry) -> {
+                // if the root node includes a field that is empty, we need to skip it
+                if (!entry.getKey().equals("")) {
+                  buildObject(builder, entry);
+                } else {
+                  LOG.warn("Skipping invalid field name '{}'", entry.getValue().toString());
+                }
+              });
+
       builder.endObject().endObject().endObject();
 
       mapperService.merge(
