@@ -345,10 +345,8 @@ public class OpenSearchAdapter {
       XContentBuilder builder =
           XContentFactory.jsonBuilder().startObject().startObject("_doc").startObject("properties");
       // Filter out fields that start with a dot (.), e.g. ".ipv4". This is a temporary fix until we
-      // sanitize
-      // elsewhere in the pipeline. It is currently possible for index nodes to publish a
-      // segment/snapshot
-      // with this data, which causes cache nodes to fail to load the segment.
+      // sanitize elsewhere in the pipeline. It is currently possible for index nodes to publish a
+      // segment/snapshot with this data, which causes cache nodes to fail to load the segment.
       rootNode
           .fields()
           .forEachRemaining(
