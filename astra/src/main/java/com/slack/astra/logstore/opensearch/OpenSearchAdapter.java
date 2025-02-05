@@ -10,7 +10,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -352,6 +351,8 @@ public class OpenSearchAdapter {
           .fields()
           .forEachRemaining(
               (entry) -> {
+                // IDEA: only include fields that are indexed. This is a temporary fix until we
+                // sanitize.
                 // if the root node includes a field that is empty, we need to skip it.
                 if (!entry.getKey().equals("")) {
                   buildObject(builder, entry);
@@ -368,12 +369,7 @@ public class OpenSearchAdapter {
           new CompressedXContent(BytesReference.bytes(builder)),
           MapperService.MergeReason.MAPPING_UPDATE);
     } catch (IllegalArgumentException e) {
-      LOG.error(
-          "IllegalArgumentException encountered\nobjectmappers size: {}\nfield mappers size: {}\nobject mappers: {}",
-          mapperService.documentMapper().objectMappers().size(),
-          new ArrayList<>(Collections.singleton(mapperService.documentMapper().mappers())).size(),
-          mapperService.documentMapper().mappers().objectMappers().toString());
-
+      LOG.error("IllegalArgumentException encountered");
       throw new RuntimeException(e);
     } catch (Exception e) {
       throw new RuntimeException(e);
