@@ -7,12 +7,7 @@ import com.slack.astra.metadata.schema.FieldType;
 import com.slack.astra.metadata.schema.LuceneFieldDef;
 import java.io.IOException;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 import org.apache.lucene.search.CollectorManager;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
@@ -366,6 +361,14 @@ public class OpenSearchAdapter {
           MapperService.SINGLE_MAPPING_NAME,
           new CompressedXContent(BytesReference.bytes(builder)),
           MapperService.MergeReason.MAPPING_UPDATE);
+    } catch (IllegalArgumentException e) {
+      LOG.error(
+          "IllegalArgumentException encountered\nobjectmappers size: {}\nfield mappers size: {}\nobject mappers: {}",
+          mapperService.documentMapper().objectMappers().size(),
+          new ArrayList<>(Collections.singleton(mapperService.documentMapper().mappers())).size(),
+          mapperService.documentMapper().mappers().objectMappers().toString());
+
+      throw new RuntimeException(e);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
