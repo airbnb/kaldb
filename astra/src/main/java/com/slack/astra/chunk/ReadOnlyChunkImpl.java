@@ -435,8 +435,12 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
     } catch (Exception e) {
       // if any error occurs during the chunk assignment, try to release the slot for re-assignment,
       // disregarding any errors
-      setChunkMetadataState(cacheSlotMetadata, Metadata.CacheSlotMetadata.CacheSlotState.FREE);
+      // setChunkMetadataState(cacheSlotMetadata, Metadata.CacheSlotMetadata.CacheSlotState.FREE);
       LOG.error("Error handling chunk assignment", e);
+      LOG.error(
+          "Error handling chunk assignment: Cache metadata name {}, error: {}",
+          cacheSlotMetadata.name,
+          e.toString());
       assignmentTimer.stop(chunkAssignmentTimerFailure);
     } finally {
       chunkAssignmentLock.unlock();
