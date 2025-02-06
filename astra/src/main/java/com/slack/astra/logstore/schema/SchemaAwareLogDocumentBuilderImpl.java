@@ -260,7 +260,8 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
   }
 
   @Override
-  public Document fromMessage(Trace.Span message, int maxTermLength) throws JsonProcessingException {
+  public Document fromMessage(Trace.Span message, int maxTermLength)
+      throws JsonProcessingException {
     Document doc = new Document();
 
     // today we rely on source to construct the document at search time so need to keep in
@@ -393,15 +394,16 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
       if (schemaFieldType == Schema.SchemaFieldType.STRING
           || schemaFieldType == Schema.SchemaFieldType.KEYWORD) {
         if (keyValue.toByteString().size() <= maxTermLength) {
-          addField(doc, keyValue.getKey(), keyValue.getVStr(), Schema.SchemaFieldType.KEYWORD, "", 0);
+          addField(
+              doc, keyValue.getKey(), keyValue.getVStr(), Schema.SchemaFieldType.KEYWORD, "", 0);
           jsonMap.put(keyValue.getKey(), keyValue.getVStr());
         } else {
           LOG.warn(
-            "Skipping field with field type {} with key {} since value length is {} larger than {}",
-            schemaFieldType,
-            keyValue.getKey(),
-            keyValue.toByteString().size(),
-            maxTermLength);
+              "Skipping field with field type {} with key {} since value length is {} larger than {}",
+              schemaFieldType,
+              keyValue.getKey(),
+              keyValue.toByteString().size(),
+              maxTermLength);
         }
       } else if (schemaFieldType == Schema.SchemaFieldType.TEXT) {
         if (keyValue.toByteString().size() <= maxTermLength) {
@@ -409,10 +411,10 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
           jsonMap.put(keyValue.getKey(), keyValue.getVStr());
         } else {
           LOG.warn(
-            "Skipping field with field type Text with key {} since value length is {} larger than {}",
-            keyValue.getKey(),
-            keyValue.toByteString().size(),
-            maxTermLength);
+              "Skipping field with field type Text with key {} since value length is {} larger than {}",
+              keyValue.getKey(),
+              keyValue.toByteString().size(),
+              maxTermLength);
         }
       } else if (schemaFieldType == Schema.SchemaFieldType.IP) {
         addField(doc, keyValue.getKey(), keyValue.getVStr(), Schema.SchemaFieldType.IP, "", 0);
