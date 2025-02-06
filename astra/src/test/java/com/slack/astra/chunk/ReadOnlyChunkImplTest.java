@@ -11,7 +11,6 @@ import static com.slack.astra.testlib.MetricsUtil.getCount;
 import static com.slack.astra.testlib.MetricsUtil.getTimerCount;
 import static com.slack.astra.testlib.TemporaryLogStoreAndSearcherExtension.addMessages;
 import static com.slack.astra.util.AggregatorFactoriesUtil.createGenericDateHistogramAggregatorFactoriesBuilder;
-import static java.io.IO.println;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
@@ -644,8 +643,6 @@ public class ReadOnlyChunkImplTest {
             () ->
                 readOnlyChunk.getChunkMetadataState()
                     == Metadata.CacheSlotMetadata.CacheSlotState.FREE);
-
-    println("Chunk successfully evicted");
 
     // Ensure that the search metadata was not registered
     assertThat(searchMetadataStore.listSync().size()).isEqualTo(0);
