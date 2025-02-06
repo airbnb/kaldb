@@ -341,7 +341,9 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
           Thread.ofVirtual().start(() -> handleChunkAssignment(cacheSlotMetadata));
         } else if (newSlotState.equals(Metadata.CacheSlotMetadata.CacheSlotState.EVICT)) {
           LOG.info("Chunk - EVICT received - {}", cacheSlotMetadata);
-          if (!cacheSlotLastKnownState.equals(Metadata.CacheSlotMetadata.CacheSlotState.LIVE)) {
+          if (!cacheSlotLastKnownState.equals(Metadata.CacheSlotMetadata.CacheSlotState.LIVE)
+              && !cacheSlotLastKnownState.equals(
+                  Metadata.CacheSlotMetadata.CacheSlotState.LOADING)) {
             LOG.warn(
                 "Unexpected state transition from {} to {} - {}",
                 cacheSlotLastKnownState,

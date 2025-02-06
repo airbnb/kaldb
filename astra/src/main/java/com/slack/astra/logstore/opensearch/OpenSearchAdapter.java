@@ -351,8 +351,6 @@ public class OpenSearchAdapter {
           .fields()
           .forEachRemaining(
               (entry) -> {
-                // IDEA: only include fields that are indexed. This is a temporary fix until we
-                // sanitize.
                 // if the root node includes a field that is empty, we need to skip it.
                 if (!entry.getKey().equals("")) {
                   buildObject(builder, entry);
@@ -368,9 +366,6 @@ public class OpenSearchAdapter {
           MapperService.SINGLE_MAPPING_NAME,
           new CompressedXContent(BytesReference.bytes(builder)),
           MapperService.MergeReason.MAPPING_UPDATE);
-    } catch (IllegalArgumentException e) {
-      LOG.error("IllegalArgumentException encountered");
-      throw new RuntimeException(e);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
