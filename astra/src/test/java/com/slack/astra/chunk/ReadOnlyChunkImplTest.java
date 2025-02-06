@@ -11,6 +11,7 @@ import static com.slack.astra.testlib.MetricsUtil.getCount;
 import static com.slack.astra.testlib.MetricsUtil.getTimerCount;
 import static com.slack.astra.testlib.TemporaryLogStoreAndSearcherExtension.addMessages;
 import static com.slack.astra.util.AggregatorFactoriesUtil.createGenericDateHistogramAggregatorFactoriesBuilder;
+import static java.io.IO.println;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
@@ -578,6 +579,83 @@ public class ReadOnlyChunkImplTest {
     try (var files = java.nio.file.Files.list(readOnlyChunk.getDataDirectory())) {
       assertThat(files.findFirst().isPresent()).isFalse();
     }
+
+    curatorFramework.unwrap().close();
+  }
+
+  @Test
+  public void shouldEvictChunkOnAssignmentFailure() throws Exception {
+    AstraConfigs.AstraConfig astraConfig = makeCacheConfig();
+    AstraConfigs.ZookeeperConfig zkConfig =
+        AstraConfigs.ZookeeperConfig.newBuilder()
+            .setZkConnectString(testingServer.getConnectString())
+            .setZkPathPrefix("shouldEvictChunkOnAssignmentFailure")
+            .setZkSessionTimeoutMs(5000)
+            .setZkConnectionTimeoutMs(5000)
+            .setSleepBetweenRetriesMs(1000)
+            .build();
+
+    AsyncCuratorFramework curatorFramework = CuratorBuilder.build(meterRegistry, zkConfig);
+    ReplicaMetadataStore replicaMetadataStore = new ReplicaMetadataStore(curatorFramework);
+    SnapshotMetadataStore snapshotMetadataStore = new SnapshotMetadataStore(curatorFramework);
+    SearchMetadataStore searchMetadataStore = new SearchMetadataStore(curatorFramework, true);
+    CacheSlotMetadataStore cacheSlotMetadataStore = new CacheSlotMetadataStore(curatorFramework);
+
+    String replicaId = "foo";
+    String snapshotId = "bar";
+
+    // Setup ZK and BlobFs but introduce an issue (e.g., missing schema file)
+    initializeZkReplica(curatorFramework, replicaId, snapshotId);
+    initializeZkSnapshot(curatorFramework, snapshotId, 0);
+
+    ReadOnlyChunkImpl<LogMessage> readOnlyChunk =
+        new ReadOnlyChunkImpl<>(
+            curatorFramework,
+            meterRegistry,
+            blobStore,
+            SearchContext.fromConfig(astraConfig.getCacheConfig().getServerConfig()),
+            astraConfig.getS3Config().getS3Bucket(),
+            astraConfig.getCacheConfig().getDataDirectory(),
+            astraConfig.getCacheConfig().getReplicaSet(),
+            cacheSlotMetadataStore,
+            replicaMetadataStore,
+            snapshotMetadataStore,
+            searchMetadataStore);
+
+    // Wait for chunk to register
+    await()
+        .until(
+            () ->
+                readOnlyChunk.getChunkMetadataState()
+                    == Metadata.CacheSlotMetadata.CacheSlotState.FREE);
+
+    assignReplicaToChunk(cacheSlotMetadataStore, replicaId, readOnlyChunk);
+
+    // The expected state transitions are from FREE -> ASSIGNED -> LOADING (encounters some error)
+    // -> EVICT -> EVICTING -> FREE
+    await()
+        .until(
+            () ->
+                readOnlyChunk.getChunkMetadataState()
+                    == Metadata.CacheSlotMetadata.CacheSlotState.LOADING);
+
+    await()
+        .until(
+            () ->
+                readOnlyChunk.getChunkMetadataState()
+                    == Metadata.CacheSlotMetadata.CacheSlotState.FREE);
+
+    println("Chunk successfully evicted");
+
+    // Ensure that the search metadata was not registered
+    assertThat(searchMetadataStore.listSync().size()).isEqualTo(0);
+
+    // Verify eviction metrics were updated. We expect a successful eviction and a failed
+    // assignment.
+    assertThat(meterRegistry.get(CHUNK_EVICTION_TIMER).tag("successful", "true").timer().count())
+        .isGreaterThanOrEqualTo(1);
+    assertThat(meterRegistry.get(CHUNK_ASSIGNMENT_TIMER).tag("successful", "false").timer().count())
+        .isEqualTo(1);
 
     curatorFramework.unwrap().close();
   }
