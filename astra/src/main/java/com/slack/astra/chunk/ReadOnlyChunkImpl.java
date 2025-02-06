@@ -433,15 +433,15 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
           TimeUnit.SECONDS.convert(durationNanos, TimeUnit.NANOSECONDS),
           FileUtils.byteCountToDisplaySize(FileUtils.sizeOfDirectory(dataDirectory.toFile())));
     } catch (Exception e) {
-      // if any error occurs during the chunk assignment, try to release the slot for re-assignment,
-      // disregarding any errors
-      // setChunkMetadataState(cacheSlotMetadata, Metadata.CacheSlotMetadata.CacheSlotState.FREE);
-      LOG.error("Error handling chunk assignment", e);
       LOG.error(
-          "Error handling chunk assignment: Cache metadata replicaId {}, error: {}",
-          cacheSlotMetadata.replicaId,
-          e.toString());
+          "Error handling chunk assignment: {}\n cacheSlotMetadata: {}", e, cacheSlotMetadata);
       assignmentTimer.stop(chunkAssignmentTimerFailure);
+      // if any error occurs during the chunk assignment, evict the chunk so eviction code cleans up
+      // the files.
+      // TODO: Consider counting or keeping state so we do not continue to download failed chunks
+      // over and over. In the case of too many fields for example, the chunk will continue to fail
+      // so we will repeatedly download the same chunk and put too much load on s3.
+      setChunkMetadataState(cacheSlotMetadata, Metadata.CacheSlotMetadata.CacheSlotState.EVICT);
     } finally {
       chunkAssignmentLock.unlock();
     }
