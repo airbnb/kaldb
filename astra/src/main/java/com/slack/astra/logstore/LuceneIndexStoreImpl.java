@@ -266,7 +266,7 @@ public class LuceneIndexStoreImpl implements LogStore {
     try {
       messagesReceivedCounter.increment();
       if (indexWriter.isPresent()) {
-        indexWriter.get().addDocument(documentBuilder.fromMessage(message));
+        indexWriter.get().addDocument(documentBuilder.fromMessage(message, IndexWriter.MAX_TERM_LENGTH));
       } else {
         LOG.error("IndexWriter should never be null when adding a message");
         throw new IllegalStateException("IndexWriter should never be null when adding a message");

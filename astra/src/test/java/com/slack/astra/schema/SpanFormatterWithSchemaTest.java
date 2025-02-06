@@ -518,7 +518,7 @@ public class SpanFormatterWithSchemaTest {
     SchemaAwareLogDocumentBuilderImpl dropFieldBuilder =
         build(
             SchemaAwareLogDocumentBuilderImpl.FieldConflictPolicy.DROP_FIELD, true, meterRegistry);
-    Document luceneDocument = dropFieldBuilder.fromMessage(span);
+    Document luceneDocument = dropFieldBuilder.fromMessage(span, 32766);
     // message is a tag, but is a TEXT field in schema, so it is indexed and not doc values
     // 13 tags X 2(DV and indexed) + (message,message.keyword,_id,_timesinceepoch,_index) x2 +
     // _source + _all
@@ -689,7 +689,7 @@ public class SpanFormatterWithSchemaTest {
 
     assertThat(tags1.get("list_field").getVStr()).isEqualTo("[host1, host2]");
 
-    Document luceneDocument1 = dropFieldBuilder.fromMessage(span1);
+    Document luceneDocument1 = dropFieldBuilder.fromMessage(span1, 32766);
     assertThat(luceneDocument1.get("list_field")).isEqualTo("[host1, host2]");
     assertThat(luceneDocument1.get("map_field.f1")).isEqualTo("v1");
 
@@ -702,7 +702,7 @@ public class SpanFormatterWithSchemaTest {
 
     assertThat(tags2.get("list_field").getVStr()).isEqualTo("host3");
 
-    Document luceneDocument2 = dropFieldBuilder.fromMessage(span2);
+    Document luceneDocument2 = dropFieldBuilder.fromMessage(span2, 32766);
     assertThat(luceneDocument2.get("list_field")).isEqualTo("host3");
     assertThat(luceneDocument2.get("map_field")).isEqualTo("f1=v1");
 
@@ -715,7 +715,7 @@ public class SpanFormatterWithSchemaTest {
 
     assertThat(tags3.get("list_field").getVStr()).isEqualTo("host4");
 
-    Document luceneDocument3 = dropFieldBuilder.fromMessage(span3);
+    Document luceneDocument3 = dropFieldBuilder.fromMessage(span3, 32766);
     assertThat(luceneDocument3.get("list_field")).isEqualTo("host4");
     assertThat(luceneDocument3.get("map_field.f1.f2")).isEqualTo("v3");
   }
