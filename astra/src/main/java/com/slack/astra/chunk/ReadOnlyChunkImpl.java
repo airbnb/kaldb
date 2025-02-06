@@ -434,7 +434,7 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
           TimeUnit.SECONDS.convert(durationNanos, TimeUnit.NANOSECONDS),
           FileUtils.byteCountToDisplaySize(FileUtils.sizeOfDirectory(dataDirectory.toFile())));
     } catch (Exception e) {
-      LOG.error("Error handling chunk assignment: {}\n{}", e, cacheSlotMetadata);
+      LOG.error("Error handling chunk assignment for cache slot {}:", cacheSlotMetadata, e);
       assignmentTimer.stop(chunkAssignmentTimerFailure);
       // If any error occurs during the chunk assignment, evict the chunk so eviction code cleans up
       // the files.
