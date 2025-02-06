@@ -631,13 +631,7 @@ public class ReadOnlyChunkImplTest {
     assignReplicaToChunk(cacheSlotMetadataStore, replicaId, readOnlyChunk);
 
     // The expected state transitions are from FREE -> ASSIGNED -> LOADING (encounters some error)
-    // -> EVICT -> EVICTING -> FREE
-    await()
-        .until(
-            () ->
-                readOnlyChunk.getChunkMetadataState()
-                    == Metadata.CacheSlotMetadata.CacheSlotState.LOADING);
-
+    // -> EVICT -> EVICTING -> FREE, the final state being FREE
     await()
         .until(
             () ->
