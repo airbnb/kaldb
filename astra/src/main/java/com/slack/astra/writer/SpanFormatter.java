@@ -21,7 +21,7 @@ public class SpanFormatter {
 
   public static final String DEFAULT_LOG_MESSAGE_TYPE = "INFO";
   public static final String DEFAULT_INDEX_NAME = "unknown";
-  private static final int MAX_TERM_LENGTH = 32766;
+  public static final int MAX_TERM_LENGTH = 32766;
 
   public static Timestamp parseDate(String dateStr, Schema.SchemaFieldType type) {
     Instant instant;
@@ -110,7 +110,12 @@ public class SpanFormatter {
         }
         case BINARY -> {
           tagBuilder.setFieldType(Schema.SchemaFieldType.BINARY);
-          tagBuilder.setVBinary(ByteString.copyFrom(value.toString().getBytes()));
+          if (value.toString().getBytes().length > MAX_TERM_LENGTH) {
+            byte[] extractedArray = java.util.Arrays.copyOfRange(value.toString().getBytes(), 0, MAX_TERM_LENGTH);
+            tagBuilder.setVBinary(ByteString.copyFrom(extractedArray));
+          } else {
+            tagBuilder.setVBinary(ByteString.copyFrom(value.toString().getBytes()));
+          }
         }
       }
       return tagBuilder.build();
