@@ -11,7 +11,7 @@ import org.apache.lucene.document.Document;
  * messages.
  */
 public interface DocumentBuilder {
-  Document fromMessage(Trace.Span message, int maxTermLength) throws IOException;
+  Document fromMessage(Trace.Span message) throws IOException;
 
   ConcurrentHashMap<String, LuceneFieldDef> getSchema();
 }

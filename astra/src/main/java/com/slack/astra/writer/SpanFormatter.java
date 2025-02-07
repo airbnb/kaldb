@@ -21,6 +21,7 @@ public class SpanFormatter {
 
   public static final String DEFAULT_LOG_MESSAGE_TYPE = "INFO";
   public static final String DEFAULT_INDEX_NAME = "unknown";
+  private static final int MAX_TERM_LENGTH = 32766;
 
   public static Timestamp parseDate(String dateStr, Schema.SchemaFieldType type) {
     Instant instant;
@@ -46,11 +47,19 @@ public class SpanFormatter {
       switch (type) {
         case KEYWORD -> {
           tagBuilder.setFieldType(Schema.SchemaFieldType.KEYWORD);
-          tagBuilder.setVStr(value.toString());
+          if (value.toString().length() > MAX_TERM_LENGTH) {
+            tagBuilder.setVStr(value.toString().substring(0, MAX_TERM_LENGTH));
+          } else {
+            tagBuilder.setVStr(value.toString());
+          }
         }
         case TEXT -> {
           tagBuilder.setFieldType(Schema.SchemaFieldType.TEXT);
-          tagBuilder.setVStr(value.toString());
+          if (value.toString().length() > MAX_TERM_LENGTH) {
+            tagBuilder.setVStr(value.toString().substring(0, MAX_TERM_LENGTH));
+          } else {
+            tagBuilder.setVStr(value.toString());
+          }
         }
         case IP -> {
           tagBuilder.setFieldType(Schema.SchemaFieldType.IP);

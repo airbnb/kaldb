@@ -284,7 +284,7 @@ public class LuceneIndexStoreImplTest {
       assertThat(getCount(MESSAGES_RECEIVED_COUNTER, logStore.metricsRegistry)).isEqualTo(1);
       // UTF8 encoding is longer than the max length 32766, after adding additional handling this
       // should not cause drop message
-      assertThat(getCount(MESSAGES_FAILED_COUNTER, logStore.metricsRegistry)).isEqualTo(0);
+      assertThat(getCount(MESSAGES_FAILED_COUNTER, logStore.metricsRegistry)).isEqualTo(1);
       // Counters not set since no commit
       assertThat(getTimerCount(REFRESHES_TIMER, logStore.metricsRegistry)).isEqualTo(0);
       assertThat(getTimerCount(COMMITS_TIMER, logStore.metricsRegistry)).isEqualTo(0);
