@@ -830,6 +830,7 @@ public class ReadOnlyChunkImplTest {
 
     SearchContext searchContext =
         SearchContext.fromConfig(AstraConfig.getCacheConfig().getServerConfig());
+
     ReadOnlyChunkImpl<LogMessage> readOnlyChunk =
         new ReadOnlyChunkImpl<>(
             curatorFramework,
