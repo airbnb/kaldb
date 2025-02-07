@@ -8,6 +8,7 @@ import com.slack.service.murron.trace.Trace;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -111,7 +112,8 @@ public class SpanFormatter {
         case BINARY -> {
           tagBuilder.setFieldType(Schema.SchemaFieldType.BINARY);
           if (value.toString().getBytes().length > MAX_TERM_LENGTH) {
-            byte[] extractedArray = java.util.Arrays.copyOfRange(value.toString().getBytes(), 0, MAX_TERM_LENGTH);
+            byte[] extractedArray =
+                Arrays.copyOfRange(value.toString().getBytes(), 0, MAX_TERM_LENGTH);
             tagBuilder.setVBinary(ByteString.copyFrom(extractedArray));
           } else {
             tagBuilder.setVBinary(ByteString.copyFrom(value.toString().getBytes()));
