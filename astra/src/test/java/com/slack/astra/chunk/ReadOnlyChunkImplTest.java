@@ -32,6 +32,8 @@ import com.slack.astra.metadata.core.CuratorBuilder;
 import com.slack.astra.metadata.replica.ReplicaMetadata;
 import com.slack.astra.metadata.replica.ReplicaMetadataStore;
 import com.slack.astra.metadata.schema.ChunkSchema;
+import com.slack.astra.metadata.schema.FieldType;
+import com.slack.astra.metadata.schema.LuceneFieldDef;
 import com.slack.astra.metadata.search.SearchMetadata;
 import com.slack.astra.metadata.search.SearchMetadataStore;
 import com.slack.astra.metadata.snapshot.SnapshotMetadata;
@@ -121,7 +123,7 @@ public class ReadOnlyChunkImplTest {
     // setup Zk, BlobFs so data can be loaded
     initializeZkReplica(curatorFramework, replicaId, snapshotId);
     initializeZkSnapshot(curatorFramework, snapshotId, 0);
-    initializeBlobStorageWithIndex(snapshotId);
+    initializeBlobStorageWithIndex(snapshotId, false);
 
     SearchContext searchContext =
         SearchContext.fromConfig(AstraConfig.getCacheConfig().getServerConfig());
@@ -392,7 +394,7 @@ public class ReadOnlyChunkImplTest {
     // setup Zk, BlobFs so data can be loaded
     initializeZkReplica(curatorFramework, replicaId, snapshotId);
     initializeZkSnapshot(curatorFramework, snapshotId, 0);
-    initializeBlobStorageWithIndex(snapshotId);
+    initializeBlobStorageWithIndex(snapshotId, false);
 
     ReadOnlyChunkImpl<LogMessage> readOnlyChunk =
         new ReadOnlyChunkImpl<>(
@@ -500,7 +502,7 @@ public class ReadOnlyChunkImplTest {
     // setup Zk, BlobFs so data can be loaded
     initializeZkReplica(curatorFramework, replicaId, snapshotId);
     initializeZkSnapshot(curatorFramework, snapshotId, 29);
-    initializeBlobStorageWithIndex(snapshotId);
+    initializeBlobStorageWithIndex(snapshotId, false);
     initializeCacheNodeAssignment(
         cacheNodeAssignmentStore, assignmentId, snapshotId, cacheNodeId, replicaSet, replicaId);
 
@@ -603,9 +605,12 @@ public class ReadOnlyChunkImplTest {
     String replicaId = "foo";
     String snapshotId = "bar";
 
-    // Setup ZK and BlobFs but introduce an issue (e.g., missing schema file)
+    // Setup ZK and BlobFs.
     initializeZkReplica(curatorFramework, replicaId, snapshotId);
     initializeZkSnapshot(curatorFramework, snapshotId, 0);
+
+    // Introduce an issue with the schema, so it will fail to load.
+    initializeBlobStorageWithIndex(snapshotId, true);
 
     ReadOnlyChunkImpl<LogMessage> readOnlyChunk =
         new ReadOnlyChunkImpl<>(
@@ -630,8 +635,9 @@ public class ReadOnlyChunkImplTest {
 
     assignReplicaToChunk(cacheSlotMetadataStore, replicaId, readOnlyChunk);
 
-    // The expected state transitions are from FREE -> ASSIGNED -> LOADING (encounters some error)
-    // -> EVICT -> EVICTING -> FREE, the final state being FREE
+    // The expected state transitions are:
+    // ASSIGNED -> LOADING (encounters manufactured error) -> EVICT -> EVICTING -> FREE
+    // The final state being FREE.
     await()
         .until(
             () ->
@@ -644,9 +650,14 @@ public class ReadOnlyChunkImplTest {
     // Verify eviction metrics were updated. We expect a successful eviction and a failed
     // assignment.
     assertThat(meterRegistry.get(CHUNK_EVICTION_TIMER).tag("successful", "true").timer().count())
-        .isGreaterThanOrEqualTo(1);
+        .isEqualTo(1);
     assertThat(meterRegistry.get(CHUNK_ASSIGNMENT_TIMER).tag("successful", "false").timer().count())
         .isEqualTo(1);
+
+    // verify that the directory has been cleaned up
+    try (var files = java.nio.file.Files.list(readOnlyChunk.getDataDirectory())) {
+      assertThat(files.findFirst().isPresent()).isFalse();
+    }
 
     curatorFramework.unwrap().close();
   }
@@ -695,7 +706,7 @@ public class ReadOnlyChunkImplTest {
             false));
   }
 
-  private void initializeBlobStorageWithIndex(String snapshotId) throws Exception {
+  private void initializeBlobStorageWithIndex(String snapshotId, boolean badData) throws Exception {
     LuceneIndexStoreImpl logStore =
         LuceneIndexStoreImpl.makeLogStore(
             Files.newTemporaryFolder(),
@@ -715,6 +726,15 @@ public class ReadOnlyChunkImplTest {
     // Create schema file to upload
     ChunkSchema chunkSchema =
         new ChunkSchema(snapshotId, logStore.getSchema(), new ConcurrentHashMap<>());
+
+    // Introduce bad data in the schema. Specifically, the key in the map should match the field
+    // name when the data is "good".
+    if (badData) {
+      chunkSchema.fieldDefMap.put(
+          "field_name",
+          new LuceneFieldDef(
+              "field_name_does_not_match", FieldType.INTEGER.name, true, true, true));
+    }
     File schemaFile = new File(dirPath + "/" + SCHEMA_FILE_NAME);
     ChunkSchema.serializeToFile(chunkSchema, schemaFile);
 
