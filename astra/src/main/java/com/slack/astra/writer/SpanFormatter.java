@@ -41,6 +41,25 @@ public class SpanFormatter {
         .build();
   }
 
+  /* helper function to set tag builder value based of schema field type */
+  private static void setTagBuilderValue(
+      Trace.KeyValue.Builder tagBuilder, Object value, Schema.SchemaFieldType type) {
+    if (type == Schema.SchemaFieldType.KEYWORD || type == Schema.SchemaFieldType.TEXT) {
+      if (value.toString().length() > MAX_TERM_LENGTH) {
+        tagBuilder.setVStr(value.toString().substring(0, MAX_TERM_LENGTH));
+      } else {
+        tagBuilder.setVStr(value.toString());
+      }
+    } else if (type == Schema.SchemaFieldType.BINARY) {
+      if (value.toString().getBytes().length > MAX_TERM_LENGTH) {
+        byte[] extractedArray = Arrays.copyOfRange(value.toString().getBytes(), 0, MAX_TERM_LENGTH);
+        tagBuilder.setVBinary(ByteString.copyFrom(extractedArray));
+      } else {
+        tagBuilder.setVBinary(ByteString.copyFrom(value.toString().getBytes()));
+      }
+    }
+  }
+
   public static Trace.KeyValue makeTraceKV(String key, Object value, Schema.SchemaFieldType type) {
     Trace.KeyValue.Builder tagBuilder = Trace.KeyValue.newBuilder();
     tagBuilder.setKey(key);
@@ -48,19 +67,11 @@ public class SpanFormatter {
       switch (type) {
         case KEYWORD -> {
           tagBuilder.setFieldType(Schema.SchemaFieldType.KEYWORD);
-          if (value.toString().length() > MAX_TERM_LENGTH) {
-            tagBuilder.setVStr(value.toString().substring(0, MAX_TERM_LENGTH));
-          } else {
-            tagBuilder.setVStr(value.toString());
-          }
+          setTagBuilderValue(tagBuilder, value, Schema.SchemaFieldType.KEYWORD);
         }
         case TEXT -> {
           tagBuilder.setFieldType(Schema.SchemaFieldType.TEXT);
-          if (value.toString().length() > MAX_TERM_LENGTH) {
-            tagBuilder.setVStr(value.toString().substring(0, MAX_TERM_LENGTH));
-          } else {
-            tagBuilder.setVStr(value.toString());
-          }
+          setTagBuilderValue(tagBuilder, value, Schema.SchemaFieldType.TEXT);
         }
         case IP -> {
           tagBuilder.setFieldType(Schema.SchemaFieldType.IP);
@@ -111,13 +122,7 @@ public class SpanFormatter {
         }
         case BINARY -> {
           tagBuilder.setFieldType(Schema.SchemaFieldType.BINARY);
-          if (value.toString().getBytes().length > MAX_TERM_LENGTH) {
-            byte[] extractedArray =
-                Arrays.copyOfRange(value.toString().getBytes(), 0, MAX_TERM_LENGTH);
-            tagBuilder.setVBinary(ByteString.copyFrom(extractedArray));
-          } else {
-            tagBuilder.setVBinary(ByteString.copyFrom(value.toString().getBytes()));
-          }
+          setTagBuilderValue(tagBuilder, value, Schema.SchemaFieldType.BINARY);
         }
       }
       return tagBuilder.build();
