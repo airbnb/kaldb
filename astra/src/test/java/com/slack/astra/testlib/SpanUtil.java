@@ -136,7 +136,6 @@ public class SpanUtil {
     return makeSpan(i, message, timestamp);
   }
 
-
   public static Trace.Span makeSpan(int i, String message, Instant timestamp) {
     return makeSpan(i, message, timestamp, List.of());
   }
@@ -224,22 +223,22 @@ public class SpanUtil {
     List<Trace.KeyValue> tags = new ArrayList<>();
     // Set alerts tag
     tags.add(
-            Trace.KeyValue.newBuilder()
-                    .setKey("alerts.count")
-                    .setFieldType(Schema.SchemaFieldType.KEYWORD)
-                    .setVStr("1")
-                    .build());
+        Trace.KeyValue.newBuilder()
+            .setKey("alerts.count")
+            .setFieldType(Schema.SchemaFieldType.KEYWORD)
+            .setVStr("1")
+            .build());
 
     result.add(makeSpan(1, "test message 1", Instant.now(), tags));
 
     tags = new ArrayList<>();
     // Set alerts tag
     tags.add(
-            Trace.KeyValue.newBuilder()
-                    .setKey("alerts")
-                    .setFieldType(Schema.SchemaFieldType.KEYWORD)
-                    .setVStr("1")
-                    .build());
+        Trace.KeyValue.newBuilder()
+            .setKey("alerts")
+            .setFieldType(Schema.SchemaFieldType.KEYWORD)
+            .setVStr("1")
+            .build());
 
     result.add(makeSpan(2, "test message 2", Instant.now(), tags));
 
