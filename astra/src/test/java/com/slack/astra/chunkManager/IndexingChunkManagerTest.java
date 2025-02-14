@@ -19,6 +19,7 @@ import static com.slack.astra.testlib.MetricsUtil.getCount;
 import static com.slack.astra.testlib.MetricsUtil.getTimerCount;
 import static com.slack.astra.testlib.MetricsUtil.getValue;
 import static com.slack.astra.testlib.TemporaryLogStoreAndSearcherExtension.MAX_TIME;
+import static com.slack.astra.util.AggregatorFactoriesUtil.createTermsAggregatorFactoriesBuilder;
 import static com.slack.astra.util.AggregatorFactoriesUtil.createGenericDateHistogramAggregatorFactoriesBuilder;
 import static com.slack.astra.util.AggregatorJSONUtil.createGenericDateHistogramJSONBlob;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -92,6 +93,7 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
+import org.opensearch.search.aggregations.bucket.terms.StringTerms;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 
 public class IndexingChunkManagerTest {
@@ -370,6 +372,71 @@ public class IndexingChunkManagerTest {
     //    cleanerTask.get(10, TimeUnit.SECONDS);
 
     assertThat(chunkManager.getChunkList().size()).isEqualTo(0);
+  }
+
+  /* Trying to test the Error:
+  Error doing map update errorMsg=can't merge a non object mapping
+  [alerts] with an object mapping */
+  @Test
+  public void testAddMessageSearchMessageForObjectAndNonObjectMapping() throws Exception {
+    ChunkRollOverStrategy chunkRollOverStrategy =
+            new DiskOrMessageCountBasedRolloverStrategy(
+                    metricsRegistry, 10 * 1024 * 1024 * 1024L, 1000000L);
+
+//    final String CHUNK_DATA_PREFIX = "testData";
+    initChunkManager(chunkRollOverStrategy, blobStore, MoreExecutors.newDirectExecutorService());
+
+    List <Trace.Span> messages = SpanUtil.makeSpansWithObjectAndNonObject();
+
+    int actualChunkSize = 0;
+    int offset = 1;
+    for (Trace.Span m : messages) {
+      final int msgSize = m.toString().length();
+      chunkManager.addMessage(m, msgSize, TEST_KAFKA_PARTITION_ID, offset);
+      actualChunkSize += msgSize;
+      offset++;
+
+      chunkManager.getActiveChunk().commit();
+      Thread.sleep(3000);
+    }
+
+    assertThat(getCount(MESSAGES_RECEIVED_COUNTER, metricsRegistry)).isEqualTo(2);
+    assertThat(getCount(MESSAGES_FAILED_COUNTER, metricsRegistry)).isEqualTo(0);
+    assertThat(getValue(LIVE_MESSAGES_INDEXED, metricsRegistry)).isEqualTo(2);
+    assertThat(getValue(LIVE_BYTES_INDEXED, metricsRegistry)).isEqualTo(actualChunkSize);
+
+    SearchQuery searchQuery =
+            new SearchQuery(
+                    MessageUtil.TEST_DATASET_NAME,
+                    0,
+                    MAX_TIME,
+                    10,
+                    Collections.emptyList(),
+                    QueryBuilderUtil.generateQueryBuilder("", 0L, MAX_TIME),
+                    null,
+                    createTermsAggregatorFactoriesBuilder("test1", List.of(), "alerts.count", null, 1, 1, Map.of("_count", "asc")));
+    SearchResult<LogMessage> results = chunkManager.query(searchQuery, Duration.ofMillis(3000));
+    assertThat(results.hits.size()).isEqualTo(2);
+    assert results.internalAggregation != null;
+    String expectedStr = "{\"test1\":{\"doc_count_error_upper_bound\":0,\"sum_other_doc_count\":0,\"buckets\":[{\"key\":\"1\",\"doc_count\":1}]}}";
+    assertThat(results.internalAggregation.toString()).isEqualTo(expectedStr);
+
+    searchQuery =
+            new SearchQuery(
+                    MessageUtil.TEST_DATASET_NAME,
+                    0,
+                    MAX_TIME,
+                    10,
+                    Collections.emptyList(),
+                    QueryBuilderUtil.generateQueryBuilder("", 0L, MAX_TIME),
+                    null,
+                    createTermsAggregatorFactoriesBuilder("test1", List.of(), "alerts", null, 1, 1, Map.of("_count", "asc")));
+    results = chunkManager.query(searchQuery, Duration.ofMillis(3000));
+    assertThat(results.hits.size()).isEqualTo(2);
+    assert results.internalAggregation != null;
+    expectedStr = "{\"test1\":{\"doc_count_error_upper_bound\":0,\"sum_other_doc_count\":0,\"buckets\":[]}}";
+    assertThat(results.internalAggregation.toString()).isEqualTo(expectedStr);
+
   }
 
   @Test

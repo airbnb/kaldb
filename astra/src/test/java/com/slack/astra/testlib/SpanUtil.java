@@ -136,6 +136,7 @@ public class SpanUtil {
     return makeSpan(i, message, timestamp);
   }
 
+
   public static Trace.Span makeSpan(int i, String message, Instant timestamp) {
     return makeSpan(i, message, timestamp, List.of());
   }
@@ -215,6 +216,33 @@ public class SpanUtil {
     for (int i = 0; i <= (high - low); i++) {
       result.add(makeSpan(low + i, start.plusNanos(1000 * 1000 * timeDeltaMills * i)));
     }
+    return result;
+  }
+
+  public static List<Trace.Span> makeSpansWithObjectAndNonObject() {
+    List<Trace.Span> result = new ArrayList<>();
+    List<Trace.KeyValue> tags = new ArrayList<>();
+    // Set alerts tag
+    tags.add(
+            Trace.KeyValue.newBuilder()
+                    .setKey("alerts.count")
+                    .setFieldType(Schema.SchemaFieldType.KEYWORD)
+                    .setVStr("1")
+                    .build());
+
+    result.add(makeSpan(1, "test message 1", Instant.now(), tags));
+
+    tags = new ArrayList<>();
+    // Set alerts tag
+    tags.add(
+            Trace.KeyValue.newBuilder()
+                    .setKey("alerts")
+                    .setFieldType(Schema.SchemaFieldType.KEYWORD)
+                    .setVStr("1")
+                    .build());
+
+    result.add(makeSpan(2, "test message 2", Instant.now(), tags));
+
     return result;
   }
 }
