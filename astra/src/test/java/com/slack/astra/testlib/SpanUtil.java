@@ -230,6 +230,5 @@ public class SpanUtil {
             .build());
 
     return makeSpan(spanNumber, String.format("test message %s", spanNumber), Instant.now(), tags);
-
   }
 }
