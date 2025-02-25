@@ -1,6 +1,7 @@
 package com.slack.astra.server;
 
 import static com.slack.astra.metadata.dataset.DatasetMetadataSerializer.toDatasetMetadataProto;
+import static com.slack.astra.metadata.partition.PartitionMetadataSerializer.toPartitionMetadataProto;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
@@ -11,6 +12,8 @@ import com.slack.astra.metadata.dataset.DatasetMetadata;
 import com.slack.astra.metadata.dataset.DatasetMetadataSerializer;
 import com.slack.astra.metadata.dataset.DatasetMetadataStore;
 import com.slack.astra.metadata.dataset.DatasetPartitionMetadata;
+import com.slack.astra.metadata.partition.PartitionMetadata;
+import com.slack.astra.metadata.partition.PartitionMetadataStore;
 import com.slack.astra.metadata.snapshot.SnapshotMetadata;
 import com.slack.astra.metadata.snapshot.SnapshotMetadataStore;
 import com.slack.astra.proto.manager_api.ManagerApi;
@@ -40,16 +43,19 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   private static final Logger LOG = LoggerFactory.getLogger(ManagerApiGrpc.class);
   private final DatasetMetadataStore datasetMetadataStore;
   private final SnapshotMetadataStore snapshotMetadataStore;
+  private final PartitionMetadataStore partitionMetadataStore;
   public static final long MAX_TIME = Long.MAX_VALUE;
   private final ReplicaRestoreService replicaRestoreService;
 
   public ManagerApiGrpc(
       DatasetMetadataStore datasetMetadataStore,
+      PartitionMetadataStore partitionMetadataStore,
       SnapshotMetadataStore snapshotMetadataStore,
       ReplicaRestoreService replicaRestoreService) {
     this.datasetMetadataStore = datasetMetadataStore;
     this.snapshotMetadataStore = snapshotMetadataStore;
     this.replicaRestoreService = replicaRestoreService;
+    this.partitionMetadataStore = partitionMetadataStore;
   }
 
   /** Initializes a new dataset in the metadata store with no initial allocated capacity */
@@ -403,5 +409,38 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     }
 
     responseObserver.onCompleted();
+  }
+
+  @Override
+  public void createPartition(
+      ManagerApi.PartitionRequest request,
+      StreamObserver<Metadata.PartitionMetadata> responseObserver) {
+    try {
+      partitionMetadataStore.createSync(new PartitionMetadata(request.getPartitionId()));
+      responseObserver.onNext(
+          toPartitionMetadataProto(
+              partitionMetadataStore.getSync(
+                  String.format("partition_%s", request.getPartitionId()))));
+      responseObserver.onCompleted();
+    } catch (Exception e) {
+      LOG.error("Error creating new partition", e);
+      responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
+    }
+  }
+
+  @Override
+  public void getPartition(
+      ManagerApi.PartitionRequest request,
+      StreamObserver<Metadata.PartitionMetadata> responseObserver) {
+    try {
+      responseObserver.onNext(
+          toPartitionMetadataProto(
+              partitionMetadataStore.getSync(
+                  String.format("partition_%s", request.getPartitionId()))));
+      responseObserver.onCompleted();
+    } catch (Exception e) {
+      LOG.error("Error getting partition", e);
+      responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
+    }
   }
 }

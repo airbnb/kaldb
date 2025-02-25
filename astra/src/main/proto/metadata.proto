@@ -231,3 +231,9 @@ message CacheNodeMetadata {
   int64  node_capacity_bytes = 4;
   string replica_set = 5;
 }
+
+message PartitionMetadata {
+  string name = 1;
+  int32 partition_id = 2;
+  int64 utilization = 3;
+}

@@ -26,6 +26,12 @@ service ManagerApiService {
 
   // Resets the partition offset data to allow using a newer offset for a partition ID
   rpc ResetPartitionData(ResetPartitionDataRequest) returns (ResetPartitionDataResponse) {}
+
+  // Create Partition in partition map
+  rpc CreatePartition(PartitionRequest) returns (PartitionMetadata) {}
+
+  // GetPartition returns a single partition metadata by partition_id
+  rpc GetPartition(PartitionRequest) returns (PartitionMetadata) {}
 }
 
 // CreateDatasetMetadataRequest represents a new dataset with uninitialized thoughput and partition assignments
@@ -104,4 +110,8 @@ message ResetPartitionDataRequest {
 
 message ResetPartitionDataResponse {
   string status = 1;
+}
+
+message PartitionRequest {
+  int32 partition_id = 1;
 }

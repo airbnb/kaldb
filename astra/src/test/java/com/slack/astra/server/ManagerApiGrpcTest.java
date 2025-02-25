@@ -17,6 +17,8 @@ import com.slack.astra.metadata.core.InternalMetadataStoreException;
 import com.slack.astra.metadata.dataset.DatasetMetadata;
 import com.slack.astra.metadata.dataset.DatasetMetadataStore;
 import com.slack.astra.metadata.dataset.DatasetPartitionMetadata;
+import com.slack.astra.metadata.partition.PartitionMetadata;
+import com.slack.astra.metadata.partition.PartitionMetadataStore;
 import com.slack.astra.metadata.replica.ReplicaMetadataStore;
 import com.slack.astra.metadata.snapshot.SnapshotMetadata;
 import com.slack.astra.metadata.snapshot.SnapshotMetadataStore;
@@ -56,6 +58,7 @@ public class ManagerApiGrpcTest {
 
   private AsyncCuratorFramework curatorFramework;
   private DatasetMetadataStore datasetMetadataStore;
+  private PartitionMetadataStore partitionMetadataStore;
   private SnapshotMetadataStore snapshotMetadataStore;
   private ReplicaMetadataStore replicaMetadataStore;
   private ReplicaRestoreService replicaRestoreService;
@@ -78,6 +81,7 @@ public class ManagerApiGrpcTest {
 
     curatorFramework = CuratorBuilder.build(meterRegistry, zkConfig);
     datasetMetadataStore = spy(new DatasetMetadataStore(curatorFramework, true));
+    partitionMetadataStore = spy(new PartitionMetadataStore(curatorFramework, true));
     snapshotMetadataStore = spy(new SnapshotMetadataStore(curatorFramework));
     replicaMetadataStore = spy(new ReplicaMetadataStore(curatorFramework));
 
@@ -102,7 +106,10 @@ public class ManagerApiGrpcTest {
             .directExecutor()
             .addService(
                 new ManagerApiGrpc(
-                    datasetMetadataStore, snapshotMetadataStore, replicaRestoreService))
+                    datasetMetadataStore,
+                    partitionMetadataStore,
+                    snapshotMetadataStore,
+                    replicaRestoreService))
             .build()
             .start());
     ManagedChannel channel =
@@ -120,6 +127,7 @@ public class ManagerApiGrpcTest {
     replicaMetadataStore.close();
     snapshotMetadataStore.close();
     datasetMetadataStore.close();
+    partitionMetadataStore.close();
     curatorFramework.unwrap().close();
 
     testingServer.close();
@@ -774,5 +782,52 @@ public class ManagerApiGrpcTest {
         .isEqualTo(0);
 
     replicaRestoreService.stopAsync();
+  }
+
+  @Test
+  public void shouldCreateAndGetNewPartition() {
+    int partitionId = 1;
+
+    managerApiStub.createPartition(
+        ManagerApi.PartitionRequest.newBuilder().setPartitionId(partitionId).build());
+
+    Metadata.PartitionMetadata getPartitionMetadataResponse =
+        managerApiStub.getPartition(
+            ManagerApi.PartitionRequest.newBuilder().setPartitionId(partitionId).build());
+
+    assertThat(getPartitionMetadataResponse.getPartitionId()).isEqualTo(partitionId);
+    assertThat(getPartitionMetadataResponse.getName())
+        .isEqualTo(String.format("partition_%s", partitionId));
+    assertThat(getPartitionMetadataResponse.getUtilization()).isEqualTo(0);
+
+    PartitionMetadata partitionMetadata =
+        partitionMetadataStore.getSync(String.format("partition_%s", partitionId));
+    assertThat(partitionMetadata.getName()).isEqualTo(String.format("partition_%s", partitionId));
+    assertThat(partitionMetadata.getPartitionID()).isEqualTo(partitionId);
+    assertThat(partitionMetadata.getUtilization()).isEqualTo(0);
+  }
+
+  @Test
+  public void shouldErrorCreatingDuplicatePartitionName() {
+    int partitionId = 1;
+
+    managerApiStub.createPartition(
+        ManagerApi.PartitionRequest.newBuilder().setPartitionId(partitionId).build());
+
+    StatusRuntimeException throwable =
+        (StatusRuntimeException)
+            catchThrowable(
+                () ->
+                    managerApiStub.createPartition(
+                        ManagerApi.PartitionRequest.newBuilder()
+                            .setPartitionId(partitionId)
+                            .build()));
+    assertThat(throwable.getStatus().getCode()).isEqualTo(Status.UNKNOWN.getCode());
+
+    PartitionMetadata partitionMetadata =
+        partitionMetadataStore.getSync(String.format("partition_%s", partitionId));
+    assertThat(partitionMetadata.getPartitionID()).isEqualTo(partitionId);
+    assertThat(partitionMetadata.getName()).isEqualTo(String.format("partition_%s", partitionId));
+    assertThat(partitionMetadata.getUtilization()).isEqualTo(0);
   }
 }
