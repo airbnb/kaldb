@@ -4,12 +4,13 @@ import com.slack.astra.metadata.core.AstraMetadata;
 import java.util.Objects;
 
 public class PartitionMetadata extends AstraMetadata {
+  public final String name;
   public final int partition_id;
   public final long utilization;
 
   public PartitionMetadata(int partition) {
-    String name = String.format("partition_%s", partition);
-    super(name);
+    super(String.format("partition_%s", partition));
+    this.name = String.format("partition_%s", partition);
     this.partition_id = partition;
     this.utilization = 0;
   }
@@ -17,6 +18,8 @@ public class PartitionMetadata extends AstraMetadata {
   public PartitionMetadata getPartition() {
     return this;
   }
+
+  public String getName() { return this.name; }
 
   public int getPartitionID() {
     return this.partition_id;
