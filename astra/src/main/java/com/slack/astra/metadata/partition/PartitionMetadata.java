@@ -19,7 +19,9 @@ public class PartitionMetadata extends AstraMetadata {
     return this;
   }
 
-  public String getName() { return this.name; }
+  public String getName() {
+    return this.name;
+  }
 
   public int getPartitionID() {
     return this.partition_id;
