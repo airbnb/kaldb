@@ -786,7 +786,7 @@ public class ManagerApiGrpcTest {
 
   @Test
   public void shouldCreateAndGetNewPartition() {
-    int partitionId = 1;
+    String partitionId = "1";
 
     managerApiStub.createPartition(
         ManagerApi.PartitionRequest.newBuilder().setPartitionId(partitionId).build());
@@ -809,7 +809,7 @@ public class ManagerApiGrpcTest {
 
   @Test
   public void shouldErrorCreatingDuplicatePartitionName() {
-    int partitionId = 1;
+    String partitionId = "1";
 
     managerApiStub.createPartition(
         ManagerApi.PartitionRequest.newBuilder().setPartitionId(partitionId).build());
