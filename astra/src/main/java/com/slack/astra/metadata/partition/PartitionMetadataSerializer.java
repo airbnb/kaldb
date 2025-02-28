@@ -10,12 +10,11 @@ public class PartitionMetadataSerializer implements MetadataSerializer<Partition
   private static PartitionMetadata fromPartitionMetadataProto(
       Metadata.PartitionMetadata partitionMetadataProto) {
 
-    return new PartitionMetadata(partitionMetadataProto.getPartitionId());
+    return new PartitionMetadata(partitionMetadataProto.getPartitionId(), partitionMetadataProto.getUtilization(), partitionMetadataProto.getIsPartitionShared());
   }
 
   public static Metadata.PartitionMetadata toPartitionMetadataProto(PartitionMetadata metadata) {
     return Metadata.PartitionMetadata.newBuilder()
-        .setName(metadata.getName())
         .setPartitionId(metadata.getPartitionID())
         .setUtilization(metadata.getUtilization())
         .setIsPartitionShared(metadata.getIsPartitionShared())

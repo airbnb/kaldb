@@ -5,14 +5,14 @@ import java.util.Objects;
 
 public class PartitionMetadata extends AstraMetadata {
   public final String partition_id;
-  public long utilization;
-  public boolean isPartitionShared;
+  public final long utilization;
+  public final boolean isPartitionShared;
 
-  public PartitionMetadata(String partition) {
-    super(String.format("partition_%s", partition));
+  public PartitionMetadata(String partition, long utilization, boolean isPartitionShared) {
+    super(partition);
     this.partition_id = partition;
-    this.utilization = 0;
-    this.isPartitionShared = false;
+    this.utilization = utilization;
+    this.isPartitionShared = isPartitionShared;
   }
 
   public PartitionMetadata getPartition() {
@@ -38,21 +38,18 @@ public class PartitionMetadata extends AstraMetadata {
     if (!super.equals(o)) return false;
     PartitionMetadata that = (PartitionMetadata) o;
     return utilization == that.utilization
-        && name.equals(that.name)
         && partition_id.equals(that.partition_id)
         && isPartitionShared == that.isPartitionShared;
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(super.hashCode(), name, partition_id, utilization, isPartitionShared);
+    return Objects.hash(super.hashCode(), partition_id, utilization, isPartitionShared);
   }
 
   @Override
   public String toString() {
     return "PartitionMetadata{"
-        + "name='"
-        + name
         + ", partition_id='"
         + partition_id
         + ", utilization="

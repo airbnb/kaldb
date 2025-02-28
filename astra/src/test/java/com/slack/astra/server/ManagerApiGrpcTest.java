@@ -796,13 +796,10 @@ public class ManagerApiGrpcTest {
             ManagerApi.PartitionRequest.newBuilder().setPartitionId(partitionId).build());
 
     assertThat(getPartitionMetadataResponse.getPartitionId()).isEqualTo(partitionId);
-    assertThat(getPartitionMetadataResponse.getName())
-        .isEqualTo(String.format("partition_%s", partitionId));
     assertThat(getPartitionMetadataResponse.getUtilization()).isEqualTo(0);
 
-    PartitionMetadata partitionMetadata =
-        partitionMetadataStore.getSync(String.format("partition_%s", partitionId));
-    assertThat(partitionMetadata.getName()).isEqualTo(String.format("partition_%s", partitionId));
+    PartitionMetadata partitionMetadata = partitionMetadataStore.getSync(partitionId);
+    assertThat(partitionMetadata.getName()).isEqualTo(partitionId);
     assertThat(partitionMetadata.getPartitionID()).isEqualTo(partitionId);
     assertThat(partitionMetadata.getUtilization()).isEqualTo(0);
   }
@@ -824,10 +821,8 @@ public class ManagerApiGrpcTest {
                             .build()));
     assertThat(throwable.getStatus().getCode()).isEqualTo(Status.UNKNOWN.getCode());
 
-    PartitionMetadata partitionMetadata =
-        partitionMetadataStore.getSync(String.format("partition_%s", partitionId));
+    PartitionMetadata partitionMetadata = partitionMetadataStore.getSync(partitionId);
     assertThat(partitionMetadata.getPartitionID()).isEqualTo(partitionId);
-    assertThat(partitionMetadata.getName()).isEqualTo(String.format("partition_%s", partitionId));
     assertThat(partitionMetadata.getUtilization()).isEqualTo(0);
   }
 }
