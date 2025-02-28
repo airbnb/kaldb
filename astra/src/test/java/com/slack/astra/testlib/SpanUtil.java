@@ -221,7 +221,6 @@ public class SpanUtil {
   public static Trace.Span makeSpansCustomKeywordTags(String key, String value, int spanNumber) {
 
     List<Trace.KeyValue> tags = new ArrayList<>();
-    // Set alerts tag
     tags.add(
         Trace.KeyValue.newBuilder()
             .setKey(key)

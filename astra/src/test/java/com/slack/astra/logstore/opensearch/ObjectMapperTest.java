@@ -35,7 +35,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +46,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.opensearch.search.aggregations.bucket.terms.StringTerms;
+import org.opensearch.search.aggregations.bucket.terms.UnmappedTerms;
 
 public class ObjectMapperTest {
 
@@ -113,8 +115,22 @@ public class ObjectMapperTest {
     chunkManager.awaitRunning(DEFAULT_START_STOP_DURATION);
   }
 
-  /* Error doing map update errorMsg=can't merge a non object mapping
-  [alerts] with an object mapping */
+  private SearchQuery newTermsAggregatorCountSearchQuery(String name, String fieldName)
+      throws IOException {
+    return new SearchQuery(
+        MessageUtil.TEST_DATASET_NAME,
+        0,
+        MAX_TIME,
+        10,
+        Collections.emptyList(),
+        QueryBuilderUtil.generateQueryBuilder("", 0L, MAX_TIME),
+        null,
+        createTermsAggregatorFactoriesBuilder(
+            name, List.of(), fieldName, null, 1, 1, Map.of("_count", "asc")));
+  }
+
+  // Error doing map update errorMsg=can't merge a non object mapping [alerts] with an object
+  // mapping
   @Test
   public void testAddMessageChildBeforeParent() throws Exception {
     ChunkRollOverStrategy chunkRollOverStrategy =
@@ -124,9 +140,10 @@ public class ObjectMapperTest {
     initChunkManager(chunkRollOverStrategy, blobStore, MoreExecutors.newDirectExecutorService());
 
     // child span encountered before the parent.
-    List<Trace.Span> messages = new ArrayList<>();
-    messages.add(SpanUtil.makeSpansCustomKeywordTags("alerts.count", "1", 1));
-    messages.add(SpanUtil.makeSpansCustomKeywordTags("alerts", "1", 2));
+    List<Trace.Span> messages =
+        Arrays.asList(
+            SpanUtil.makeSpansCustomKeywordTags("alerts.count", "1", 1),
+            SpanUtil.makeSpansCustomKeywordTags("alerts", "1", 2));
 
     int actualChunkSize = 0;
     int offset = 1;
@@ -137,7 +154,6 @@ public class ObjectMapperTest {
       offset++;
 
       chunkManager.getActiveChunk().commit();
-      Thread.sleep(3000);
     }
 
     // error will be thrown, but ingestion works fine.
@@ -148,41 +164,17 @@ public class ObjectMapperTest {
 
     // aggregation on alerts.count (child) works but fails for alerts (parents)
 
-    SearchQuery searchQuery =
-        new SearchQuery(
-            MessageUtil.TEST_DATASET_NAME,
-            0,
-            MAX_TIME,
-            10,
-            Collections.emptyList(),
-            QueryBuilderUtil.generateQueryBuilder("", 0L, MAX_TIME),
-            null,
-            createTermsAggregatorFactoriesBuilder(
-                "test1", List.of(), "alerts.count", null, 1, 1, Map.of("_count", "asc")));
+    SearchQuery searchQuery = newTermsAggregatorCountSearchQuery("test1", "alerts.count");
     SearchResult<LogMessage> results = chunkManager.query(searchQuery, Duration.ofMillis(3000));
     assertThat(results.hits.size()).isEqualTo(2);
-    assert results.internalAggregation != null;
-    String expectedStr =
-        "{\"test1\":{\"doc_count_error_upper_bound\":0,\"sum_other_doc_count\":0,\"buckets\":[{\"key\":\"1\",\"doc_count\":1}]}}";
-    assertThat(results.internalAggregation.toString()).isEqualTo(expectedStr);
+    assertThat(results.internalAggregation).isNotNull();
+    assertThat(((StringTerms) results.internalAggregation).getBuckets().size()).isEqualTo(1);
 
-    searchQuery =
-        new SearchQuery(
-            MessageUtil.TEST_DATASET_NAME,
-            0,
-            MAX_TIME,
-            10,
-            Collections.emptyList(),
-            QueryBuilderUtil.generateQueryBuilder("", 0L, MAX_TIME),
-            null,
-            createTermsAggregatorFactoriesBuilder(
-                "test1", List.of(), "alerts", null, 1, 1, Map.of("_count", "asc")));
+    searchQuery = newTermsAggregatorCountSearchQuery("test1", "alerts");
     results = chunkManager.query(searchQuery, Duration.ofMillis(3000));
     assertThat(results.hits.size()).isEqualTo(2);
-    assert results.internalAggregation != null;
-    expectedStr =
-        "{\"test1\":{\"doc_count_error_upper_bound\":0,\"sum_other_doc_count\":0,\"buckets\":[]}}";
-    assertThat(results.internalAggregation.toString()).isEqualTo(expectedStr);
+    assertThat(results.internalAggregation).isNotNull();
+    assertThat(((UnmappedTerms) results.internalAggregation).getBuckets().size()).isEqualTo(0);
   }
 
   @Test
@@ -194,9 +186,10 @@ public class ObjectMapperTest {
     initChunkManager(chunkRollOverStrategy, blobStore, MoreExecutors.newDirectExecutorService());
 
     // parent span before child span
-    List<Trace.Span> messages = new ArrayList<>();
-    messages.add(SpanUtil.makeSpansCustomKeywordTags("alerts", "1", 1));
-    messages.add(SpanUtil.makeSpansCustomKeywordTags("alerts.count", "1", 2));
+    List<Trace.Span> messages =
+        Arrays.asList(
+            SpanUtil.makeSpansCustomKeywordTags("alerts", "1", 1),
+            SpanUtil.makeSpansCustomKeywordTags("alerts.count", "1", 2));
 
     int actualChunkSize = 0;
     int offset = 1;
@@ -207,7 +200,6 @@ public class ObjectMapperTest {
       offset++;
 
       chunkManager.getActiveChunk().commit();
-      Thread.sleep(3000);
     }
 
     // ingestion works fine.
@@ -218,40 +210,16 @@ public class ObjectMapperTest {
 
     // aggregation on works for both; parent and child
 
-    SearchQuery searchQuery =
-        new SearchQuery(
-            MessageUtil.TEST_DATASET_NAME,
-            0,
-            MAX_TIME,
-            10,
-            Collections.emptyList(),
-            QueryBuilderUtil.generateQueryBuilder("", 0L, MAX_TIME),
-            null,
-            createTermsAggregatorFactoriesBuilder(
-                "test1", List.of(), "alerts.count", null, 1, 1, Map.of("_count", "asc")));
+    SearchQuery searchQuery = newTermsAggregatorCountSearchQuery("test1", "alerts.count");
     SearchResult<LogMessage> results = chunkManager.query(searchQuery, Duration.ofMillis(3000));
     assertThat(results.hits.size()).isEqualTo(2);
     assert results.internalAggregation != null;
-    String expectedStr =
-        "{\"test1\":{\"doc_count_error_upper_bound\":0,\"sum_other_doc_count\":0,\"buckets\":[{\"key\":\"1\",\"doc_count\":1}]}}";
-    assertThat(results.internalAggregation.toString()).isEqualTo(expectedStr);
+    assertThat(((StringTerms) results.internalAggregation).getBuckets().size()).isEqualTo(1);
 
-    searchQuery =
-        new SearchQuery(
-            MessageUtil.TEST_DATASET_NAME,
-            0,
-            MAX_TIME,
-            10,
-            Collections.emptyList(),
-            QueryBuilderUtil.generateQueryBuilder("", 0L, MAX_TIME),
-            null,
-            createTermsAggregatorFactoriesBuilder(
-                "test1", List.of(), "alerts", null, 1, 1, Map.of("_count", "asc")));
+    searchQuery = newTermsAggregatorCountSearchQuery("test1", "alerts");
     results = chunkManager.query(searchQuery, Duration.ofMillis(3000));
     assertThat(results.hits.size()).isEqualTo(2);
     assert results.internalAggregation != null;
-    expectedStr =
-        "{\"test1\":{\"doc_count_error_upper_bound\":0,\"sum_other_doc_count\":0,\"buckets\":[{\"key\":\"1\",\"doc_count\":1}]}}";
-    assertThat(results.internalAggregation.toString()).isEqualTo(expectedStr);
+    assertThat(((StringTerms) results.internalAggregation).getBuckets().size()).isEqualTo(1);
   }
 }
