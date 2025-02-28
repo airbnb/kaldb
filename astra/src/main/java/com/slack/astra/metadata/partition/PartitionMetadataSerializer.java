@@ -18,6 +18,7 @@ public class PartitionMetadataSerializer implements MetadataSerializer<Partition
         .setName(metadata.getName())
         .setPartitionId(metadata.getPartitionID())
         .setUtilization(metadata.getUtilization())
+        .setIsPartitionShared(metadata.getIsPartitionShared())
         .build();
   }
 

@@ -234,6 +234,7 @@ message CacheNodeMetadata {
 
 message PartitionMetadata {
   string name = 1;
-  int32 partition_id = 2;
+  string partition_id = 2;
   int64 utilization = 3;
+  bool isPartitionShared = 4;
 }

@@ -1,11 +1,15 @@
 package com.slack.astra.metadata.partition;
 
 import com.slack.astra.metadata.core.AstraMetadataStore;
+import java.util.ArrayList;
+import java.util.List;
 import org.apache.curator.x.async.AsyncCuratorFramework;
 import org.apache.zookeeper.CreateMode;
 
 public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata> {
   public static final String PARTITION_MAP_METADATA_STORE_ZK_PATH = "/partition_map";
+
+  public static final int INDEXER_CAPACITY = 5000000;
 
   public PartitionMetadataStore(AsyncCuratorFramework curator, boolean shouldCache)
       throws Exception {
@@ -15,5 +19,47 @@ public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata
         shouldCache,
         new PartitionMetadataSerializer().toModelSerializer(),
         PARTITION_MAP_METADATA_STORE_ZK_PATH);
+  }
+
+  public List<String> findPartition(long requiredThroughput, boolean requireDedicatedPartition) {
+    List<String> partitionIdsList = new ArrayList<>();
+    int numberOfPartitions = (int) Math.ceilDiv(requiredThroughput, INDEXER_CAPACITY);
+
+    long perPartitionCapacity = Math.ceilDiv(requiredThroughput, numberOfPartitions);
+    if (numberOfPartitions == 1) {
+      // we want minimum of two partitions assigned to a tenant for redundancy purpose
+      numberOfPartitions++;
+    }
+
+    List<PartitionMetadata> partitionMetadataList = this.listSync();
+
+    for (PartitionMetadata partitionMetadata : partitionMetadataList) {
+      if (requireDedicatedPartition) {
+        if (partitionMetadata.getUtilization() == 0 && !partitionMetadata.isPartitionShared) {
+          partitionIdsList.add(partitionMetadata.getPartitionID());
+          partitionMetadata.utilization = perPartitionCapacity;
+          this.updateSync(partitionMetadata);
+        }
+      } else {
+        // add logic for shared partition here
+        // partition has capacity and (partition is shared or (partition not shared and utilization
+        // = 0))
+        // TODO: to add schema check for shared tenants
+        if (partitionMetadata.utilization + perPartitionCapacity <= INDEXER_CAPACITY
+            && (partitionMetadata.isPartitionShared
+                || (partitionMetadata.getUtilization() == 0
+                    && !partitionMetadata.isPartitionShared))) {
+          partitionIdsList.add(partitionMetadata.getPartitionID());
+          partitionMetadata.utilization += perPartitionCapacity;
+          partitionMetadata.isPartitionShared = true;
+          this.updateSync(partitionMetadata);
+        }
+      }
+      if (partitionIdsList.size() == numberOfPartitions) {
+        // we have found the required number of partitions
+        break;
+      }
+    }
+    return partitionIdsList;
   }
 }

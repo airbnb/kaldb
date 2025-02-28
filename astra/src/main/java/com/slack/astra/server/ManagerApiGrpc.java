@@ -443,4 +443,44 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
     }
   }
+
+  @Override
+  public void createTenant(
+      ManagerApi.CreateTenantRequest request,
+      StreamObserver<Metadata.DatasetMetadata> responseObserver) {
+    try {
+      Preconditions.checkArgument(
+          request.getThroughputBytes() > 0, "ThroughputBytes cannot be 0 or negative");
+
+      List<String> partitionIdsList =
+          partitionMetadataStore.findPartition(
+              request.getThroughputBytes(), request.getRequireDedicatedPartitions());
+
+      if (partitionIdsList.size() < 2) {
+        String msg = "Error creating new tenant, Not enough partitions are available";
+        LOG.error(msg);
+        responseObserver.onError(Status.UNKNOWN.withDescription(msg).asException());
+      }
+
+      long partitionStartTime = Instant.now().toEpochMilli();
+      ImmutableList.Builder<DatasetPartitionMetadata> builder = ImmutableList.builder();
+      DatasetPartitionMetadata newPartitionMetadata =
+          new DatasetPartitionMetadata(partitionStartTime, MAX_TIME, partitionIdsList);
+      builder.add(newPartitionMetadata);
+
+      datasetMetadataStore.createSync(
+          new DatasetMetadata(
+              request.getName(),
+              request.getOwner(),
+              request.getThroughputBytes(),
+              builder.build(),
+              request.getServiceNamePattern()));
+      responseObserver.onNext(
+          toDatasetMetadataProto(datasetMetadataStore.getSync(request.getName())));
+      responseObserver.onCompleted();
+    } catch (Exception e) {
+      LOG.error("Error creating new tenant", e);
+      responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
+    }
+  }
 }
