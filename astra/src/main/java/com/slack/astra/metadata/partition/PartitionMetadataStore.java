@@ -33,18 +33,19 @@ public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata
     }
 
     List<PartitionMetadata> partitionMetadataList = this.listSync();
-    partitionMetadataList.sort(Comparator.comparing(partitionMetadata -> partitionMetadata.partition_id));
+    partitionMetadataList.sort(
+        Comparator.comparing(partitionMetadata -> partitionMetadata.partition_id));
 
     for (PartitionMetadata partitionMetadata : partitionMetadataList) {
       if (requireDedicatedPartition) {
         if (partitionMetadata.getUtilization() == 0 && !partitionMetadata.isPartitionShared) {
           partitionIdsList.add(partitionMetadata.getPartitionID());
 
-          PartitionMetadata newPartitionMetadata = new PartitionMetadata(
+          PartitionMetadata newPartitionMetadata =
+              new PartitionMetadata(
                   partitionMetadata.partition_id,
                   perPartitionCapacity,
-                  partitionMetadata.isPartitionShared
-          );
+                  partitionMetadata.isPartitionShared);
           this.updateSync(newPartitionMetadata);
         }
       } else {
@@ -57,11 +58,11 @@ public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata
                 || (partitionMetadata.getUtilization() == 0
                     && !partitionMetadata.isPartitionShared))) {
           partitionIdsList.add(partitionMetadata.getPartitionID());
-          PartitionMetadata newPartitionMetadata = new PartitionMetadata(
+          PartitionMetadata newPartitionMetadata =
+              new PartitionMetadata(
                   partitionMetadata.partition_id,
                   partitionMetadata.utilization + perPartitionCapacity,
-                  true
-          );
+                  true);
           this.updateSync(newPartitionMetadata);
         }
       }

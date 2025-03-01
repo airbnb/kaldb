@@ -825,4 +825,13 @@ public class ManagerApiGrpcTest {
     assertThat(partitionMetadata.getPartitionID()).isEqualTo(partitionId);
     assertThat(partitionMetadata.getUtilization()).isEqualTo(0);
   }
+
+  @Test
+  public void shouldCreateAndGetDedicatedPartitionTenant() {}
+
+  @Test
+  public void shouldCreateAndGetSharedPartitionMultipleTenants() {}
+
+  @Test
+  public void shouldErrorCreatingTenantWhenNotEnoughPartitions() {}
 }

@@ -418,9 +418,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     try {
       partitionMetadataStore.createSync(new PartitionMetadata(request.getPartitionId(), 0, false));
       responseObserver.onNext(
-          toPartitionMetadataProto(
-              partitionMetadataStore.getSync(
-                  request.getPartitionId())));
+          toPartitionMetadataProto(partitionMetadataStore.getSync(request.getPartitionId())));
       responseObserver.onCompleted();
     } catch (Exception e) {
       LOG.error("Error creating new partition", e);
@@ -434,9 +432,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       StreamObserver<Metadata.PartitionMetadata> responseObserver) {
     try {
       responseObserver.onNext(
-          toPartitionMetadataProto(
-              partitionMetadataStore.getSync(
-                  request.getPartitionId())));
+          toPartitionMetadataProto(partitionMetadataStore.getSync(request.getPartitionId())));
       responseObserver.onCompleted();
     } catch (Exception e) {
       LOG.error("Error getting partition", e);
