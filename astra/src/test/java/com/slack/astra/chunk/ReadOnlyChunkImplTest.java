@@ -897,18 +897,18 @@ public class ReadOnlyChunkImplTest {
   public void shouldEvictChunkOnAssignmentFailure() throws Exception {
     AstraConfigs.AstraConfig AstraConfig = makeCacheConfig();
     AstraConfigs.EtcdConfig etcdConfig =
-            AstraConfigs.EtcdConfig.newBuilder()
-                    .addAllEndpoints(etcdCluster.clientEndpoints().stream().map(Object::toString).toList())
-                    .setConnectionTimeoutMs(5000)
-                    .setKeepaliveTimeoutMs(3000)
-                    .setOperationsMaxRetries(3)
-                    .setOperationsTimeoutMs(3000)
-                    .setRetryDelayMs(100)
-                    .setNamespace("shouldEvictChunkOnAssignmentFailure")
-                    .setEnabled(true)
-                    .setEphemeralNodeTtlMs(3000)
-                    .setEphemeralNodeMaxRetries(3)
-                    .build();
+        AstraConfigs.EtcdConfig.newBuilder()
+            .addAllEndpoints(etcdCluster.clientEndpoints().stream().map(Object::toString).toList())
+            .setConnectionTimeoutMs(5000)
+            .setKeepaliveTimeoutMs(3000)
+            .setOperationsMaxRetries(3)
+            .setOperationsTimeoutMs(3000)
+            .setRetryDelayMs(100)
+            .setNamespace("shouldEvictChunkOnAssignmentFailure")
+            .setEnabled(true)
+            .setEphemeralNodeTtlMs(3000)
+            .setEphemeralNodeMaxRetries(3)
+            .build();
     AstraConfigs.MetadataStoreConfig metadataStoreConfig =
         AstraConfigs.MetadataStoreConfig.newBuilder()
             .setEtcdConfig(etcdConfig)
@@ -931,13 +931,17 @@ public class ReadOnlyChunkImplTest {
     SnapshotMetadataStore snapshotMetadataStore =
         new SnapshotMetadataStore(curatorFramework, etcdClient, metadataStoreConfig, meterRegistry);
     SearchMetadataStore searchMetadataStore =
-        new SearchMetadataStore(curatorFramework, etcdClient, metadataStoreConfig, meterRegistry, true);
+        new SearchMetadataStore(
+            curatorFramework, etcdClient, metadataStoreConfig, meterRegistry, true);
     CacheSlotMetadataStore cacheSlotMetadataStore =
-        new CacheSlotMetadataStore(curatorFramework, etcdClient, metadataStoreConfig, meterRegistry);
+        new CacheSlotMetadataStore(
+            curatorFramework, etcdClient, metadataStoreConfig, meterRegistry);
     CacheNodeAssignmentStore cacheNodeAssignmentStore =
-        new CacheNodeAssignmentStore(curatorFramework, etcdClient, metadataStoreConfig, meterRegistry);
+        new CacheNodeAssignmentStore(
+            curatorFramework, etcdClient, metadataStoreConfig, meterRegistry);
     CacheNodeMetadataStore cacheNodeMetadataStore =
-        new CacheNodeMetadataStore(curatorFramework, etcdClient, metadataStoreConfig, meterRegistry);
+        new CacheNodeMetadataStore(
+            curatorFramework, etcdClient, metadataStoreConfig, meterRegistry);
 
     String replicaId = "foo";
     String snapshotId = "boo";
