@@ -624,7 +624,8 @@ public class ManagerApiGrpcTest {
             "foo",
             "a",
             1,
-            List.of(new DatasetPartitionMetadata(startTime + 5, startTime + 6, List.of("a"))),
+            List.of(
+                new DatasetPartitionMetadata(startTime + 5, startTime + 6, List.of("a"), false)),
             "fooService");
 
     datasetMetadataStore.createSync(datasetWithDataInPartitionA);
@@ -679,7 +680,8 @@ public class ManagerApiGrpcTest {
             "foo",
             "a",
             1,
-            List.of(new DatasetPartitionMetadata(startTime + 5, startTime + 6, List.of("a"))),
+            List.of(
+                new DatasetPartitionMetadata(startTime + 5, startTime + 6, List.of("a"), false)),
             "fooService");
 
     datasetMetadataStore.createSync(serviceWithDataInPartitionA);
@@ -724,7 +726,9 @@ public class ManagerApiGrpcTest {
             "foo",
             "a",
             1,
-            List.of(new DatasetPartitionMetadata(startTime + 5, startTime + 6, List.of("a", "b"))),
+            List.of(
+                new DatasetPartitionMetadata(
+                    startTime + 5, startTime + 6, List.of("a", "b"), false)),
             "fooService");
 
     datasetMetadataStore.createSync(serviceWithDataInPartitionA);
@@ -797,11 +801,13 @@ public class ManagerApiGrpcTest {
 
     assertThat(getPartitionMetadataResponse.getPartitionId()).isEqualTo(partitionId);
     assertThat(getPartitionMetadataResponse.getUtilization()).isEqualTo(0);
+    assertThat(getPartitionMetadataResponse.getIsPartitionShared()).isEqualTo(false);
 
     PartitionMetadata partitionMetadata = partitionMetadataStore.getSync(partitionId);
     assertThat(partitionMetadata.getName()).isEqualTo(partitionId);
     assertThat(partitionMetadata.getPartitionID()).isEqualTo(partitionId);
     assertThat(partitionMetadata.getUtilization()).isEqualTo(0);
+    assertThat(partitionMetadata.getIsPartitionShared()).isEqualTo(false);
   }
 
   @Test
@@ -827,11 +833,524 @@ public class ManagerApiGrpcTest {
   }
 
   @Test
-  public void shouldCreateAndGetDedicatedPartitionTenant() {}
+  public void shouldCreateAndGetDedicatedPartitionTenant() {
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+    String datasetServicePattern = "testDataset";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 0, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 0, false));
+
+    managerApiStub.createTenant(
+        ManagerApi.CreateTenantRequest.newBuilder()
+            .setName(datasetName)
+            .setOwner(datasetOwner)
+            .setServiceNamePattern(datasetServicePattern)
+            .setThroughputBytes(1000000)
+            .setRequireDedicatedPartitions(true)
+            .build());
+
+    Metadata.DatasetMetadata getDatasetMetadataResponse =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName).build());
+    assertThat(getDatasetMetadataResponse.getName()).isEqualTo(datasetName);
+    assertThat(getDatasetMetadataResponse.getOwner()).isEqualTo(datasetOwner);
+    assertThat(getDatasetMetadataResponse.getServiceNamePattern().equals(datasetServicePattern));
+    assertThat(getDatasetMetadataResponse.getThroughputBytes()).isEqualTo(1000000);
+    assertThat(getDatasetMetadataResponse.getPartitionConfigsList().size()).isEqualTo(1);
+    assertThat(getDatasetMetadataResponse.getPartitionConfigsList().getFirst().getPartitionsList())
+        .isEqualTo(List.of("1", "2"));
+
+    DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(datasetName);
+    assertThat(datasetMetadata.getName()).isEqualTo(datasetName);
+    assertThat(datasetMetadata.getOwner()).isEqualTo(datasetOwner);
+    assertThat(datasetMetadata.getThroughputBytes()).isEqualTo(1000000);
+    assertThat(datasetMetadata.getPartitionConfigs().size()).isEqualTo(1);
+    assertThat(datasetMetadata.getPartitionConfigs().getFirst().getPartitions())
+        .isEqualTo(List.of("1", "2"));
+
+    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getUtilization()).isEqualTo(1000000);
+    assertThat(partitionMetadata1.getIsPartitionShared()).isEqualTo(false);
+
+    PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getUtilization()).isEqualTo(1000000);
+    assertThat(partitionMetadata2.getIsPartitionShared()).isEqualTo(false);
+  }
 
   @Test
-  public void shouldCreateAndGetSharedPartitionMultipleTenants() {}
+  public void shouldCreateAndGetSharedPartitionMultipleTenants() {
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+    String datasetServicePattern = "testDataset";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 1000000, true));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 1000000, true));
+
+    datasetMetadataStore.createSync(
+        new DatasetMetadata(
+            "tenant1",
+            "tenant1Owner",
+            1000000,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), false)),
+            "tenant1"));
+
+    managerApiStub.createTenant(
+        ManagerApi.CreateTenantRequest.newBuilder()
+            .setName(datasetName)
+            .setOwner(datasetOwner)
+            .setServiceNamePattern(datasetServicePattern)
+            .setThroughputBytes(6000000)
+            .setRequireDedicatedPartitions(false)
+            .build());
+
+    Metadata.DatasetMetadata getDatasetMetadataResponse =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName).build());
+    assertThat(getDatasetMetadataResponse.getName()).isEqualTo(datasetName);
+    assertThat(getDatasetMetadataResponse.getOwner()).isEqualTo(datasetOwner);
+    assertThat(getDatasetMetadataResponse.getServiceNamePattern().equals(datasetServicePattern));
+    assertThat(getDatasetMetadataResponse.getThroughputBytes()).isEqualTo(6000000);
+    assertThat(getDatasetMetadataResponse.getPartitionConfigsList().size()).isEqualTo(1);
+    assertThat(getDatasetMetadataResponse.getPartitionConfigsList().getFirst().getPartitionsList())
+        .isEqualTo(List.of("1", "2"));
+
+    DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(datasetName);
+    assertThat(datasetMetadata.getName()).isEqualTo(datasetName);
+    assertThat(datasetMetadata.getOwner()).isEqualTo(datasetOwner);
+    assertThat(datasetMetadata.getThroughputBytes()).isEqualTo(6000000);
+    assertThat(datasetMetadata.getPartitionConfigs().size()).isEqualTo(1);
+    assertThat(datasetMetadata.getPartitionConfigs().getFirst().getPartitions())
+        .isEqualTo(List.of("1", "2"));
+
+    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getUtilization()).isEqualTo(4000000);
+    assertThat(partitionMetadata1.getIsPartitionShared()).isEqualTo(true);
+
+    PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getUtilization()).isEqualTo(4000000);
+    assertThat(partitionMetadata2.getIsPartitionShared()).isEqualTo(true);
+  }
 
   @Test
-  public void shouldErrorCreatingTenantWhenNotEnoughPartitions() {}
+  public void shouldErrorCreatingTenantWhenNotEnoughPartitions() {
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+    String datasetServicePattern = "testDataset";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 1000000, true));
+
+    StatusRuntimeException throwable =
+        (StatusRuntimeException)
+            catchThrowable(
+                () ->
+                    managerApiStub.createTenant(
+                        ManagerApi.CreateTenantRequest.newBuilder()
+                            .setName(datasetName)
+                            .setOwner(datasetOwner)
+                            .setServiceNamePattern(datasetServicePattern)
+                            .setThroughputBytes(6000000)
+                            .setRequireDedicatedPartitions(false)
+                            .build()));
+    assertThat(throwable.getStatus().getCode()).isEqualTo(Status.UNKNOWN.getCode());
+    assertThat(throwable.getStatus().getDescription())
+        .isEqualTo("Error creating new tenant, Not enough partitions are available");
+  }
+
+  @Test
+  public void shouldErrorCreatingTenantWhenNegativeThroughput() {
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+    String datasetServicePattern = "testDataset";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 1000000, true));
+
+    StatusRuntimeException throwable =
+        (StatusRuntimeException)
+            catchThrowable(
+                () ->
+                    managerApiStub.createTenant(
+                        ManagerApi.CreateTenantRequest.newBuilder()
+                            .setName(datasetName)
+                            .setOwner(datasetOwner)
+                            .setServiceNamePattern(datasetServicePattern)
+                            .setThroughputBytes(-1000000)
+                            .setRequireDedicatedPartitions(false)
+                            .build()));
+    assertThat(throwable.getStatus().getCode()).isEqualTo(Status.UNKNOWN.getCode());
+    assertThat(throwable.getStatus().getDescription())
+        .isEqualTo("ThroughputBytes cannot be 0 or negative");
+  }
+
+  @Test
+  public void shouldRemoveDedicatedPartitionTenant() {
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+    String datasetServicePattern = "testDataset";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 1000000, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 1000000, false));
+
+    datasetMetadataStore.createSync(
+        new DatasetMetadata(
+            datasetName,
+            datasetOwner,
+            1000000,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), true)),
+            datasetServicePattern));
+    managerApiStub.removeTenant(
+        ManagerApi.RemoveTenantRequest.newBuilder().setName(datasetName).build());
+
+    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getUtilization()).isEqualTo(0);
+    assertThat(partitionMetadata1.getIsPartitionShared()).isEqualTo(false);
+
+    PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getUtilization()).isEqualTo(0);
+    assertThat(partitionMetadata2.getIsPartitionShared()).isEqualTo(false);
+  }
+
+  @Test
+  public void shouldRemoveSharedPartitionTenant() {
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+    String datasetServicePattern = "testDataset";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 4000000, true));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 4000000, true));
+
+    datasetMetadataStore.createSync(
+        new DatasetMetadata(
+            datasetName,
+            datasetOwner,
+            6000000,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), false)),
+            datasetServicePattern));
+    managerApiStub.removeTenant(
+        ManagerApi.RemoveTenantRequest.newBuilder().setName(datasetName).build());
+
+    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getUtilization()).isEqualTo(1000000);
+    assertThat(partitionMetadata1.getIsPartitionShared()).isEqualTo(true);
+
+    PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getUtilization()).isEqualTo(1000000);
+    assertThat(partitionMetadata2.getIsPartitionShared()).isEqualTo(true);
+  }
+
+  @Test
+  public void shouldErrorRemovingNonExistentTenant() {
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+    String datasetServicePattern = "testDataset";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 4000000, true));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 4000000, true));
+
+    datasetMetadataStore.createSync(
+        new DatasetMetadata(
+            datasetName,
+            datasetOwner,
+            6000000,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), false)),
+            datasetServicePattern));
+
+    StatusRuntimeException throwable =
+        (StatusRuntimeException)
+            catchThrowable(
+                () ->
+                    managerApiStub.removeTenant(
+                        ManagerApi.RemoveTenantRequest.newBuilder()
+                            .setName("testDataset1")
+                            .build()));
+
+    assertThat(throwable.getStatus().getCode()).isEqualTo(Status.UNKNOWN.getCode());
+
+    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getUtilization()).isEqualTo(4000000);
+    assertThat(partitionMetadata1.getIsPartitionShared()).isEqualTo(true);
+
+    PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getUtilization()).isEqualTo(4000000);
+    assertThat(partitionMetadata2.getIsPartitionShared()).isEqualTo(true);
+  }
+
+  @Test
+  public void shouldReassignThroughputAndSharedTenant() {
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+    String datasetServicePattern = "testDataset";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 1000000, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 1000000, false));
+
+    datasetMetadataStore.createSync(
+        new DatasetMetadata(
+            datasetName,
+            datasetOwner,
+            1000000,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), true)),
+            datasetServicePattern));
+    managerApiStub.reassignTenant(
+        ManagerApi.ReassignTenantRequest.newBuilder()
+            .setName(datasetName)
+            .setThroughputBytes(6000000)
+            .setRequireDedicatedPartitions(false)
+            .build());
+
+    Metadata.DatasetMetadata getDatasetMetadataResponse =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName).build());
+    assertThat(getDatasetMetadataResponse.getName()).isEqualTo(datasetName);
+    assertThat(getDatasetMetadataResponse.getOwner()).isEqualTo(datasetOwner);
+    assertThat(getDatasetMetadataResponse.getServiceNamePattern().equals(datasetServicePattern));
+    assertThat(getDatasetMetadataResponse.getThroughputBytes()).isEqualTo(6000000);
+    assertThat(getDatasetMetadataResponse.getPartitionConfigsList().size()).isEqualTo(2);
+
+    DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(datasetName);
+    assertThat(datasetMetadata.getName()).isEqualTo(datasetName);
+    assertThat(datasetMetadata.getOwner()).isEqualTo(datasetOwner);
+    assertThat(datasetMetadata.getThroughputBytes()).isEqualTo(6000000);
+    assertThat(datasetMetadata.getPartitionConfigs().size()).isEqualTo(2);
+
+    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getUtilization()).isEqualTo(3000000);
+    assertThat(partitionMetadata1.getIsPartitionShared()).isEqualTo(true);
+
+    PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getUtilization()).isEqualTo(3000000);
+    assertThat(partitionMetadata2.getIsPartitionShared()).isEqualTo(true);
+  }
+
+  @Test
+  public void shouldUpdateThroughputAndDedicatedTenant() {
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+    String datasetServicePattern = "testDataset";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 1000000, true));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 1000000, true));
+
+    datasetMetadataStore.createSync(
+        new DatasetMetadata(
+            datasetName,
+            datasetOwner,
+            1000000,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), false)),
+            datasetServicePattern));
+    managerApiStub.reassignTenant(
+        ManagerApi.ReassignTenantRequest.newBuilder()
+            .setName(datasetName)
+            .setThroughputBytes(6000000)
+            .setRequireDedicatedPartitions(true)
+            .build());
+
+    Metadata.DatasetMetadata getDatasetMetadataResponse =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName).build());
+    assertThat(getDatasetMetadataResponse.getName()).isEqualTo(datasetName);
+    assertThat(getDatasetMetadataResponse.getOwner()).isEqualTo(datasetOwner);
+    assertThat(getDatasetMetadataResponse.getServiceNamePattern().equals(datasetServicePattern));
+    assertThat(getDatasetMetadataResponse.getThroughputBytes()).isEqualTo(6000000);
+    assertThat(getDatasetMetadataResponse.getPartitionConfigsList().size()).isEqualTo(2);
+
+    DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(datasetName);
+    assertThat(datasetMetadata.getName()).isEqualTo(datasetName);
+    assertThat(datasetMetadata.getOwner()).isEqualTo(datasetOwner);
+    assertThat(datasetMetadata.getThroughputBytes()).isEqualTo(6000000);
+    assertThat(datasetMetadata.getPartitionConfigs().size()).isEqualTo(2);
+
+    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getUtilization()).isEqualTo(3000000);
+    assertThat(partitionMetadata1.getIsPartitionShared()).isEqualTo(false);
+
+    PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getUtilization()).isEqualTo(3000000);
+    assertThat(partitionMetadata2.getIsPartitionShared()).isEqualTo(false);
+  }
+
+  @Test
+  public void shouldUpdateOnlyDedicatedTenant() {
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+    String datasetServicePattern = "testDataset";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 4000000, true));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 4000000, true));
+    partitionMetadataStore.createSync(new PartitionMetadata("3", 0, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("4", 0, false));
+
+    datasetMetadataStore.createSync(
+        new DatasetMetadata(
+            datasetName,
+            datasetOwner,
+            1000000,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), false)),
+            datasetServicePattern));
+    managerApiStub.reassignTenant(
+        ManagerApi.ReassignTenantRequest.newBuilder()
+            .setName(datasetName)
+            .setThroughputBytes(6000000)
+            .setRequireDedicatedPartitions(true)
+            .build());
+
+    Metadata.DatasetMetadata getDatasetMetadataResponse =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName).build());
+    assertThat(getDatasetMetadataResponse.getName()).isEqualTo(datasetName);
+    assertThat(getDatasetMetadataResponse.getOwner()).isEqualTo(datasetOwner);
+    assertThat(getDatasetMetadataResponse.getServiceNamePattern().equals(datasetServicePattern));
+    assertThat(getDatasetMetadataResponse.getThroughputBytes()).isEqualTo(6000000);
+    assertThat(getDatasetMetadataResponse.getPartitionConfigsList().size()).isEqualTo(2);
+
+    DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(datasetName);
+    assertThat(datasetMetadata.getName()).isEqualTo(datasetName);
+    assertThat(datasetMetadata.getOwner()).isEqualTo(datasetOwner);
+    assertThat(datasetMetadata.getThroughputBytes()).isEqualTo(6000000);
+    assertThat(datasetMetadata.getPartitionConfigs().size()).isEqualTo(2);
+
+    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getUtilization()).isEqualTo(3000000);
+    assertThat(partitionMetadata1.getIsPartitionShared()).isEqualTo(true);
+
+    PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getUtilization()).isEqualTo(3000000);
+    assertThat(partitionMetadata2.getIsPartitionShared()).isEqualTo(true);
+
+    PartitionMetadata partitionMetadata3 = partitionMetadataStore.getSync("3");
+    assertThat(partitionMetadata3.getUtilization()).isEqualTo(3000000);
+    assertThat(partitionMetadata3.getIsPartitionShared()).isEqualTo(false);
+
+    PartitionMetadata partitionMetadata4 = partitionMetadataStore.getSync("4");
+    assertThat(partitionMetadata4.getUtilization()).isEqualTo(3000000);
+    assertThat(partitionMetadata4.getIsPartitionShared()).isEqualTo(false);
+  }
+
+  @Test
+  public void shouldErrorUpdatingNonExistentTenant() {
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+    String datasetServicePattern = "testDataset";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 1000000, true));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 1000000, true));
+
+    datasetMetadataStore.createSync(
+        new DatasetMetadata(
+            datasetName,
+            datasetOwner,
+            1000000,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), false)),
+            datasetServicePattern));
+
+    StatusRuntimeException throwable =
+        (StatusRuntimeException)
+            catchThrowable(
+                () ->
+                    managerApiStub.reassignTenant(
+                        ManagerApi.ReassignTenantRequest.newBuilder()
+                            .setName("testDataset1")
+                            .setThroughputBytes(6000000)
+                            .setRequireDedicatedPartitions(true)
+                            .build()));
+    assertThat(throwable.getStatus().getCode()).isEqualTo(Status.UNKNOWN.getCode());
+
+    Metadata.DatasetMetadata getDatasetMetadataResponse =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName).build());
+    assertThat(getDatasetMetadataResponse.getName()).isEqualTo(datasetName);
+    assertThat(getDatasetMetadataResponse.getOwner()).isEqualTo(datasetOwner);
+    assertThat(getDatasetMetadataResponse.getServiceNamePattern().equals(datasetServicePattern));
+    assertThat(getDatasetMetadataResponse.getThroughputBytes()).isEqualTo(1000000);
+    assertThat(getDatasetMetadataResponse.getPartitionConfigsList().size()).isEqualTo(1);
+
+    DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(datasetName);
+    assertThat(datasetMetadata.getName()).isEqualTo(datasetName);
+    assertThat(datasetMetadata.getOwner()).isEqualTo(datasetOwner);
+    assertThat(datasetMetadata.getThroughputBytes()).isEqualTo(1000000);
+    assertThat(datasetMetadata.getPartitionConfigs().size()).isEqualTo(1);
+
+    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getUtilization()).isEqualTo(1000000);
+    assertThat(partitionMetadata1.getIsPartitionShared()).isEqualTo(true);
+
+    PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getUtilization()).isEqualTo(1000000);
+    assertThat(partitionMetadata2.getIsPartitionShared()).isEqualTo(true);
+  }
+
+  @Test
+  public void shouldErrorUpdatingTenantNotEnoughPartitions() {
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+    String datasetServicePattern = "testDataset";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 1000000, true));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 1000000, true));
+
+    datasetMetadataStore.createSync(
+        new DatasetMetadata(
+            datasetName,
+            datasetOwner,
+            1000000,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), false)),
+            datasetServicePattern));
+
+    StatusRuntimeException throwable =
+        (StatusRuntimeException)
+            catchThrowable(
+                () ->
+                    managerApiStub.reassignTenant(
+                        ManagerApi.ReassignTenantRequest.newBuilder()
+                            .setName(datasetName)
+                            .setThroughputBytes(15000000)
+                            .setRequireDedicatedPartitions(true)
+                            .build()));
+    assertThat(throwable.getStatus().getCode()).isEqualTo(Status.UNKNOWN.getCode());
+    assertThat(throwable.getStatus().getDescription())
+        .isEqualTo(
+            String.format(
+                "Error updating new tenant %s, Not enough partitions are available", datasetName));
+
+    Metadata.DatasetMetadata getDatasetMetadataResponse =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName).build());
+    assertThat(getDatasetMetadataResponse.getName()).isEqualTo(datasetName);
+    assertThat(getDatasetMetadataResponse.getOwner()).isEqualTo(datasetOwner);
+    assertThat(getDatasetMetadataResponse.getServiceNamePattern().equals(datasetServicePattern));
+    assertThat(getDatasetMetadataResponse.getThroughputBytes()).isEqualTo(1000000);
+    assertThat(getDatasetMetadataResponse.getPartitionConfigsList().size()).isEqualTo(1);
+
+    DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(datasetName);
+    assertThat(datasetMetadata.getName()).isEqualTo(datasetName);
+    assertThat(datasetMetadata.getOwner()).isEqualTo(datasetOwner);
+    assertThat(datasetMetadata.getThroughputBytes()).isEqualTo(1000000);
+    assertThat(datasetMetadata.getPartitionConfigs().size()).isEqualTo(1);
+
+    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getUtilization()).isEqualTo(1000000);
+    assertThat(partitionMetadata1.getIsPartitionShared()).isEqualTo(true);
+
+    PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getUtilization()).isEqualTo(1000000);
+    assertThat(partitionMetadata2.getIsPartitionShared()).isEqualTo(true);
+  }
 }

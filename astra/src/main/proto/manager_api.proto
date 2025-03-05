@@ -33,11 +33,17 @@ service ManagerApiService {
   // GetPartition returns a single partition metadata by partition_id
   rpc GetPartition(PartitionRequest) returns (PartitionMetadata) {}
 
-  //CreateTenant creates and returns automatically tenant after assigning partitions automatically
+  // CreateTenant creates and returns automatically tenant after assigning partitions automatically
   rpc CreateTenant(CreateTenantRequest) returns (DatasetMetadata) {}
+
+  // RemoveTenant removes onboarded tenant and frees up the relevant partition
+  rpc RemoveTenant(RemoveTenantRequest) returns (RemoveTenantResponse) {}
+
+  // ReassignTenant updates onboarded tenant Partition settings
+  rpc ReassignTenant(ReassignTenantRequest) returns (DatasetMetadata) {}
 }
 
-// CreateDatasetMetadataRequest represents a new dataset with uninitialized thoughput and partition assignments
+// CreateDatasetMetadataRequest represents a new dataset with uninitialized throughput and partition assignments
 message CreateDatasetMetadataRequest {
   // Name of the dataset, must be unique
   string name = 1;
@@ -80,6 +86,8 @@ message UpdatePartitionAssignmentRequest {
   int64 throughput_bytes = 2;
   // Optional desired partition IDs - if empty will be automatically assigned
   repeated string partition_ids = 3;
+  // require dedicated partition for partitions
+  bool require_dedicated_partition = 4;
 }
 
 // UpdatePartitionAssignmentResponse represents the response after assigning a new set of partitions
@@ -120,7 +128,7 @@ message PartitionRequest {
 }
 
 message CreateTenantRequest {
-  // name of the dataset/ tenant, must be unique
+  // name of the dataset / tenant, must be unique
   string name = 1;
   // Owner information, maybe be any string
   string owner = 2;
@@ -130,4 +138,22 @@ message CreateTenantRequest {
   int64 throughput_bytes = 4;
   // Do tenant need dedicated dataset?
   bool require_dedicated_partitions = 5;
+}
+
+message RemoveTenantRequest {
+  // name of the dataset / tenant
+  string name = 1;
+}
+
+message RemoveTenantResponse {
+  string status = 1;
+}
+
+message ReassignTenantRequest {
+  // name of the dataset / tenant
+  string name = 1;
+  // Optional maximum throughput of the dataset - if set to -1 the existing value will not be updated
+  int64 throughput_bytes = 2;
+  // Do tenant need dedicated dataset?
+  bool require_dedicated_partitions = 3;
 }

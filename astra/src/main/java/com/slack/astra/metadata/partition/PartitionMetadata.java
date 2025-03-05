@@ -4,13 +4,13 @@ import com.slack.astra.metadata.core.AstraMetadata;
 import java.util.Objects;
 
 public class PartitionMetadata extends AstraMetadata {
-  public final String partition_id;
+  public final String partitionId;
   public final long utilization;
   public final boolean isPartitionShared;
 
   public PartitionMetadata(String partition, long utilization, boolean isPartitionShared) {
     super(partition);
-    this.partition_id = partition;
+    this.partitionId = partition;
     this.utilization = utilization;
     this.isPartitionShared = isPartitionShared;
   }
@@ -20,7 +20,7 @@ public class PartitionMetadata extends AstraMetadata {
   }
 
   public String getPartitionID() {
-    return this.partition_id;
+    return this.partitionId;
   }
 
   public long getUtilization() {
@@ -38,20 +38,20 @@ public class PartitionMetadata extends AstraMetadata {
     if (!super.equals(o)) return false;
     PartitionMetadata that = (PartitionMetadata) o;
     return utilization == that.utilization
-        && partition_id.equals(that.partition_id)
+        && partitionId.equals(that.partitionId)
         && isPartitionShared == that.isPartitionShared;
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(super.hashCode(), partition_id, utilization, isPartitionShared);
+    return Objects.hash(super.hashCode(), partitionId, utilization, isPartitionShared);
   }
 
   @Override
   public String toString() {
     return "PartitionMetadata{"
-        + ", partition_id='"
-        + partition_id
+        + ", partitionId='"
+        + partitionId
         + ", utilization="
         + utilization
         + ", partition shared="

@@ -64,7 +64,7 @@ public class DatasetPartitionMetadataTest {
     final List<String> list = List.of(name);
 
     final DatasetPartitionMetadata datasetPartitionMetadata =
-        new DatasetPartitionMetadata(start.toEpochMilli(), end.toEpochMilli(), list);
+        new DatasetPartitionMetadata(start.toEpochMilli(), end.toEpochMilli(), list, false);
 
     assertThat(datasetPartitionMetadata.startTimeEpochMs).isEqualTo(start.toEpochMilli());
     assertThat(datasetPartitionMetadata.endTimeEpochMs).isEqualTo(end.toEpochMilli());
@@ -79,14 +79,14 @@ public class DatasetPartitionMetadataTest {
     final List<String> list = List.of(name);
 
     final DatasetPartitionMetadata datasetPartitionMetadata1 =
-        new DatasetPartitionMetadata(start.toEpochMilli(), end.toEpochMilli(), list);
+        new DatasetPartitionMetadata(start.toEpochMilli(), end.toEpochMilli(), list, false);
     final DatasetPartitionMetadata datasetPartitionMetadata2 =
-        new DatasetPartitionMetadata(start.toEpochMilli() + 2, end.toEpochMilli(), list);
+        new DatasetPartitionMetadata(start.toEpochMilli() + 2, end.toEpochMilli(), list, false);
     final DatasetPartitionMetadata datasetPartitionMetadata3 =
-        new DatasetPartitionMetadata(start.toEpochMilli(), end.toEpochMilli() + 3, list);
+        new DatasetPartitionMetadata(start.toEpochMilli(), end.toEpochMilli() + 3, list, false);
     final DatasetPartitionMetadata datasetPartitionMetadata4 =
         new DatasetPartitionMetadata(
-            start.toEpochMilli(), end.toEpochMilli(), Collections.emptyList());
+            start.toEpochMilli(), end.toEpochMilli(), Collections.emptyList(), false);
 
     assertThat(datasetPartitionMetadata1).isNotEqualTo(datasetPartitionMetadata2);
     assertThat(datasetPartitionMetadata1).isNotEqualTo(datasetPartitionMetadata3);
@@ -114,12 +114,14 @@ public class DatasetPartitionMetadataTest {
     final List<String> list = List.of(name);
 
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> new DatasetPartitionMetadata(0, end.toEpochMilli(), list));
+        .isThrownBy(() -> new DatasetPartitionMetadata(0, end.toEpochMilli(), list, false));
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> new DatasetPartitionMetadata(start.toEpochMilli(), 0, list));
+        .isThrownBy(() -> new DatasetPartitionMetadata(start.toEpochMilli(), 0, list, false));
     assertThatIllegalArgumentException()
         .isThrownBy(
-            () -> new DatasetPartitionMetadata(start.toEpochMilli(), end.toEpochMilli(), null));
+            () ->
+                new DatasetPartitionMetadata(
+                    start.toEpochMilli(), end.toEpochMilli(), null, false));
   }
 
   @Test
@@ -127,7 +129,8 @@ public class DatasetPartitionMetadataTest {
     final long throughputBytes = 1000;
 
     {
-      DatasetPartitionMetadata partition = new DatasetPartitionMetadata(100, 200, List.of("1"));
+      DatasetPartitionMetadata partition =
+          new DatasetPartitionMetadata(100, 200, List.of("1"), false);
 
       DatasetMetadata datasetMetadata =
           new DatasetMetadata(
@@ -138,7 +141,8 @@ public class DatasetPartitionMetadataTest {
     }
 
     {
-      DatasetPartitionMetadata partition = new DatasetPartitionMetadata(201, 300, List.of("2"));
+      DatasetPartitionMetadata partition =
+          new DatasetPartitionMetadata(201, 300, List.of("2"), false);
       DatasetMetadata datasetMetadata =
           new DatasetMetadata(
               "testDataset2", "datasetOwner2", throughputBytes, List.of(partition), "testDataset2");
@@ -180,7 +184,8 @@ public class DatasetPartitionMetadataTest {
     final String name = "testDataset";
     final String owner = "datasetOwner";
     final long throughputBytes = 1000;
-    final DatasetPartitionMetadata partition = new DatasetPartitionMetadata(100, 200, List.of("1"));
+    final DatasetPartitionMetadata partition =
+        new DatasetPartitionMetadata(100, 200, List.of("1"), false);
 
     DatasetMetadata datasetMetadata =
         new DatasetMetadata(name, owner, throughputBytes, List.of(partition), name);
@@ -220,10 +225,10 @@ public class DatasetPartitionMetadataTest {
     final String owner = "datasetOwner";
     final long throughputBytes = 1000;
     final DatasetPartitionMetadata partition1 =
-        new DatasetPartitionMetadata(100, 200, List.of("1"));
+        new DatasetPartitionMetadata(100, 200, List.of("1"), false);
 
     final DatasetPartitionMetadata partition2 =
-        new DatasetPartitionMetadata(201, 300, List.of("2", "3"));
+        new DatasetPartitionMetadata(201, 300, List.of("2", "3"), false);
 
     DatasetMetadata datasetMetadata =
         new DatasetMetadata(name, owner, throughputBytes, List.of(partition1, partition2), name);
@@ -264,7 +269,8 @@ public class DatasetPartitionMetadataTest {
     final String name = "testDataset";
     final String owner = "datasetOwner";
     final long throughputBytes = 1000;
-    final DatasetPartitionMetadata partition = new DatasetPartitionMetadata(100, 200, List.of("1"));
+    final DatasetPartitionMetadata partition =
+        new DatasetPartitionMetadata(100, 200, List.of("1"), false);
 
     DatasetMetadata datasetMetadata =
         new DatasetMetadata(name, owner, throughputBytes, List.of(partition), name);
@@ -276,7 +282,7 @@ public class DatasetPartitionMetadataTest {
     final String owner1 = "datasetOwner1";
     final long throughputBytes1 = 1;
     final DatasetPartitionMetadata partition1 =
-        new DatasetPartitionMetadata(100, 200, List.of("2"));
+        new DatasetPartitionMetadata(100, 200, List.of("2"), false);
 
     DatasetMetadata datasetMetadata1 =
         new DatasetMetadata(name1, owner1, throughputBytes1, List.of(partition1), name1);

@@ -164,7 +164,10 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
       DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(request.getName());
       ImmutableList<DatasetPartitionMetadata> updatedDatasetPartitionMetadata =
-          addNewPartition(datasetMetadata.getPartitionConfigs(), request.getPartitionIdsList());
+          addNewPartition(
+              datasetMetadata.getPartitionConfigs(),
+              request.getPartitionIdsList(),
+              request.getRequireDedicatedPartition());
 
       // if the user provided a non-negative value for throughput set it, otherwise default to the
       // existing value
@@ -330,7 +333,9 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
    * current time + 1 to max long.
    */
   private static ImmutableList<DatasetPartitionMetadata> addNewPartition(
-      List<DatasetPartitionMetadata> existingPartitions, List<String> newPartitionIdsList) {
+      List<DatasetPartitionMetadata> existingPartitions,
+      List<String> newPartitionIdsList,
+      boolean usingDedicatedPartition) {
     if (newPartitionIdsList.isEmpty()) {
       return ImmutableList.copyOf(existingPartitions);
     }
@@ -364,12 +369,14 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
           new DatasetPartitionMetadata(
               previousActiveDatasetPartition.get().getStartTimeEpochMs(),
               partitionCutoverTime,
-              previousActiveDatasetPartition.get().getPartitions());
+              previousActiveDatasetPartition.get().getPartitions(),
+              previousActiveDatasetPartition.get().getUsingDedicatedPartition());
       builder.add(updatedPreviousActivePartition);
     }
 
     DatasetPartitionMetadata newPartitionMetadata =
-        new DatasetPartitionMetadata(partitionCutoverTime + 1, MAX_TIME, newPartitionIdsList);
+        new DatasetPartitionMetadata(
+            partitionCutoverTime + 1, MAX_TIME, newPartitionIdsList, usingDedicatedPartition);
     return builder.add(newPartitionMetadata).build();
   }
 
@@ -452,16 +459,21 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
           partitionMetadataStore.findPartition(
               request.getThroughputBytes(), request.getRequireDedicatedPartitions());
 
-      if (partitionIdsList.size() < 2) {
+      if (partitionIdsList.isEmpty()) {
         String msg = "Error creating new tenant, Not enough partitions are available";
         LOG.error(msg);
         responseObserver.onError(Status.UNKNOWN.withDescription(msg).asException());
+        return;
       }
 
       long partitionStartTime = Instant.now().toEpochMilli();
       ImmutableList.Builder<DatasetPartitionMetadata> builder = ImmutableList.builder();
       DatasetPartitionMetadata newPartitionMetadata =
-          new DatasetPartitionMetadata(partitionStartTime, MAX_TIME, partitionIdsList);
+          new DatasetPartitionMetadata(
+              partitionStartTime,
+              MAX_TIME,
+              partitionIdsList,
+              request.getRequireDedicatedPartitions());
       builder.add(newPartitionMetadata);
 
       datasetMetadataStore.createSync(
@@ -476,6 +488,100 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       responseObserver.onCompleted();
     } catch (Exception e) {
       LOG.error("Error creating new tenant", e);
+      responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
+    }
+  }
+
+  @Override
+  public void removeTenant(
+      ManagerApi.RemoveTenantRequest request,
+      StreamObserver<ManagerApi.RemoveTenantResponse> responseObserver) {
+
+    try {
+      DatasetMetadata existingDatasetMetadata = datasetMetadataStore.getSync(request.getName());
+      partitionMetadataStore.clearPartitions(existingDatasetMetadata);
+      datasetMetadataStore.deleteSync(request.getName());
+      responseObserver.onNext(
+          ManagerApi.RemoveTenantResponse.newBuilder()
+              .setStatus(String.format("Removed tenant %s successfully.", request.getName()))
+              .build());
+      responseObserver.onCompleted();
+
+    } catch (Exception e) {
+      LOG.error("Error removing tenant ", e);
+      responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
+    }
+  }
+
+  @Override
+  public void reassignTenant(
+      ManagerApi.ReassignTenantRequest request,
+      StreamObserver<Metadata.DatasetMetadata> responseObserver) {
+
+    try {
+      DatasetMetadata existingDatasetMetadata = datasetMetadataStore.getSync(request.getName());
+
+      DatasetPartitionMetadata latestDatasetPartitionMetadata =
+          partitionMetadataStore.clearPartitions(existingDatasetMetadata);
+
+      // if the user provided a non-negative value for throughput set it, otherwise default to the
+      // existing value
+      long updatedThroughputBytes =
+          request.getThroughputBytes() < 0
+              ? existingDatasetMetadata.getThroughputBytes()
+              : request.getThroughputBytes();
+
+      List<String> newPartitionIds =
+          partitionMetadataStore.findPartition(
+              updatedThroughputBytes, request.getRequireDedicatedPartitions());
+      // Not enough partitions are available for reassigning, revert the clearing operation
+      if (newPartitionIds.isEmpty()) {
+        int newPartitionCount = PartitionMetadataStore.getPartitionCount(updatedThroughputBytes);
+        int oldPartitionCount =
+            PartitionMetadataStore.getPartitionCount(existingDatasetMetadata.getThroughputBytes());
+
+        for (String partitionId : latestDatasetPartitionMetadata.getPartitions()) {
+          PartitionMetadata existingPartitionMetadata = partitionMetadataStore.getSync(partitionId);
+          long newUtilization =
+              existingPartitionMetadata.getUtilization()
+                  - updatedThroughputBytes / newPartitionCount
+                  + existingDatasetMetadata.getThroughputBytes() / oldPartitionCount;
+
+          partitionMetadataStore.updateSync(
+              new PartitionMetadata(
+                  partitionId,
+                  newUtilization,
+                  !latestDatasetPartitionMetadata.usingDedicatedPartition));
+        }
+        String msg =
+            String.format(
+                "Error updating new tenant %s, Not enough partitions are available",
+                request.getName());
+        LOG.error(msg);
+        responseObserver.onError(Status.UNKNOWN.withDescription(msg).asException());
+        return;
+      }
+      ImmutableList<DatasetPartitionMetadata> updatedDatasetPartitionMetadata =
+          addNewPartition(
+              existingDatasetMetadata.getPartitionConfigs(),
+              newPartitionIds,
+              request.getRequireDedicatedPartitions());
+
+      DatasetMetadata updatedDatasetMetadata =
+          new DatasetMetadata(
+              existingDatasetMetadata.getName(),
+              existingDatasetMetadata.getOwner(),
+              updatedThroughputBytes,
+              updatedDatasetPartitionMetadata,
+              existingDatasetMetadata.getServiceNamePattern());
+      datasetMetadataStore.updateSync(updatedDatasetMetadata);
+      Thread.sleep(500);
+
+      responseObserver.onNext(
+          toDatasetMetadataProto(datasetMetadataStore.getSync(request.getName())));
+      responseObserver.onCompleted();
+    } catch (Exception e) {
+      LOG.error("Error updating tenant", e);
       responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
     }
   }

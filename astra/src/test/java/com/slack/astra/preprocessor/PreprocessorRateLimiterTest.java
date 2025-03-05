@@ -41,7 +41,7 @@ public class PreprocessorRateLimiterTest {
             name,
             name,
             targetThroughput,
-            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"))),
+            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"), false)),
             DatasetMetadata.MATCH_ALL_SERVICE);
     BiPredicate<String, List<Trace.Span>> predicate =
         rateLimiter.createBulkIngestRateLimiter(List.of(datasetMetadata));
@@ -105,7 +105,7 @@ public class PreprocessorRateLimiterTest {
             name,
             name,
             targetThroughput,
-            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"))),
+            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"), false)),
             DatasetMetadata.MATCH_ALL_SERVICE);
     BiPredicate<String, List<Trace.Span>> predicate =
         rateLimiter.createBulkIngestRateLimiter(List.of(datasetMetadata));
@@ -153,7 +153,7 @@ public class PreprocessorRateLimiterTest {
             name,
             name,
             targetThroughput,
-            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"))),
+            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"), false)),
             DatasetMetadata.MATCH_STAR_SERVICE);
     BiPredicate<String, List<Trace.Span>> predicate1 =
         rateLimiter1.createBulkIngestRateLimiter(List.of(datasetMetadata1));
@@ -201,7 +201,7 @@ public class PreprocessorRateLimiterTest {
             name,
             name,
             targetThroughput,
-            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"))),
+            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"), false)),
             "key");
     BiPredicate<String, List<Trace.Span>> predicate2 =
         rateLimiter2.createBulkIngestRateLimiter(List.of(datasetMetadata2));
@@ -266,14 +266,14 @@ public class PreprocessorRateLimiterTest {
             name1,
             name1,
             targetThroughput,
-            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"))),
+            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"), false)),
             "no_service_matching_docs");
     DatasetMetadata datasetMetadata2 =
         new DatasetMetadata(
             name2,
             name2,
             targetThroughput,
-            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"))),
+            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"), false)),
             DatasetMetadata.MATCH_ALL_SERVICE);
 
     // ensure we always drop for dataset1
@@ -337,7 +337,7 @@ public class PreprocessorRateLimiterTest {
             "wrong_service",
             "wrong_service",
             Long.MAX_VALUE,
-            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"))),
+            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"), false)),
             "wrong_service");
     BiPredicate<String, List<Trace.Span>> predicate =
         rateLimiter.createBulkIngestRateLimiter(List.of(datasetMetadata));
@@ -389,7 +389,7 @@ public class PreprocessorRateLimiterTest {
             name,
             name,
             targetThroughput,
-            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"))),
+            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"), false)),
             name);
     BiPredicate<String, List<Trace.Span>> predicate =
         rateLimiter.createBulkIngestRateLimiter(List.of(datasetMetadata));
@@ -424,7 +424,7 @@ public class PreprocessorRateLimiterTest {
             name,
             name,
             targetThroughput,
-            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"))),
+            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"), false)),
             DatasetMetadata.MATCH_ALL_SERVICE);
     BiPredicate<String, List<Trace.Span>> predicate =
         rateLimiter.createBulkIngestRateLimiter(List.of(datasetMetadata));
@@ -458,7 +458,7 @@ public class PreprocessorRateLimiterTest {
             name,
             name,
             targetThroughput,
-            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"))),
+            List.of(new DatasetPartitionMetadata(100, Long.MAX_VALUE, List.of("0"), false)),
             DatasetMetadata.MATCH_ALL_SERVICE);
     BiPredicate<String, List<Trace.Span>> predicate =
         rateLimiter.createBulkIngestRateLimiter(List.of(datasetMetadata));

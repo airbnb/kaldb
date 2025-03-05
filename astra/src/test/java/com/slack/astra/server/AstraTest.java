@@ -126,7 +126,7 @@ public class AstraTest {
     curatorFramework = CuratorBuilder.build(meterRegistry, zkConfig);
     datasetMetadataStore = new DatasetMetadataStore(curatorFramework, true);
     final DatasetPartitionMetadata partition =
-        new DatasetPartitionMetadata(1, Long.MAX_VALUE, List.of("0", "1"));
+        new DatasetPartitionMetadata(1, Long.MAX_VALUE, List.of("0", "1"), false);
     final List<DatasetPartitionMetadata> partitionConfigs = Collections.singletonList(partition);
     DatasetMetadata datasetMetadata =
         new DatasetMetadata(
