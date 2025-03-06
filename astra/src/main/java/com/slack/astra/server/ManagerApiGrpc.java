@@ -499,7 +499,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
     try {
       DatasetMetadata existingDatasetMetadata = datasetMetadataStore.getSync(request.getName());
-      partitionMetadataStore.clearPartitions(existingDatasetMetadata);
+      DatasetPartitionMetadata _ = partitionMetadataStore.clearPartitions(existingDatasetMetadata);
       datasetMetadataStore.deleteSync(request.getName());
       responseObserver.onNext(
           ManagerApi.RemoveTenantResponse.newBuilder()
@@ -521,7 +521,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     try {
       DatasetMetadata existingDatasetMetadata = datasetMetadataStore.getSync(request.getName());
 
-      DatasetPartitionMetadata latestDatasetPartitionMetadata =
+      DatasetPartitionMetadata previousActivePartitionMetadata =
           partitionMetadataStore.clearPartitions(existingDatasetMetadata);
 
       // if the user provided a non-negative value for throughput set it, otherwise default to the
@@ -535,12 +535,12 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
           partitionMetadataStore.findPartition(
               updatedThroughputBytes, request.getRequireDedicatedPartitions());
       // Not enough partitions are available for reassigning, revert the clearing operation
-      if (newPartitionIds.isEmpty()) {
+      if (newPartitionIds.isEmpty() && previousActivePartitionMetadata != null) {
         int newPartitionCount = PartitionMetadataStore.getPartitionCount(updatedThroughputBytes);
         int oldPartitionCount =
             PartitionMetadataStore.getPartitionCount(existingDatasetMetadata.getThroughputBytes());
 
-        for (String partitionId : latestDatasetPartitionMetadata.getPartitions()) {
+        for (String partitionId : previousActivePartitionMetadata.getPartitions()) {
           PartitionMetadata existingPartitionMetadata = partitionMetadataStore.getSync(partitionId);
           long newUtilization =
               existingPartitionMetadata.getUtilization()
@@ -551,7 +551,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               new PartitionMetadata(
                   partitionId,
                   newUtilization,
-                  !latestDatasetPartitionMetadata.usingDedicatedPartition));
+                  !previousActivePartitionMetadata.usingDedicatedPartition));
         }
         String msg =
             String.format(

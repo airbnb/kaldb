@@ -8,6 +8,7 @@ import com.slack.astra.metadata.dataset.DatasetPartitionMetadata;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import org.apache.curator.x.async.AsyncCuratorFramework;
 import org.apache.zookeeper.CreateMode;
 
@@ -81,26 +82,31 @@ public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata
   public DatasetPartitionMetadata clearPartitions(DatasetMetadata datasetMetadata)
       throws InterruptedException {
 
-    for (DatasetPartitionMetadata partitionConfig : datasetMetadata.getPartitionConfigs()) {
-      if (partitionConfig.getEndTimeEpochMs() == MAX_TIME) {
-        // we only consider the latest partition config to be updated
-        for (String partitionId : partitionConfig.getPartitions()) {
-          PartitionMetadata existingPartitionMetadata = this.getSync(partitionId);
+    Optional<DatasetPartitionMetadata> previousActiveDatasetPartition =
+        datasetMetadata.getPartitionConfigs().stream()
+            .filter(
+                datasetPartitionMetadata ->
+                    datasetPartitionMetadata.getEndTimeEpochMs() == MAX_TIME)
+            .findFirst();
 
-          int partitionCount = getPartitionCount(datasetMetadata.getThroughputBytes());
-          long newUtilization =
-              existingPartitionMetadata.getUtilization()
-                  - datasetMetadata.getThroughputBytes() / partitionCount;
-          boolean newIsPartitionShared = existingPartitionMetadata.getIsPartitionShared();
-          if (newUtilization == 0) {
-            newIsPartitionShared = false;
-          }
-          this.updateSync(new PartitionMetadata(partitionId, newUtilization, newIsPartitionShared));
-          Thread.sleep(500);
-        }
-        return partitionConfig;
-      }
+    if (previousActiveDatasetPartition.isEmpty()) {
+      return null;
     }
-    return null;
+    // we only consider the latest partition config to be updated
+    for (String partitionId : previousActiveDatasetPartition.get().getPartitions()) {
+      PartitionMetadata existingPartitionMetadata = this.getSync(partitionId);
+
+      int partitionCount = getPartitionCount(datasetMetadata.getThroughputBytes());
+      long newUtilization =
+          existingPartitionMetadata.getUtilization()
+              - datasetMetadata.getThroughputBytes() / partitionCount;
+      boolean newIsPartitionShared = existingPartitionMetadata.getIsPartitionShared();
+      if (newUtilization == 0) {
+        newIsPartitionShared = false;
+      }
+      this.updateSync(new PartitionMetadata(partitionId, newUtilization, newIsPartitionShared));
+      Thread.sleep(500);
+    }
+    return previousActiveDatasetPartition.get();
   }
 }
