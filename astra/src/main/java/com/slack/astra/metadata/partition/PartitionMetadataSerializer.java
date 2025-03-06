@@ -7,7 +7,7 @@ import com.slack.astra.proto.metadata.Metadata;
 
 public class PartitionMetadataSerializer implements MetadataSerializer<PartitionMetadata> {
 
-  private static PartitionMetadata fromPartitionMetadataProto(
+  public static PartitionMetadata fromPartitionMetadataProto(
       Metadata.PartitionMetadata partitionMetadataProto) {
 
     return new PartitionMetadata(
