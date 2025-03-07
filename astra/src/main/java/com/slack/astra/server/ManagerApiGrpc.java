@@ -536,7 +536,6 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               updatedThroughputBytes, request.getRequireDedicatedPartitions());
       // Not enough partitions are available for reassigning, revert the clearing operation
       if (newPartitionIds.isEmpty() && previousActivePartitionMetadata != null) {
-        int newPartitionCount = PartitionMetadataStore.getPartitionCount(updatedThroughputBytes);
         int oldPartitionCount =
             PartitionMetadataStore.getPartitionCount(existingDatasetMetadata.getThroughputBytes());
 
@@ -544,7 +543,6 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
           PartitionMetadata existingPartitionMetadata = partitionMetadataStore.getSync(partitionId);
           long newUtilization =
               existingPartitionMetadata.getUtilization()
-                  - updatedThroughputBytes / newPartitionCount
                   + existingDatasetMetadata.getThroughputBytes() / oldPartitionCount;
 
           partitionMetadataStore.updateSync(

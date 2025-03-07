@@ -957,6 +957,10 @@ public class ManagerApiGrpcTest {
     assertThat(throwable.getStatus().getCode()).isEqualTo(Status.UNKNOWN.getCode());
     assertThat(throwable.getStatus().getDescription())
         .isEqualTo("Error creating new tenant, Not enough partitions are available");
+
+    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getUtilization()).isEqualTo(1000000);
+    assertThat(partitionMetadata1.getIsPartitionShared()).isEqualTo(true);
   }
 
   @Test
@@ -1133,7 +1137,7 @@ public class ManagerApiGrpcTest {
   }
 
   @Test
-  public void shouldUpdateThroughputAndDedicatedTenant() {
+  public void shoulReassignThroughputAndDedicatedTenant() {
     String datasetName = "testDataset";
     String datasetOwner = "testOwner";
     String datasetServicePattern = "testDataset";
@@ -1182,7 +1186,7 @@ public class ManagerApiGrpcTest {
   }
 
   @Test
-  public void shouldUpdateOnlyDedicatedTenant() {
+  public void shouldReassignOnlyDedicatedTenant() {
     String datasetName = "testDataset";
     String datasetOwner = "testOwner";
     String datasetServicePattern = "testDataset";
@@ -1241,7 +1245,7 @@ public class ManagerApiGrpcTest {
   }
 
   @Test
-  public void shouldErrorUpdatingNonExistentTenant() {
+  public void shouldErrorReassigningNonExistentTenant() {
     String datasetName = "testDataset";
     String datasetOwner = "testOwner";
     String datasetServicePattern = "testDataset";
@@ -1296,7 +1300,7 @@ public class ManagerApiGrpcTest {
   }
 
   @Test
-  public void shouldErrorUpdatingTenantNotEnoughPartitions() {
+  public void shouldErrorReassigningTenantNotEnoughPartitions() {
     String datasetName = "testDataset";
     String datasetOwner = "testOwner";
     String datasetServicePattern = "testDataset";

@@ -3,6 +3,9 @@ package com.slack.astra.metadata.partition;
 import com.slack.astra.metadata.core.AstraMetadata;
 import java.util.Objects;
 
+/**
+ * PartitionMetadata Object to track the utilization and isPartitionShared in zookeeper
+ */
 public class PartitionMetadata extends AstraMetadata {
   public final String partitionId;
   public final long utilization;

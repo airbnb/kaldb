@@ -26,19 +26,29 @@ public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata
         PARTITION_MAP_METADATA_STORE_ZK_PATH);
   }
 
+  /**
+   * Returns the partition count based of the throughput.
+   * Performs div operation, and returns the ceil of the division
+   * @param throughput service throughput to calculate number of partitions for
+   * @return integer number of partition count
+   */
   public static int getPartitionCount(long throughput) {
     return (int) Math.ceilDiv(throughput, PARTITION_CAPACITY);
   }
 
-  public List<String> findPartition(long requiredThroughput, boolean requireDedicatedPartition) {
+  /**
+   * finds the available partitions based utilization and updates the utilization if partitions are considered.
+   * @param requiredThroughput - targeted throughput
+   * @param requireDedicatedPartition - if dedicated partitions are required
+   * @return list of string of partition ids
+   */
+  public List<String> findPartition(long requiredThroughput, boolean requireDedicatedPartition) throws InterruptedException {
     List<String> partitionIdsList = new ArrayList<>();
     int numberOfPartitions = getPartitionCount(requiredThroughput);
 
     long perPartitionCapacity = requiredThroughput / numberOfPartitions;
-    if (numberOfPartitions == 1) {
-      // we want minimum of two partitions assigned to a tenant for redundancy purpose
-      numberOfPartitions++;
-    }
+    // we want minimum of two partitions assigned to a tenant for redundancy purpose
+    numberOfPartitions = numberOfPartitions == 1 ? numberOfPartitions + 1 : numberOfPartitions;
 
     List<PartitionMetadata> partitionMetadataList = this.listSync();
     partitionMetadataList.sort(
@@ -48,10 +58,7 @@ public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata
       if (requireDedicatedPartition) {
         if (partitionMetadata.getUtilization() == 0 && !partitionMetadata.isPartitionShared) {
           partitionIdsList.add(partitionMetadata.getPartitionID());
-
-          PartitionMetadata newPartitionMetadata =
-              new PartitionMetadata(partitionMetadata.partitionId, perPartitionCapacity, false);
-          this.updateSync(newPartitionMetadata);
+          this.updateSync(new PartitionMetadata(partitionMetadata.partitionId, perPartitionCapacity, false));
         }
       } else {
         // add logic for shared partition here
@@ -63,12 +70,10 @@ public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata
                 || (partitionMetadata.getUtilization() == 0
                     && !partitionMetadata.isPartitionShared))) {
           partitionIdsList.add(partitionMetadata.getPartitionID());
-          PartitionMetadata newPartitionMetadata =
-              new PartitionMetadata(
+          this.updateSync(new PartitionMetadata(
                   partitionMetadata.partitionId,
                   partitionMetadata.utilization + perPartitionCapacity,
-                  true);
-          this.updateSync(newPartitionMetadata);
+                  true));
         }
       }
       if (partitionIdsList.size() == numberOfPartitions) {
@@ -76,9 +81,22 @@ public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata
         return partitionIdsList;
       }
     }
+    Thread.sleep(500);  // to handle local cache sync
+    // if we reached here means we did not find required number of partitions
+    for (String partitionId: partitionIdsList) {
+      PartitionMetadata partitionMetadata = this.getSync(partitionId);
+      long utilization = partitionMetadata.utilization - perPartitionCapacity;
+      boolean isPartitionShared = utilization != 0 && partitionMetadata.isPartitionShared;
+      this.updateSync(new PartitionMetadata(partitionId, utilization, isPartitionShared));
+    }
     return List.of();
   }
 
+  /**
+   * fetch the latest active partition metadata update the partition utilization and isPartitionShared status
+   * @param datasetMetadata tenant metadata object
+   * @return previous active partitionMetadata
+   */
   public DatasetPartitionMetadata clearPartitions(DatasetMetadata datasetMetadata)
       throws InterruptedException {
 
@@ -95,17 +113,14 @@ public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata
     // we only consider the latest partition config to be updated
     for (String partitionId : previousActiveDatasetPartition.get().getPartitions()) {
       PartitionMetadata existingPartitionMetadata = this.getSync(partitionId);
-
       int partitionCount = getPartitionCount(datasetMetadata.getThroughputBytes());
       long newUtilization =
           existingPartitionMetadata.getUtilization()
               - datasetMetadata.getThroughputBytes() / partitionCount;
-      boolean newIsPartitionShared = existingPartitionMetadata.getIsPartitionShared();
-      if (newUtilization == 0) {
-        newIsPartitionShared = false;
-      }
-      this.updateSync(new PartitionMetadata(partitionId, newUtilization, newIsPartitionShared));
-      Thread.sleep(500);
+
+      boolean isPartitionShared = newUtilization != 0 && existingPartitionMetadata.isPartitionShared;
+      this.updateSync(new PartitionMetadata(partitionId, newUtilization, isPartitionShared));
+      Thread.sleep(500);  // for local cache to sync
     }
     return previousActiveDatasetPartition.get();
   }
