@@ -27,8 +27,9 @@ public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata
   }
 
   /**
-   * Returns the partition count based of the throughput.
-   * Performs div operation, and returns the ceil of the division
+   * Returns the partition count based of the throughput. Performs div operation, and returns the
+   * ceil of the division
+   *
    * @param throughput service throughput to calculate number of partitions for
    * @return integer number of partition count
    */
@@ -37,12 +38,15 @@ public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata
   }
 
   /**
-   * finds the available partitions based utilization and updates the utilization if partitions are considered.
+   * finds the available partitions based utilization and updates the utilization if partitions are
+   * considered.
+   *
    * @param requiredThroughput - targeted throughput
    * @param requireDedicatedPartition - if dedicated partitions are required
    * @return list of string of partition ids
    */
-  public List<String> findPartition(long requiredThroughput, boolean requireDedicatedPartition) throws InterruptedException {
+  public List<String> findPartition(long requiredThroughput, boolean requireDedicatedPartition)
+      throws InterruptedException {
     List<String> partitionIdsList = new ArrayList<>();
     int numberOfPartitions = getPartitionCount(requiredThroughput);
 
@@ -58,7 +62,8 @@ public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata
       if (requireDedicatedPartition) {
         if (partitionMetadata.getUtilization() == 0 && !partitionMetadata.isPartitionShared) {
           partitionIdsList.add(partitionMetadata.getPartitionID());
-          this.updateSync(new PartitionMetadata(partitionMetadata.partitionId, perPartitionCapacity, false));
+          this.updateSync(
+              new PartitionMetadata(partitionMetadata.partitionId, perPartitionCapacity, false));
         }
       } else {
         // add logic for shared partition here
@@ -70,7 +75,8 @@ public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata
                 || (partitionMetadata.getUtilization() == 0
                     && !partitionMetadata.isPartitionShared))) {
           partitionIdsList.add(partitionMetadata.getPartitionID());
-          this.updateSync(new PartitionMetadata(
+          this.updateSync(
+              new PartitionMetadata(
                   partitionMetadata.partitionId,
                   partitionMetadata.utilization + perPartitionCapacity,
                   true));
@@ -81,9 +87,9 @@ public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata
         return partitionIdsList;
       }
     }
-    Thread.sleep(500);  // to handle local cache sync
+    Thread.sleep(500); // to handle local cache sync
     // if we reached here means we did not find required number of partitions
-    for (String partitionId: partitionIdsList) {
+    for (String partitionId : partitionIdsList) {
       PartitionMetadata partitionMetadata = this.getSync(partitionId);
       long utilization = partitionMetadata.utilization - perPartitionCapacity;
       boolean isPartitionShared = utilization != 0 && partitionMetadata.isPartitionShared;
@@ -93,7 +99,9 @@ public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata
   }
 
   /**
-   * fetch the latest active partition metadata update the partition utilization and isPartitionShared status
+   * fetch the latest active partition metadata update the partition utilization and
+   * isPartitionShared status
+   *
    * @param datasetMetadata tenant metadata object
    * @return previous active partitionMetadata
    */
@@ -118,9 +126,10 @@ public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata
           existingPartitionMetadata.getUtilization()
               - datasetMetadata.getThroughputBytes() / partitionCount;
 
-      boolean isPartitionShared = newUtilization != 0 && existingPartitionMetadata.isPartitionShared;
+      boolean isPartitionShared =
+          newUtilization != 0 && existingPartitionMetadata.isPartitionShared;
       this.updateSync(new PartitionMetadata(partitionId, newUtilization, isPartitionShared));
-      Thread.sleep(500);  // for local cache to sync
+      Thread.sleep(500); // for local cache to sync
     }
     return previousActiveDatasetPartition.get();
   }
