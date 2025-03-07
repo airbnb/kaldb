@@ -789,15 +789,15 @@ public class ManagerApiGrpcTest {
   }
 
   @Test
-  public void shouldCreateAndGetNewPartition() {
+  public void shouldCreateAndGetNewPartitionOnlyPartitionId() {
     String partitionId = "1";
 
     managerApiStub.createPartition(
-        ManagerApi.PartitionRequest.newBuilder().setPartitionId(partitionId).build());
+        ManagerApi.CreatePartitionRequest.newBuilder().setPartitionId(partitionId).build());
 
     Metadata.PartitionMetadata getPartitionMetadataResponse =
         managerApiStub.getPartition(
-            ManagerApi.PartitionRequest.newBuilder().setPartitionId(partitionId).build());
+            ManagerApi.GetPartitionRequest.newBuilder().setPartitionId(partitionId).build());
 
     assertThat(getPartitionMetadataResponse.getPartitionId()).isEqualTo(partitionId);
     assertThat(getPartitionMetadataResponse.getUtilization()).isEqualTo(0);
@@ -811,18 +811,46 @@ public class ManagerApiGrpcTest {
   }
 
   @Test
+  public void shouldCreateAndGetNewPartition() {
+    String partitionId = "1";
+    long utilization = 1000000;
+    boolean isPartitionShared = true;
+
+    managerApiStub.createPartition(
+        ManagerApi.CreatePartitionRequest.newBuilder()
+            .setPartitionId(partitionId)
+            .setUtilization(utilization)
+            .setIsPartitionShared(isPartitionShared)
+            .build());
+
+    Metadata.PartitionMetadata getPartitionMetadataResponse =
+        managerApiStub.getPartition(
+            ManagerApi.GetPartitionRequest.newBuilder().setPartitionId(partitionId).build());
+
+    assertThat(getPartitionMetadataResponse.getPartitionId()).isEqualTo(partitionId);
+    assertThat(getPartitionMetadataResponse.getUtilization()).isEqualTo(utilization);
+    assertThat(getPartitionMetadataResponse.getIsPartitionShared()).isEqualTo(isPartitionShared);
+
+    PartitionMetadata partitionMetadata = partitionMetadataStore.getSync(partitionId);
+    assertThat(partitionMetadata.getName()).isEqualTo(partitionId);
+    assertThat(partitionMetadata.getPartitionID()).isEqualTo(partitionId);
+    assertThat(partitionMetadata.getUtilization()).isEqualTo(utilization);
+    assertThat(partitionMetadata.getIsPartitionShared()).isEqualTo(isPartitionShared);
+  }
+
+  @Test
   public void shouldErrorCreatingDuplicatePartitionName() {
     String partitionId = "1";
 
     managerApiStub.createPartition(
-        ManagerApi.PartitionRequest.newBuilder().setPartitionId(partitionId).build());
+        ManagerApi.CreatePartitionRequest.newBuilder().setPartitionId(partitionId).build());
 
     StatusRuntimeException throwable =
         (StatusRuntimeException)
             catchThrowable(
                 () ->
                     managerApiStub.createPartition(
-                        ManagerApi.PartitionRequest.newBuilder()
+                        ManagerApi.CreatePartitionRequest.newBuilder()
                             .setPartitionId(partitionId)
                             .build()));
     assertThat(throwable.getStatus().getCode()).isEqualTo(Status.UNKNOWN.getCode());

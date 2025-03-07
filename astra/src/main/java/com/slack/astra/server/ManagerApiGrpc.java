@@ -420,10 +420,12 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
   @Override
   public void createPartition(
-      ManagerApi.PartitionRequest request,
+      ManagerApi.CreatePartitionRequest request,
       StreamObserver<Metadata.PartitionMetadata> responseObserver) {
     try {
-      partitionMetadataStore.createSync(new PartitionMetadata(request.getPartitionId(), 0, false));
+      partitionMetadataStore.createSync(
+          new PartitionMetadata(
+              request.getPartitionId(), request.getUtilization(), request.getIsPartitionShared()));
       responseObserver.onNext(
           toPartitionMetadataProto(partitionMetadataStore.getSync(request.getPartitionId())));
       responseObserver.onCompleted();
@@ -435,7 +437,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
   @Override
   public void getPartition(
-      ManagerApi.PartitionRequest request,
+      ManagerApi.GetPartitionRequest request,
       StreamObserver<Metadata.PartitionMetadata> responseObserver) {
     try {
       responseObserver.onNext(
@@ -534,22 +536,27 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       List<String> newPartitionIds =
           partitionMetadataStore.findPartition(
               updatedThroughputBytes, request.getRequireDedicatedPartitions());
-      // Not enough partitions are available for reassigning, revert the clearing operation
-      if (newPartitionIds.isEmpty() && previousActivePartitionMetadata != null) {
-        int oldPartitionCount =
-            PartitionMetadataStore.getPartitionCount(existingDatasetMetadata.getThroughputBytes());
+      // Not enough partitions are available for reassigning
+      if (newPartitionIds.isEmpty()) {
+        if (previousActivePartitionMetadata != null) {
+          // revert the clearing operation
+          int oldPartitionCount =
+              PartitionMetadataStore.getPartitionCount(
+                  existingDatasetMetadata.getThroughputBytes());
 
-        for (String partitionId : previousActivePartitionMetadata.getPartitions()) {
-          PartitionMetadata existingPartitionMetadata = partitionMetadataStore.getSync(partitionId);
-          long newUtilization =
-              existingPartitionMetadata.getUtilization()
-                  + existingDatasetMetadata.getThroughputBytes() / oldPartitionCount;
+          for (String partitionId : previousActivePartitionMetadata.getPartitions()) {
+            PartitionMetadata existingPartitionMetadata =
+                partitionMetadataStore.getSync(partitionId);
+            long newUtilization =
+                existingPartitionMetadata.getUtilization()
+                    + existingDatasetMetadata.getThroughputBytes() / oldPartitionCount;
 
-          partitionMetadataStore.updateSync(
-              new PartitionMetadata(
-                  partitionId,
-                  newUtilization,
-                  !previousActivePartitionMetadata.usingDedicatedPartition));
+            partitionMetadataStore.updateSync(
+                new PartitionMetadata(
+                    partitionId,
+                    newUtilization,
+                    !previousActivePartitionMetadata.usingDedicatedPartition));
+          }
         }
         String msg =
             String.format(

@@ -28,10 +28,10 @@ service ManagerApiService {
   rpc ResetPartitionData(ResetPartitionDataRequest) returns (ResetPartitionDataResponse) {}
 
   // Create Partition in partition map
-  rpc CreatePartition(PartitionRequest) returns (PartitionMetadata) {}
+  rpc CreatePartition(CreatePartitionRequest) returns (PartitionMetadata) {}
 
   // GetPartition returns a single partition metadata by partition_id
-  rpc GetPartition(PartitionRequest) returns (PartitionMetadata) {}
+  rpc GetPartition(GetPartitionRequest) returns (PartitionMetadata) {}
 
   // CreateTenant creates and returns automatically tenant after assigning partitions automatically
   rpc CreateTenant(CreateTenantRequest) returns (DatasetMetadata) {}
@@ -123,7 +123,15 @@ message ResetPartitionDataResponse {
   string status = 1;
 }
 
-message PartitionRequest {
+message CreatePartitionRequest {
+  string partition_id = 1;
+
+  int64 utilization = 2;
+
+  bool is_partition_shared = 3;
+}
+
+message GetPartitionRequest {
   string partition_id = 1;
 }
 
