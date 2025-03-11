@@ -13,6 +13,7 @@ import com.slack.astra.metadata.dataset.DatasetMetadataSerializer;
 import com.slack.astra.metadata.dataset.DatasetMetadataStore;
 import com.slack.astra.metadata.dataset.DatasetPartitionMetadata;
 import com.slack.astra.metadata.partition.PartitionMetadata;
+import com.slack.astra.metadata.partition.PartitionMetadataSerializer;
 import com.slack.astra.metadata.partition.PartitionMetadataStore;
 import com.slack.astra.metadata.snapshot.SnapshotMetadata;
 import com.slack.astra.metadata.snapshot.SnapshotMetadataStore;
@@ -445,6 +446,25 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       responseObserver.onCompleted();
     } catch (Exception e) {
       LOG.error("Error getting partition", e);
+      responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
+    }
+  }
+
+  @Override
+  public void listPartition(
+      ManagerApi.ListPartitionRequest request,
+      StreamObserver<Metadata.ListPartitionMetadataResponse> responseObserver) {
+    try {
+      responseObserver.onNext(
+          Metadata.ListPartitionMetadataResponse.newBuilder()
+              .addAllPartitionMetadata(
+                  partitionMetadataStore.listSync().stream()
+                      .map(PartitionMetadataSerializer::toPartitionMetadataProto)
+                      .collect(Collectors.toList()))
+              .build());
+      responseObserver.onCompleted();
+    } catch (Exception e) {
+      LOG.error("Error fetching partition list", e);
       responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
     }
   }

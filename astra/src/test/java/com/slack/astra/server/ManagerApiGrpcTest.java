@@ -861,6 +861,17 @@ public class ManagerApiGrpcTest {
   }
 
   @Test
+  public void shouldListPartition() {
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 0, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 0, true));
+
+    Metadata.ListPartitionMetadataResponse listPartitionMetadataResponse =
+        managerApiStub.listPartition(ManagerApi.ListPartitionRequest.newBuilder().build());
+
+    assertThat(listPartitionMetadataResponse.getPartitionMetadataList().size()).isEqualTo(2);
+  }
+
+  @Test
   public void shouldCreateAndGetDedicatedPartitionTenant() {
     String datasetName = "testDataset";
     String datasetOwner = "testOwner";

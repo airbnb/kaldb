@@ -240,3 +240,7 @@ message PartitionMetadata {
   int64 utilization = 2;
   bool is_partition_shared = 3;
 }
+
+message ListPartitionMetadataResponse {
+  repeated PartitionMetadata partition_metadata = 1;
+}

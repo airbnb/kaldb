@@ -15,7 +15,10 @@ import org.apache.zookeeper.CreateMode;
 public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata> {
   public static final String PARTITION_MAP_METADATA_STORE_ZK_PATH = "/partition_map";
 
+  // TODO: Move to config file
   public static final int PARTITION_CAPACITY = 5000000;
+
+  public static final int MINIMUM_NUMBER_OF_PARTITIONS = 2;
 
   public PartitionMetadataStore(AsyncCuratorFramework curator, boolean shouldCache) {
     super(
@@ -52,7 +55,10 @@ public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata
 
     long perPartitionCapacity = requiredThroughput / numberOfPartitions;
     // we want minimum of two partitions assigned to a tenant for redundancy purpose
-    numberOfPartitions = numberOfPartitions == 1 ? numberOfPartitions + 1 : numberOfPartitions;
+    numberOfPartitions =
+        numberOfPartitions < MINIMUM_NUMBER_OF_PARTITIONS
+            ? numberOfPartitions + (MINIMUM_NUMBER_OF_PARTITIONS - numberOfPartitions)
+            : numberOfPartitions;
 
     List<PartitionMetadata> partitionMetadataList = this.listSync();
     partitionMetadataList.sort(
