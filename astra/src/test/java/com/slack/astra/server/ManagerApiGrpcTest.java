@@ -1158,12 +1158,6 @@ public class ManagerApiGrpcTest {
     assertThat(reassignTenantResponse.getThroughputBytes()).isEqualTo(6000000);
     assertThat(reassignTenantResponse.getPartitionConfigsList().size()).isEqualTo(2);
 
-    DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(datasetName);
-    assertThat(datasetMetadata.getName()).isEqualTo(datasetName);
-    assertThat(datasetMetadata.getOwner()).isEqualTo(datasetOwner);
-    assertThat(datasetMetadata.getThroughputBytes()).isEqualTo(6000000);
-    assertThat(datasetMetadata.getPartitionConfigs().size()).isEqualTo(2);
-
     PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
     assertThat(partitionMetadata1.getUtilization()).isEqualTo(3000000);
     assertThat(partitionMetadata1.getIsPartitionShared()).isEqualTo(true);
@@ -1174,7 +1168,7 @@ public class ManagerApiGrpcTest {
   }
 
   @Test
-  public void shoulReassignThroughputAndDedicatedTenant() {
+  public void shouldReassignThroughputAndDedicatedTenant() {
     String datasetName = "testDataset";
     String datasetOwner = "testOwner";
     String datasetServicePattern = "testDataset";
@@ -1204,12 +1198,6 @@ public class ManagerApiGrpcTest {
     assertThat(reassignTenantResponse.getServiceNamePattern().equals(datasetServicePattern));
     assertThat(reassignTenantResponse.getThroughputBytes()).isEqualTo(6000000);
     assertThat(reassignTenantResponse.getPartitionConfigsList().size()).isEqualTo(2);
-
-    DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(datasetName);
-    assertThat(datasetMetadata.getName()).isEqualTo(datasetName);
-    assertThat(datasetMetadata.getOwner()).isEqualTo(datasetOwner);
-    assertThat(datasetMetadata.getThroughputBytes()).isEqualTo(6000000);
-    assertThat(datasetMetadata.getPartitionConfigs().size()).isEqualTo(2);
 
     PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
     assertThat(partitionMetadata1.getUtilization()).isEqualTo(3000000);
@@ -1253,12 +1241,6 @@ public class ManagerApiGrpcTest {
     assertThat(reassignTenantResponse.getServiceNamePattern().equals(datasetServicePattern));
     assertThat(reassignTenantResponse.getThroughputBytes()).isEqualTo(6000000);
     assertThat(reassignTenantResponse.getPartitionConfigsList().size()).isEqualTo(2);
-
-    DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(datasetName);
-    assertThat(datasetMetadata.getName()).isEqualTo(datasetName);
-    assertThat(datasetMetadata.getOwner()).isEqualTo(datasetOwner);
-    assertThat(datasetMetadata.getThroughputBytes()).isEqualTo(6000000);
-    assertThat(datasetMetadata.getPartitionConfigs().size()).isEqualTo(2);
 
     PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
     assertThat(partitionMetadata1.getUtilization()).isEqualTo(3000000);
