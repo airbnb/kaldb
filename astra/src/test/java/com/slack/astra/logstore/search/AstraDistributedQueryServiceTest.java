@@ -130,7 +130,7 @@ public class AstraDistributedQueryServiceTest {
             indexName);
     assertThat(searchNodes.size()).isEqualTo(0);
 
-    DatasetPartitionMetadata partition = new DatasetPartitionMetadata(1, 300, List.of("1"), false);
+    DatasetPartitionMetadata partition = new DatasetPartitionMetadata(1, 300, List.of("1"));
     DatasetMetadata datasetMetadata =
         new DatasetMetadata(indexName, "testOwner", 1, List.of(partition), indexName);
     datasetMetadataStore.createSync(datasetMetadata);
@@ -203,7 +203,7 @@ public class AstraDistributedQueryServiceTest {
     // re-add dataset metadata with a different time window that doesn't match any snapshot
     datasetMetadataStore.deleteAsync(datasetMetadata.name);
     await().until(() -> AstraMetadataTestUtils.listSyncUncached(datasetMetadataStore).size() == 0);
-    partition = new DatasetPartitionMetadata(1, 99, List.of("1"), false);
+    partition = new DatasetPartitionMetadata(1, 99, List.of("1"));
     datasetMetadata = new DatasetMetadata(indexName, "testOwner", 1, List.of(partition), indexName);
     datasetMetadataStore.createSync(datasetMetadata);
     await().until(() -> AstraMetadataTestUtils.listSyncUncached(datasetMetadataStore).size() == 1);
@@ -227,7 +227,7 @@ public class AstraDistributedQueryServiceTest {
   public void testOneIndexerTwoCacheNode()
       throws ExecutionException, InterruptedException, TimeoutException {
     String indexName = "testIndex";
-    DatasetPartitionMetadata partition = new DatasetPartitionMetadata(1, 500, List.of("1"), false);
+    DatasetPartitionMetadata partition = new DatasetPartitionMetadata(1, 500, List.of("1"));
     DatasetMetadata datasetMetadata =
         new DatasetMetadata(indexName, "testOwner", 1, List.of(partition), indexName);
     datasetMetadataStore.createSync(datasetMetadata);
@@ -389,8 +389,7 @@ public class AstraDistributedQueryServiceTest {
   @Test
   public void testOneIndexerOneCache() throws Exception {
     String indexName = "testIndex";
-    DatasetPartitionMetadata partition =
-        new DatasetPartitionMetadata(199, 500, List.of("1"), false);
+    DatasetPartitionMetadata partition = new DatasetPartitionMetadata(199, 500, List.of("1"));
     DatasetMetadata datasetMetadata =
         new DatasetMetadata(indexName, "testOwner", 1, List.of(partition), indexName);
     datasetMetadataStore.createSync(datasetMetadata);
@@ -492,7 +491,7 @@ public class AstraDistributedQueryServiceTest {
     // re-add dataset metadata with a different time window that doesn't match any snapshot
     datasetMetadataStore.deleteAsync(datasetMetadata.name);
     await().until(() -> AstraMetadataTestUtils.listSyncUncached(datasetMetadataStore).size() == 0);
-    partition = new DatasetPartitionMetadata(1, 99, List.of("1"), false);
+    partition = new DatasetPartitionMetadata(1, 99, List.of("1"));
     datasetMetadata = new DatasetMetadata(indexName, "testOwner", 1, List.of(partition), indexName);
     datasetMetadataStore.createSync(datasetMetadata);
     await().until(() -> AstraMetadataTestUtils.listSyncUncached(datasetMetadataStore).size() == 1);
@@ -527,7 +526,7 @@ public class AstraDistributedQueryServiceTest {
             searchMetadataStore, cache1SearchContext, snapshotMetadata.name);
     await().until(() -> AstraMetadataTestUtils.listSyncUncached(searchMetadataStore).size() == 1);
 
-    DatasetPartitionMetadata partition = new DatasetPartitionMetadata(1, 500, List.of("1"), false);
+    DatasetPartitionMetadata partition = new DatasetPartitionMetadata(1, 500, List.of("1"));
     DatasetMetadata datasetMetadata =
         new DatasetMetadata(indexName, "testOwner", 1, List.of(partition), indexName);
     datasetMetadataStore.createSync(datasetMetadata);
@@ -678,9 +677,9 @@ public class AstraDistributedQueryServiceTest {
     final String owner = "DatasetOwner";
     final long throughputBytes = 1000;
     final DatasetPartitionMetadata partition11 =
-        new DatasetPartitionMetadata(100, 200, List.of("1"), false);
+        new DatasetPartitionMetadata(100, 200, List.of("1"));
     final DatasetPartitionMetadata partition12 =
-        new DatasetPartitionMetadata(201, 300, List.of("2"), false);
+        new DatasetPartitionMetadata(201, 300, List.of("2"));
 
     DatasetMetadata datasetMetadata =
         new DatasetMetadata(name, owner, throughputBytes, List.of(partition11, partition12), name);
@@ -707,9 +706,9 @@ public class AstraDistributedQueryServiceTest {
     final String owner1 = "DatasetOwner1";
     final long throughputBytes1 = 1;
     final DatasetPartitionMetadata partition21 =
-        new DatasetPartitionMetadata(100, 200, List.of("2"), false);
+        new DatasetPartitionMetadata(100, 200, List.of("2"));
     final DatasetPartitionMetadata partition22 =
-        new DatasetPartitionMetadata(201, 300, List.of("1"), false);
+        new DatasetPartitionMetadata(201, 300, List.of("1"));
 
     DatasetMetadata datasetMetadata1 =
         new DatasetMetadata(
@@ -768,7 +767,7 @@ public class AstraDistributedQueryServiceTest {
     await().until(() -> AstraMetadataTestUtils.listSyncUncached(snapshotMetadataStore).size() == 2);
     await().until(() -> AstraMetadataTestUtils.listSyncUncached(searchMetadataStore).size() == 1);
 
-    DatasetPartitionMetadata partition = new DatasetPartitionMetadata(1, 200, List.of("1"), false);
+    DatasetPartitionMetadata partition = new DatasetPartitionMetadata(1, 200, List.of("1"));
     DatasetMetadata datasetMetadata =
         new DatasetMetadata(indexName1, "testOwner1", 1, List.of(partition), indexName1);
     datasetMetadataStore.createSync(datasetMetadata);
@@ -790,7 +789,7 @@ public class AstraDistributedQueryServiceTest {
     await().until(() -> AstraMetadataTestUtils.listSyncUncached(snapshotMetadataStore).size() == 4);
     await().until(() -> AstraMetadataTestUtils.listSyncUncached(searchMetadataStore).size() == 2);
 
-    partition = new DatasetPartitionMetadata(1, 101, List.of("2"), false);
+    partition = new DatasetPartitionMetadata(1, 101, List.of("2"));
     datasetMetadata =
         new DatasetMetadata(indexName2, "testOwner2", 1, List.of(partition), indexName2);
     datasetMetadataStore.createSync(datasetMetadata);
@@ -851,8 +850,7 @@ public class AstraDistributedQueryServiceTest {
                         new DatasetPartitionMetadata(
                             endTime.minus(1, ChronoUnit.DAYS).toEpochMilli(),
                             Long.MAX_VALUE,
-                            List.of("1"),
-                            false)),
+                            List.of("1"))),
                     "")));
 
     AstraDistributedQueryService distributedQueryService =

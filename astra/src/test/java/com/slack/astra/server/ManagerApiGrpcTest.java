@@ -624,8 +624,7 @@ public class ManagerApiGrpcTest {
             "foo",
             "a",
             1,
-            List.of(
-                new DatasetPartitionMetadata(startTime + 5, startTime + 6, List.of("a"), false)),
+            List.of(new DatasetPartitionMetadata(startTime + 5, startTime + 6, List.of("a"))),
             "fooService");
 
     datasetMetadataStore.createSync(datasetWithDataInPartitionA);
@@ -680,8 +679,7 @@ public class ManagerApiGrpcTest {
             "foo",
             "a",
             1,
-            List.of(
-                new DatasetPartitionMetadata(startTime + 5, startTime + 6, List.of("a"), false)),
+            List.of(new DatasetPartitionMetadata(startTime + 5, startTime + 6, List.of("a"))),
             "fooService");
 
     datasetMetadataStore.createSync(serviceWithDataInPartitionA);
@@ -726,9 +724,7 @@ public class ManagerApiGrpcTest {
             "foo",
             "a",
             1,
-            List.of(
-                new DatasetPartitionMetadata(
-                    startTime + 5, startTime + 6, List.of("a", "b"), false)),
+            List.of(new DatasetPartitionMetadata(startTime + 5, startTime + 6, List.of("a", "b"))),
             "fooService");
 
     datasetMetadataStore.createSync(serviceWithDataInPartitionA);
@@ -933,7 +929,7 @@ public class ManagerApiGrpcTest {
             1000000,
             List.of(
                 new DatasetPartitionMetadata(
-                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), false)),
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"))),
             "tenant1"));
 
     managerApiStub.createTenant(
@@ -1043,7 +1039,7 @@ public class ManagerApiGrpcTest {
             1000000,
             List.of(
                 new DatasetPartitionMetadata(
-                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), true)),
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"))),
             datasetServicePattern));
     managerApiStub.removeTenant(
         ManagerApi.RemoveTenantRequest.newBuilder().setName(datasetName).build());
@@ -1073,7 +1069,7 @@ public class ManagerApiGrpcTest {
             6000000,
             List.of(
                 new DatasetPartitionMetadata(
-                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), false)),
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"))),
             datasetServicePattern));
     managerApiStub.removeTenant(
         ManagerApi.RemoveTenantRequest.newBuilder().setName(datasetName).build());
@@ -1103,7 +1099,7 @@ public class ManagerApiGrpcTest {
             6000000,
             List.of(
                 new DatasetPartitionMetadata(
-                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), false)),
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"))),
             datasetServicePattern));
 
     StatusRuntimeException throwable =
@@ -1142,7 +1138,7 @@ public class ManagerApiGrpcTest {
             1000000,
             List.of(
                 new DatasetPartitionMetadata(
-                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), true)),
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"))),
             datasetServicePattern));
     Metadata.DatasetMetadata reassignTenantResponse =
         managerApiStub.reassignTenant(
@@ -1183,7 +1179,7 @@ public class ManagerApiGrpcTest {
             1000000,
             List.of(
                 new DatasetPartitionMetadata(
-                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), false)),
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"))),
             datasetServicePattern));
     Metadata.DatasetMetadata reassignTenantResponse =
         managerApiStub.reassignTenant(
@@ -1226,7 +1222,7 @@ public class ManagerApiGrpcTest {
             1000000,
             List.of(
                 new DatasetPartitionMetadata(
-                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), false)),
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"))),
             datasetServicePattern));
     Metadata.DatasetMetadata reassignTenantResponse =
         managerApiStub.reassignTenant(
@@ -1275,7 +1271,7 @@ public class ManagerApiGrpcTest {
             1000000,
             List.of(
                 new DatasetPartitionMetadata(
-                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), false)),
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"))),
             datasetServicePattern));
 
     StatusRuntimeException throwable =
@@ -1330,7 +1326,7 @@ public class ManagerApiGrpcTest {
             1000000,
             List.of(
                 new DatasetPartitionMetadata(
-                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), false)),
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"))),
             datasetServicePattern));
 
     StatusRuntimeException throwable =

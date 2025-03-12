@@ -28,7 +28,7 @@ public class DatasetMetadataSerializerTest {
     final List<DatasetPartitionMetadata> list =
         Collections.singletonList(
             new DatasetPartitionMetadata(
-                partitionStart.toEpochMilli(), partitionEnd.toEpochMilli(), partitionList, false));
+                partitionStart.toEpochMilli(), partitionEnd.toEpochMilli(), partitionList));
     final DatasetMetadata datasetMetadata =
         new DatasetMetadata(name, owner, throughput, list, serviceNamePattern);
 
@@ -58,7 +58,7 @@ public class DatasetMetadataSerializerTest {
     final List<DatasetPartitionMetadata> list =
         Collections.singletonList(
             new DatasetPartitionMetadata(
-                partitionStart.toEpochMilli(), partitionEnd.toEpochMilli(), partitionList, false));
+                partitionStart.toEpochMilli(), partitionEnd.toEpochMilli(), partitionList));
     final DatasetMetadata datasetMetadata =
         new DatasetMetadata(name, owner, throughput, list, serviceNamePattern1);
 
@@ -90,12 +90,9 @@ public class DatasetMetadataSerializerTest {
     final List<DatasetPartitionMetadata> list =
         List.of(
             new DatasetPartitionMetadata(
-                partitionStart1.toEpochMilli(), partitionEnd1.toEpochMilli(), partitionList, false),
+                partitionStart1.toEpochMilli(), partitionEnd1.toEpochMilli(), partitionList),
             new DatasetPartitionMetadata(
-                partitionStart2.toEpochMilli(),
-                partitionEnd2.toEpochMilli(),
-                partitionList,
-                false));
+                partitionStart2.toEpochMilli(), partitionEnd2.toEpochMilli(), partitionList));
     final DatasetMetadata datasetMetadata =
         new DatasetMetadata(name, owner, throughput, list, serviceNamePattern);
 
@@ -154,7 +151,7 @@ public class DatasetMetadataSerializerTest {
     final List<String> list = List.of(name);
 
     final DatasetPartitionMetadata datasetPartitionMetadata =
-        new DatasetPartitionMetadata(start.toEpochMilli(), end.toEpochMilli(), list, false);
+        new DatasetPartitionMetadata(start.toEpochMilli(), end.toEpochMilli(), list);
 
     Metadata.DatasetPartitionMetadata datasetPartitionMetadataProto =
         DatasetPartitionMetadata.toDatasetPartitionMetadataProto(datasetPartitionMetadata);

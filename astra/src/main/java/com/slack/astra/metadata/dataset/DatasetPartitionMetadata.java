@@ -18,15 +18,11 @@ public class DatasetPartitionMetadata {
   public final long startTimeEpochMs;
   public final long endTimeEpochMs;
   public final ImmutableList<String> partitions;
-  public boolean usingDedicatedPartition;
 
   public static final String MATCH_ALL_DATASET = "_all";
 
   public DatasetPartitionMetadata(
-      long startTimeEpochMs,
-      long endTimeEpochMs,
-      List<String> partitions,
-      boolean usingDedicatedPartition) {
+      long startTimeEpochMs, long endTimeEpochMs, List<String> partitions) {
     checkArgument(startTimeEpochMs > 0, "startTimeEpochMs must be greater than 0");
     checkArgument(
         endTimeEpochMs > startTimeEpochMs,
@@ -36,7 +32,6 @@ public class DatasetPartitionMetadata {
     this.startTimeEpochMs = startTimeEpochMs;
     this.endTimeEpochMs = endTimeEpochMs;
     this.partitions = ImmutableList.copyOf(partitions);
-    this.usingDedicatedPartition = usingDedicatedPartition;
   }
 
   public long getStartTimeEpochMs() {
@@ -51,10 +46,6 @@ public class DatasetPartitionMetadata {
     return partitions;
   }
 
-  public boolean getUsingDedicatedPartition() {
-    return usingDedicatedPartition;
-  }
-
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
@@ -62,13 +53,12 @@ public class DatasetPartitionMetadata {
     DatasetPartitionMetadata that = (DatasetPartitionMetadata) o;
     return startTimeEpochMs == that.startTimeEpochMs
         && endTimeEpochMs == that.endTimeEpochMs
-        && partitions.equals(that.partitions)
-        && usingDedicatedPartition == that.usingDedicatedPartition;
+        && partitions.equals(that.partitions);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(startTimeEpochMs, endTimeEpochMs, partitions, usingDedicatedPartition);
+    return Objects.hash(startTimeEpochMs, endTimeEpochMs, partitions);
   }
 
   @Override
@@ -80,8 +70,6 @@ public class DatasetPartitionMetadata {
         + endTimeEpochMs
         + ", partitions="
         + partitions
-        + ", usingDedicatedPartition"
-        + usingDedicatedPartition
         + '}';
   }
 
@@ -90,8 +78,7 @@ public class DatasetPartitionMetadata {
     return new DatasetPartitionMetadata(
         datasetPartitionMetadata.getStartTimeEpochMs(),
         datasetPartitionMetadata.getEndTimeEpochMs(),
-        datasetPartitionMetadata.getPartitionsList(),
-        datasetPartitionMetadata.getUsingDedicatedPartition());
+        datasetPartitionMetadata.getPartitionsList());
   }
 
   public static Metadata.DatasetPartitionMetadata toDatasetPartitionMetadataProto(
@@ -100,7 +87,6 @@ public class DatasetPartitionMetadata {
         .setStartTimeEpochMs(metadata.startTimeEpochMs)
         .setEndTimeEpochMs(metadata.endTimeEpochMs)
         .addAllPartitions(metadata.partitions)
-        .setUsingDedicatedPartition(metadata.usingDedicatedPartition)
         .build();
   }
 

@@ -109,7 +109,7 @@ public class BulkIngestApiTest {
             INDEX_NAME,
             "owner",
             1,
-            List.of(new DatasetPartitionMetadata(1, Long.MAX_VALUE, List.of("0"), false)),
+            List.of(new DatasetPartitionMetadata(1, Long.MAX_VALUE, List.of("0"))),
             INDEX_NAME);
     // Create an entry while init. Update the entry on every test run
     datasetMetadataStore.createSync(datasetMetadata);
@@ -137,7 +137,7 @@ public class BulkIngestApiTest {
             INDEX_NAME,
             "owner",
             throughputBytes,
-            List.of(new DatasetPartitionMetadata(1, Long.MAX_VALUE, List.of("0"), false)),
+            List.of(new DatasetPartitionMetadata(1, Long.MAX_VALUE, List.of("0"))),
             INDEX_NAME);
     datasetMetadataStore.updateSync(datasetMetadata);
 

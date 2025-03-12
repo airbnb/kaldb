@@ -23,8 +23,7 @@ public class DatasetMetadataTest {
         new DatasetPartitionMetadata(
             Instant.now().toEpochMilli(),
             Instant.now().plusSeconds(90).toEpochMilli(),
-            List.of("partition"),
-            false);
+            List.of("partition"));
     final List<DatasetPartitionMetadata> partitionConfigs = Collections.singletonList(partition);
     DatasetMetadata datasetMetadata =
         new DatasetMetadata(name, owner, throughputBytes, partitionConfigs, name);
@@ -59,8 +58,7 @@ public class DatasetMetadataTest {
         new DatasetPartitionMetadata(
             Instant.now().toEpochMilli(),
             Instant.now().plusSeconds(90).toEpochMilli(),
-            List.of("partition"),
-            false);
+            List.of("partition"));
     final List<DatasetPartitionMetadata> partitionConfigs1 = Collections.singletonList(partition);
     assertThatIllegalArgumentException()
         .isThrownBy(
@@ -79,8 +77,7 @@ public class DatasetMetadataTest {
         new DatasetPartitionMetadata(
             Instant.now().toEpochMilli(),
             Instant.now().plusSeconds(90).toEpochMilli(),
-            List.of("partition"),
-            false);
+            List.of("partition"));
     final List<DatasetPartitionMetadata> partitionConfigs1 = Collections.singletonList(partition);
     DatasetMetadata datasetMetadata =
         new DatasetMetadata(name, owner, throughputBytes, partitionConfigs1, name);
@@ -94,8 +91,7 @@ public class DatasetMetadataTest {
         new DatasetPartitionMetadata(
             Instant.now().toEpochMilli(),
             Instant.now().plusSeconds(90).toEpochMilli(),
-            List.of("partition2"),
-            false);
+            List.of("partition2"));
 
     assertThatExceptionOfType(UnsupportedOperationException.class)
         .isThrownBy(() -> datasetMetadata.partitionConfigs.add(partition2));
@@ -110,8 +106,7 @@ public class DatasetMetadataTest {
         new DatasetPartitionMetadata(
             Instant.now().toEpochMilli(),
             Instant.now().plusSeconds(90).toEpochMilli(),
-            List.of("partition"),
-            false);
+            List.of("partition"));
     final List<DatasetPartitionMetadata> partitionConfig = Collections.singletonList(partition);
 
     DatasetMetadata datasetMetadata1 =
@@ -155,8 +150,7 @@ public class DatasetMetadataTest {
         new DatasetPartitionMetadata(
             Instant.now().toEpochMilli(),
             Instant.now().plusSeconds(90).toEpochMilli(),
-            List.of("partition"),
-            false);
+            List.of("partition"));
     final List<DatasetPartitionMetadata> partitionConfig = Collections.singletonList(partition);
 
     assertThatIllegalArgumentException()
@@ -189,8 +183,8 @@ public class DatasetMetadataTest {
                     owner,
                     throughputBytes,
                     List.of(
-                        new DatasetPartitionMetadata(0, 2000, partitionlist, false),
-                        new DatasetPartitionMetadata(0, 3000, partitionlist, false)),
+                        new DatasetPartitionMetadata(0, 2000, partitionlist),
+                        new DatasetPartitionMetadata(0, 3000, partitionlist)),
                     name));
 
     assertThatIllegalArgumentException()
@@ -201,8 +195,8 @@ public class DatasetMetadataTest {
                     owner,
                     throughputBytes,
                     List.of(
-                        new DatasetPartitionMetadata(0, 2000, partitionlist, false),
-                        new DatasetPartitionMetadata(2000, 3000, partitionlist, false)),
+                        new DatasetPartitionMetadata(0, 2000, partitionlist),
+                        new DatasetPartitionMetadata(2000, 3000, partitionlist)),
                     name));
 
     assertThatIllegalArgumentException()
@@ -213,8 +207,8 @@ public class DatasetMetadataTest {
                     owner,
                     throughputBytes,
                     List.of(
-                        new DatasetPartitionMetadata(0, 3000, partitionlist, false),
-                        new DatasetPartitionMetadata(0, 2000, partitionlist, false)),
+                        new DatasetPartitionMetadata(0, 3000, partitionlist),
+                        new DatasetPartitionMetadata(0, 2000, partitionlist)),
                     name));
 
     assertThatIllegalArgumentException()
@@ -225,8 +219,8 @@ public class DatasetMetadataTest {
                     owner,
                     throughputBytes,
                     List.of(
-                        new DatasetPartitionMetadata(0, 2000, partitionlist, false),
-                        new DatasetPartitionMetadata(1800, 3000, partitionlist, false)),
+                        new DatasetPartitionMetadata(0, 2000, partitionlist),
+                        new DatasetPartitionMetadata(1800, 3000, partitionlist)),
                     name));
   }
 }

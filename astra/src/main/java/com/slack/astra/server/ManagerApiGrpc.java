@@ -26,8 +26,10 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -170,10 +172,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
       DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(request.getName());
       ImmutableList<DatasetPartitionMetadata> updatedDatasetPartitionMetadata =
-          addNewPartition(
-              datasetMetadata.getPartitionConfigs(),
-              request.getPartitionIdsList(),
-              request.getRequireDedicatedPartition());
+          addNewPartition(datasetMetadata.getPartitionConfigs(), request.getPartitionIdsList());
 
       // if the user provided a non-negative value for throughput set it, otherwise default to the
       // existing value
@@ -339,9 +338,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
    * current time + 1 to max long.
    */
   private static ImmutableList<DatasetPartitionMetadata> addNewPartition(
-      List<DatasetPartitionMetadata> existingPartitions,
-      List<String> newPartitionIdsList,
-      boolean usingDedicatedPartition) {
+      List<DatasetPartitionMetadata> existingPartitions, List<String> newPartitionIdsList) {
     if (newPartitionIdsList.isEmpty()) {
       return ImmutableList.copyOf(existingPartitions);
     }
@@ -375,14 +372,12 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
           new DatasetPartitionMetadata(
               previousActiveDatasetPartition.get().getStartTimeEpochMs(),
               partitionCutoverTime,
-              previousActiveDatasetPartition.get().getPartitions(),
-              previousActiveDatasetPartition.get().getUsingDedicatedPartition());
+              previousActiveDatasetPartition.get().getPartitions());
       builder.add(updatedPreviousActivePartition);
     }
 
     DatasetPartitionMetadata newPartitionMetadata =
-        new DatasetPartitionMetadata(
-            partitionCutoverTime + 1, MAX_TIME, newPartitionIdsList, usingDedicatedPartition);
+        new DatasetPartitionMetadata(partitionCutoverTime + 1, MAX_TIME, newPartitionIdsList);
     return builder.add(newPartitionMetadata).build();
   }
 
@@ -553,7 +548,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
    * @param datasetMetadata tenant metadata object
    * @return previous active partitionMetadata
    */
-  public DatasetPartitionMetadata clearPartitions(DatasetMetadata datasetMetadata)
+  public Map<String, PartitionMetadata> clearPartitions(DatasetMetadata datasetMetadata)
       throws InterruptedException {
 
     Optional<DatasetPartitionMetadata> previousActiveDatasetPartition =
@@ -567,10 +562,18 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       return null;
     }
 
+    Map<String, PartitionMetadata> clearedPartitions = new HashMap<>();
+
     int partitionCount = getPartitionCount(datasetMetadata.getThroughputBytes());
     // we only consider the latest partition config to be updated
     for (String partitionId : previousActiveDatasetPartition.get().getPartitions()) {
       PartitionMetadata existingPartitionMetadata = partitionMetadataStore.getSync(partitionId);
+      clearedPartitions.put(
+          partitionId,
+          new PartitionMetadata(
+              partitionId,
+              existingPartitionMetadata.getUtilization(),
+              existingPartitionMetadata.getIsPartitionShared()));
       existingPartitionMetadata.utilization =
           existingPartitionMetadata.getUtilization()
               - datasetMetadata.getThroughputBytes() / partitionCount;
@@ -583,7 +586,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               existingPartitionMetadata.getUtilization(),
               existingPartitionMetadata.getIsPartitionShared()));
     }
-    return previousActiveDatasetPartition.get();
+    return clearedPartitions;
   }
 
   @Override
@@ -607,11 +610,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       long partitionStartTime = Instant.now().toEpochMilli();
       ImmutableList.Builder<DatasetPartitionMetadata> builder = ImmutableList.builder();
       DatasetPartitionMetadata newPartitionMetadata =
-          new DatasetPartitionMetadata(
-              partitionStartTime,
-              MAX_TIME,
-              partitionIdsList,
-              request.getRequireDedicatedPartitions());
+          new DatasetPartitionMetadata(partitionStartTime, MAX_TIME, partitionIdsList);
       builder.add(newPartitionMetadata);
 
       datasetMetadataStore.createSync(
@@ -637,7 +636,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
     try {
       DatasetMetadata existingDatasetMetadata = datasetMetadataStore.getSync(request.getName());
-      DatasetPartitionMetadata _ = clearPartitions(existingDatasetMetadata);
+      Map<String, PartitionMetadata> _ = clearPartitions(existingDatasetMetadata);
       datasetMetadataStore.deleteSync(request.getName());
       responseObserver.onNext(
           ManagerApi.RemoveTenantResponse.newBuilder()
@@ -659,8 +658,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     try {
       DatasetMetadata existingDatasetMetadata = datasetMetadataStore.getSync(request.getName());
 
-      DatasetPartitionMetadata previousActivePartitionMetadata =
-          clearPartitions(existingDatasetMetadata);
+      Map<String, PartitionMetadata> clearedPartitions = clearPartitions(existingDatasetMetadata);
 
       // if the user provided a non-negative value for throughput set it, otherwise default to the
       // existing value
@@ -673,22 +671,17 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
           findPartition(updatedThroughputBytes, request.getRequireDedicatedPartitions());
       // Not enough partitions are available for reassigning
       if (newPartitionIds.isEmpty()) {
-        if (previousActivePartitionMetadata != null) {
+        if (!clearedPartitions.isEmpty()) {
           // revert the clearing operation
-          int oldPartitionCount = getPartitionCount(existingDatasetMetadata.getThroughputBytes());
-
-          for (String partitionId : previousActivePartitionMetadata.getPartitions()) {
+          for (Map.Entry<String, PartitionMetadata> entry : clearedPartitions.entrySet()) {
             PartitionMetadata existingPartitionMetadata =
-                partitionMetadataStore.getSync(partitionId);
-            existingPartitionMetadata.utilization =
-                existingPartitionMetadata.getUtilization()
-                    + existingDatasetMetadata.getThroughputBytes() / oldPartitionCount;
-            existingPartitionMetadata.isPartitionShared =
-                !previousActivePartitionMetadata.usingDedicatedPartition;
+                partitionMetadataStore.getSync(entry.getKey());
+            existingPartitionMetadata.utilization = entry.getValue().getUtilization();
+            existingPartitionMetadata.isPartitionShared = entry.getValue().getIsPartitionShared();
 
             partitionMetadataStore.updateSync(
                 new PartitionMetadata(
-                    partitionId,
+                    entry.getKey(),
                     existingPartitionMetadata.getUtilization(),
                     existingPartitionMetadata.getIsPartitionShared()));
           }
@@ -702,10 +695,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         return;
       }
       ImmutableList<DatasetPartitionMetadata> updatedDatasetPartitionMetadata =
-          addNewPartition(
-              existingDatasetMetadata.getPartitionConfigs(),
-              newPartitionIds,
-              request.getRequireDedicatedPartitions());
+          addNewPartition(existingDatasetMetadata.getPartitionConfigs(), newPartitionIds);
 
       DatasetMetadata updatedDatasetMetadata =
           new DatasetMetadata(
