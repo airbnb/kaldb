@@ -51,19 +51,22 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   public static final long MAX_TIME = Long.MAX_VALUE;
   private final ReplicaRestoreService replicaRestoreService;
 
-  // TODO: Move to config file
-  public static final int PARTITION_CAPACITY = 5000000;
-  public static final int MINIMUM_NUMBER_OF_PARTITIONS = 2;
+  public final long maxPartitionCapacity;
+  public final int minNumberOfPartitions;
 
   public ManagerApiGrpc(
       DatasetMetadataStore datasetMetadataStore,
       PartitionMetadataStore partitionMetadataStore,
       SnapshotMetadataStore snapshotMetadataStore,
-      ReplicaRestoreService replicaRestoreService) {
+      ReplicaRestoreService replicaRestoreService,
+      long maxPartitionCapacity,
+      int minNumberOfPartitions) {
     this.datasetMetadataStore = datasetMetadataStore;
     this.snapshotMetadataStore = snapshotMetadataStore;
     this.replicaRestoreService = replicaRestoreService;
     this.partitionMetadataStore = partitionMetadataStore;
+    this.maxPartitionCapacity = maxPartitionCapacity;
+    this.minNumberOfPartitions = minNumberOfPartitions;
   }
 
   /** Initializes a new dataset in the metadata store with no initial allocated capacity */
@@ -476,8 +479,8 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
    * @param throughput service throughput to calculate number of partitions for
    * @return integer number of partition count
    */
-  public static int getPartitionCount(long throughput) {
-    return (int) Math.ceilDiv(throughput, PARTITION_CAPACITY);
+  public int getPartitionCount(long throughput) {
+    return (int) Math.ceilDiv(throughput, maxPartitionCapacity);
   }
 
   /**
@@ -495,8 +498,8 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     long perPartitionCapacity = requiredThroughput / numberOfPartitions;
     // we want minimum of MINIMUM_NUMBER_OF_PARTITIONS assigned to a tenant for redundancy purpose
     numberOfPartitions =
-        numberOfPartitions < MINIMUM_NUMBER_OF_PARTITIONS
-            ? numberOfPartitions + (MINIMUM_NUMBER_OF_PARTITIONS - numberOfPartitions)
+        numberOfPartitions < minNumberOfPartitions
+            ? numberOfPartitions + (minNumberOfPartitions - numberOfPartitions)
             : numberOfPartitions;
 
     List<PartitionMetadata> partitionMetadataList = partitionMetadataStore.listSync();
@@ -512,7 +515,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         // partition has capacity and (partition is shared or (partition not shared and utilization
         // = 0))
         // TODO: to add schema check for shared tenants
-        if (partitionMetadata.utilization + perPartitionCapacity <= PARTITION_CAPACITY
+        if (partitionMetadata.utilization + perPartitionCapacity <= maxPartitionCapacity
             && (partitionMetadata.isPartitionShared
                 || (partitionMetadata.getUtilization() == 0
                     && !partitionMetadata.isPartitionShared))) {

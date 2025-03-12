@@ -293,6 +293,11 @@ public class Astra {
           new ReplicaRestoreService(replicaMetadataStore, meterRegistry, managerConfig);
       services.add(replicaRestoreService);
 
+      long maxPartitionCapacity =
+          astraConfig.getManagerConfig().getManagerApiConfig().getMaxPartitionCapacity();
+      int minNumberOfPartitions =
+          astraConfig.getManagerConfig().getManagerApiConfig().getMinNumberOfPartitions();
+
       ArmeriaService armeriaService =
           new ArmeriaService.Builder(serverPort, "astraManager", meterRegistry)
               .withRequestTimeout(requestTimeout)
@@ -302,7 +307,9 @@ public class Astra {
                       datasetMetadataStore,
                       partitionMetadataStore,
                       snapshotMetadataStore,
-                      replicaRestoreService))
+                      replicaRestoreService,
+                      maxPartitionCapacity,
+                      minNumberOfPartitions))
               .build();
       services.add(armeriaService);
 
