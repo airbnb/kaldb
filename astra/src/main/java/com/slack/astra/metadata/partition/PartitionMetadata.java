@@ -4,8 +4,9 @@ import com.slack.astra.metadata.core.AstraMetadata;
 import java.util.Objects;
 
 /**
- * PartitionMetadata Object to track the utilization and isPartitionShared (set to true when
- * partition is shared between Tenants) in zookeeper
+ * PartitionMetadata Object is used to track the utilization of a kafka partition in Zookeeper.
+ * isPartitionShared field is set when this partition is shared by multiple tenants. If false, this
+ * partition is used by a single tenant
  */
 public class PartitionMetadata extends AstraMetadata {
   public final String partitionId;
