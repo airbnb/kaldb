@@ -1144,21 +1144,19 @@ public class ManagerApiGrpcTest {
                 new DatasetPartitionMetadata(
                     Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), true)),
             datasetServicePattern));
-    managerApiStub.reassignTenant(
-        ManagerApi.ReassignTenantRequest.newBuilder()
-            .setName(datasetName)
-            .setThroughputBytes(6000000)
-            .setRequireDedicatedPartitions(false)
-            .build());
+    Metadata.DatasetMetadata reassignTenantResponse =
+        managerApiStub.reassignTenant(
+            ManagerApi.ReassignTenantRequest.newBuilder()
+                .setName(datasetName)
+                .setThroughputBytes(6000000)
+                .setRequireDedicatedPartitions(false)
+                .build());
 
-    Metadata.DatasetMetadata getDatasetMetadataResponse =
-        managerApiStub.getDatasetMetadata(
-            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName).build());
-    assertThat(getDatasetMetadataResponse.getName()).isEqualTo(datasetName);
-    assertThat(getDatasetMetadataResponse.getOwner()).isEqualTo(datasetOwner);
-    assertThat(getDatasetMetadataResponse.getServiceNamePattern().equals(datasetServicePattern));
-    assertThat(getDatasetMetadataResponse.getThroughputBytes()).isEqualTo(6000000);
-    assertThat(getDatasetMetadataResponse.getPartitionConfigsList().size()).isEqualTo(2);
+    assertThat(reassignTenantResponse.getName()).isEqualTo(datasetName);
+    assertThat(reassignTenantResponse.getOwner()).isEqualTo(datasetOwner);
+    assertThat(reassignTenantResponse.getServiceNamePattern().equals(datasetServicePattern));
+    assertThat(reassignTenantResponse.getThroughputBytes()).isEqualTo(6000000);
+    assertThat(reassignTenantResponse.getPartitionConfigsList().size()).isEqualTo(2);
 
     DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(datasetName);
     assertThat(datasetMetadata.getName()).isEqualTo(datasetName);
@@ -1193,21 +1191,19 @@ public class ManagerApiGrpcTest {
                 new DatasetPartitionMetadata(
                     Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), false)),
             datasetServicePattern));
-    managerApiStub.reassignTenant(
-        ManagerApi.ReassignTenantRequest.newBuilder()
-            .setName(datasetName)
-            .setThroughputBytes(6000000)
-            .setRequireDedicatedPartitions(true)
-            .build());
+    Metadata.DatasetMetadata reassignTenantResponse =
+        managerApiStub.reassignTenant(
+            ManagerApi.ReassignTenantRequest.newBuilder()
+                .setName(datasetName)
+                .setThroughputBytes(6000000)
+                .setRequireDedicatedPartitions(true)
+                .build());
 
-    Metadata.DatasetMetadata getDatasetMetadataResponse =
-        managerApiStub.getDatasetMetadata(
-            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName).build());
-    assertThat(getDatasetMetadataResponse.getName()).isEqualTo(datasetName);
-    assertThat(getDatasetMetadataResponse.getOwner()).isEqualTo(datasetOwner);
-    assertThat(getDatasetMetadataResponse.getServiceNamePattern().equals(datasetServicePattern));
-    assertThat(getDatasetMetadataResponse.getThroughputBytes()).isEqualTo(6000000);
-    assertThat(getDatasetMetadataResponse.getPartitionConfigsList().size()).isEqualTo(2);
+    assertThat(reassignTenantResponse.getName()).isEqualTo(datasetName);
+    assertThat(reassignTenantResponse.getOwner()).isEqualTo(datasetOwner);
+    assertThat(reassignTenantResponse.getServiceNamePattern().equals(datasetServicePattern));
+    assertThat(reassignTenantResponse.getThroughputBytes()).isEqualTo(6000000);
+    assertThat(reassignTenantResponse.getPartitionConfigsList().size()).isEqualTo(2);
 
     DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(datasetName);
     assertThat(datasetMetadata.getName()).isEqualTo(datasetName);
@@ -1244,21 +1240,19 @@ public class ManagerApiGrpcTest {
                 new DatasetPartitionMetadata(
                     Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), false)),
             datasetServicePattern));
-    managerApiStub.reassignTenant(
-        ManagerApi.ReassignTenantRequest.newBuilder()
-            .setName(datasetName)
-            .setThroughputBytes(6000000)
-            .setRequireDedicatedPartitions(true)
-            .build());
+    Metadata.DatasetMetadata reassignTenantResponse =
+        managerApiStub.reassignTenant(
+            ManagerApi.ReassignTenantRequest.newBuilder()
+                .setName(datasetName)
+                .setThroughputBytes(6000000)
+                .setRequireDedicatedPartitions(true)
+                .build());
 
-    Metadata.DatasetMetadata getDatasetMetadataResponse =
-        managerApiStub.getDatasetMetadata(
-            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName).build());
-    assertThat(getDatasetMetadataResponse.getName()).isEqualTo(datasetName);
-    assertThat(getDatasetMetadataResponse.getOwner()).isEqualTo(datasetOwner);
-    assertThat(getDatasetMetadataResponse.getServiceNamePattern().equals(datasetServicePattern));
-    assertThat(getDatasetMetadataResponse.getThroughputBytes()).isEqualTo(6000000);
-    assertThat(getDatasetMetadataResponse.getPartitionConfigsList().size()).isEqualTo(2);
+    assertThat(reassignTenantResponse.getName()).isEqualTo(datasetName);
+    assertThat(reassignTenantResponse.getOwner()).isEqualTo(datasetOwner);
+    assertThat(reassignTenantResponse.getServiceNamePattern().equals(datasetServicePattern));
+    assertThat(reassignTenantResponse.getThroughputBytes()).isEqualTo(6000000);
+    assertThat(reassignTenantResponse.getPartitionConfigsList().size()).isEqualTo(2);
 
     DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(datasetName);
     assertThat(datasetMetadata.getName()).isEqualTo(datasetName);
