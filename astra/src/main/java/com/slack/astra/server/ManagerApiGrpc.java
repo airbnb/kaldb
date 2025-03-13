@@ -176,7 +176,9 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         Map<String, PartitionMetadata> _ =
             clearPartitions(
                 previousActiveDatasetPartition.get().getPartitions(),
-                existingDatasetMetadata.getThroughputBytes());
+                Math.ceilDiv(
+                    existingDatasetMetadata.getThroughputBytes(),
+                    previousActiveDatasetPartition.get().getPartitions().size()));
       }
       datasetMetadataStore.deleteSync(request.getName());
       responseObserver.onNext(
@@ -542,23 +544,13 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
   /**
    * Returns the partition count based of the throughput. Performs div operation, and returns the
-   * ceil of the division
+   * ceil of the division. Also, checks if minimum requirement is met
    *
    * @param throughput service throughput to calculate number of partitions for
    * @return integer number of partition count
    */
   public int getPartitionCount(long throughput) {
-    return (int) Math.ceilDiv(throughput, maxPartitionCapacity);
-  }
-
-  /**
-   * compares the computed numberOfPartitions with minimumNumber and returns the actual number of
-   * partitions to be assigned (accounting redundancy)
-   *
-   * @param numberOfPartitions raw partition number (w/o redundancy accounted)
-   * @return numOfPartitions to be assigned (with redundancy into account)
-   */
-  public int getMinNumberOfPartitionsToBeAssigned(int numberOfPartitions) {
+    int numberOfPartitions = (int) Math.ceilDiv(throughput, maxPartitionCapacity);
     return numberOfPartitions < minNumberOfPartitions
         ? numberOfPartitions + (minNumberOfPartitions - numberOfPartitions)
         : numberOfPartitions;
@@ -579,8 +571,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       List<String> existingPartitionIds) {
     List<String> partitionIdsList = new ArrayList<>();
     int numberOfPartitions = getPartitionCount(requiredThroughput);
-    // we want minimum of minNumberOfPartitions assigned to a tenant for redundancy purpose
-    numberOfPartitions = getMinNumberOfPartitionsToBeAssigned(numberOfPartitions);
+
     long perPartitionCapacity = Math.ceilDiv(requiredThroughput, numberOfPartitions);
     numberOfPartitions = numberOfPartitions - existingPartitionIds.size();
 
@@ -634,16 +625,14 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
    * dedicatedPartition status
    *
    * @param partitionIds list of partitionIds to clear
-   * @param throughputBytes total throughput bytes to be cleared from partitions
+   * @param perPartitionCapacity per Partition Capacity to be cleared from partitions
    * @return map of partitionId and old partitionMetadata (to be used if reassign if failed)
    */
   public Map<String, PartitionMetadata> clearPartitions(
-      List<String> partitionIds, long throughputBytes) {
+      List<String> partitionIds, long perPartitionCapacity) {
 
     Map<String, PartitionMetadata> clearedPartitions = new HashMap<>();
 
-    //    int partitionCount = getPartitionCount(throughputBytes);
-    // we only consider the latest partition config to be updated
     for (String partitionId : partitionIds) {
       PartitionMetadata existingPartitionMetadata = partitionMetadataStore.getSync(partitionId);
       clearedPartitions.put(
@@ -653,8 +642,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               existingPartitionMetadata.getProvisionedCapacity(),
               existingPartitionMetadata.getMaxCapacity(),
               existingPartitionMetadata.getDedicatedPartition()));
-      existingPartitionMetadata.provisionedCapacity -=
-          Math.ceilDiv(throughputBytes, partitionIds.size());
+      existingPartitionMetadata.provisionedCapacity -= perPartitionCapacity;
 
       existingPartitionMetadata.dedicatedPartition =
           existingPartitionMetadata.provisionedCapacity != 0
@@ -672,7 +660,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   /**
    * check if the current partitionIds can be reUsed to minimize the number of changes
    *
-   * @param partitionIds list of partition IDs
+   * @param oldPartitionIds list of old partition IDs
    * @param oldThroughputBytes old throughput for which the partitions were used
    * @param newThroughputBytes new throughput for which the partitions will be used
    * @param requireDedicatedPartitions flag to indicate, if we want dedicated partition moving
@@ -680,23 +668,18 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
    * @return map of partition id, oldPartitionMetada of partitions which will be re-used
    */
   public Map<String, PartitionMetadata> checkIfPartitionsCanBeReUsed(
-      List<String> partitionIds,
+      List<String> oldPartitionIds,
       long oldThroughputBytes,
       long newThroughputBytes,
       boolean requireDedicatedPartitions) {
     int newPartitionCount = getPartitionCount(newThroughputBytes);
     long perPartitionCapacityRequired = Math.ceilDiv(newThroughputBytes, newPartitionCount);
 
-    int numberOfPartitions = getPartitionCount(newThroughputBytes);
-
-    // we want minimum of minNumberOfPartitions assigned to a tenant for redundancy purpose
-    numberOfPartitions = getMinNumberOfPartitionsToBeAssigned(numberOfPartitions);
-
-    int oldPartitionCount = getPartitionCount(oldThroughputBytes);
+    int oldPartitionCount = oldPartitionIds.size();
     long perPartitionCapacityExisting = Math.ceilDiv(oldThroughputBytes, oldPartitionCount);
 
     Map<String, PartitionMetadata> partitionsToBeReUsed = new HashMap<>();
-    for (String partitionId : partitionIds) {
+    for (String partitionId : oldPartitionIds) {
       PartitionMetadata partitionMetadata = partitionMetadataStore.getSync(partitionId);
       if (requireDedicatedPartitions) {
         if ((partitionMetadata.dedicatedPartition
@@ -730,14 +713,14 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         }
       }
       // we will hit this criteria when downsizing throughput
-      if (partitionsToBeReUsed.size() == numberOfPartitions) {
+      if (partitionsToBeReUsed.size() == newPartitionCount) {
         break;
       }
     }
     for (String partitionId : partitionsToBeReUsed.keySet()) {
       PartitionMetadata existingPartitionMetadata = partitionMetadataStore.getSync(partitionId);
       existingPartitionMetadata.provisionedCapacity =
-          existingPartitionMetadata.getProvisionedCapacity()
+          existingPartitionMetadata.provisionedCapacity
               - perPartitionCapacityExisting
               + perPartitionCapacityRequired;
       existingPartitionMetadata.dedicatedPartition = requireDedicatedPartitions;
@@ -776,7 +759,10 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     previousActiveDatasetPartition.ifPresent(
         datasetPartitionMetadata ->
             clearPartitions(
-                datasetPartitionMetadata.getPartitions(), datasetMetadata.getThroughputBytes()));
+                datasetPartitionMetadata.getPartitions(),
+                Math.ceilDiv(
+                    datasetMetadata.getThroughputBytes(),
+                    datasetPartitionMetadata.getPartitions().size())));
     long perPartitionCapacity = Math.ceilDiv(updatedThroughputBytes, newPartitionIdList.size());
     for (String partitionId : newPartitionIdList) {
       PartitionMetadata partitionMetadata = partitionMetadataStore.getSync(partitionId);
@@ -810,8 +796,8 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
             .findFirst();
 
     Map<String, PartitionMetadata> clearedPartitions = new HashMap<>();
-
     Map<String, PartitionMetadata> partitionsToBeResUsed;
+
     if (previousActiveDatasetPartition.isPresent()) {
       partitionsToBeResUsed =
           checkIfPartitionsCanBeReUsed(
@@ -826,7 +812,11 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               .collect(Collectors.toList());
 
       clearedPartitions =
-          clearPartitions(partitionsToBeCleared, datasetMetadata.getThroughputBytes());
+          clearPartitions(
+              partitionsToBeCleared,
+              Math.ceilDiv(
+                  datasetMetadata.getThroughputBytes(),
+                  previousActiveDatasetPartition.get().getPartitions().size()));
     } else {
       partitionsToBeResUsed = new HashMap<>();
     }
@@ -837,9 +827,6 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         findPartition(throughputBytes, requireDedicatedPartition, reUsePartitionIds);
 
     int numberOfPartitions = getPartitionCount(throughputBytes);
-
-    // we want minimum of minNumberOfPartitions assigned to a tenant for redundancy purpose
-    numberOfPartitions = getMinNumberOfPartitionsToBeAssigned(numberOfPartitions);
 
     // Not enough partitions are available for reassigning
     if (newPartitionIds.size() + reUsePartitionIds.size() != numberOfPartitions) {
@@ -860,7 +847,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       }
       return List.of();
     }
-    return Stream.concat(newPartitionIds.stream(), reUsePartitionIds.stream())
+    return Stream.concat(reUsePartitionIds.stream(), newPartitionIds.stream())
         .collect(Collectors.toList());
   }
 }
