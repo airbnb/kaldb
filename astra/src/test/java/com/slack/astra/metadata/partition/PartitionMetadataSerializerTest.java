@@ -13,11 +13,12 @@ public class PartitionMetadataSerializerTest {
   @Test
   public void testPartitionMetadataSerializer() throws InvalidProtocolBufferException {
     final String partitionId = "1";
-    final long utilization = 100000;
-    final boolean isPartitionShared = false;
+    final long provisionedCapacity = 100000;
+    final long maxCapacity = 5000000;
+    final boolean dedicatedPartition = false;
 
     final PartitionMetadata partitionMetadata =
-        new PartitionMetadata(partitionId, utilization, isPartitionShared);
+        new PartitionMetadata(partitionId, provisionedCapacity, maxCapacity, dedicatedPartition);
 
     String serializedDatasetMetadata = serDe.toJsonStr(partitionMetadata);
     assertThat(serializedDatasetMetadata).isNotEmpty();
@@ -27,8 +28,9 @@ public class PartitionMetadataSerializerTest {
 
     assertThat(deserializedPartitionMetadata.name).isEqualTo(partitionId);
     assertThat(deserializedPartitionMetadata.partitionId).isEqualTo(partitionId);
-    assertThat(deserializedPartitionMetadata.utilization).isEqualTo(utilization);
-    assertThat(deserializedPartitionMetadata.isPartitionShared).isEqualTo(false);
+    assertThat(deserializedPartitionMetadata.provisionedCapacity).isEqualTo(provisionedCapacity);
+    assertThat(deserializedPartitionMetadata.maxCapacity).isEqualTo(maxCapacity);
+    assertThat(deserializedPartitionMetadata.dedicatedPartition).isEqualTo(false);
   }
 
   @Test
@@ -49,25 +51,28 @@ public class PartitionMetadataSerializerTest {
   @Test
   public void testPartitionMetadata() {
     final String partitionId = "1";
-    final long utilization = 1000000;
-    final boolean isPartitionShared = false;
+    final long provisionedCapacity = 1000000;
+    final long maxCapacity = 5000000;
+    final boolean dedicatedPartition = false;
 
     final PartitionMetadata partitionMetadata =
-        new PartitionMetadata(partitionId, utilization, isPartitionShared);
+        new PartitionMetadata(partitionId, provisionedCapacity, maxCapacity, dedicatedPartition);
 
     Metadata.PartitionMetadata partitionMetadataProto =
         PartitionMetadataSerializer.toPartitionMetadataProto(partitionMetadata);
 
     assertThat(partitionMetadataProto.getPartitionId()).isEqualTo(partitionId);
-    assertThat(partitionMetadataProto.getUtilization()).isEqualTo(utilization);
-    assertThat(partitionMetadataProto.getIsPartitionShared()).isEqualTo(isPartitionShared);
+    assertThat(partitionMetadataProto.getProvisionedCapacity()).isEqualTo(provisionedCapacity);
+    assertThat(partitionMetadataProto.getMaxCapacity()).isEqualTo(maxCapacity);
+    assertThat(partitionMetadataProto.getDedicatedPartition()).isEqualTo(dedicatedPartition);
 
     PartitionMetadata partitionMetadataFromProto =
         PartitionMetadataSerializer.fromPartitionMetadataProto(partitionMetadataProto);
 
     assertThat(partitionMetadataFromProto.name).isEqualTo(partitionId);
     assertThat(partitionMetadataFromProto.partitionId).isEqualTo(partitionId);
-    assertThat(partitionMetadataFromProto.utilization).isEqualTo(utilization);
-    assertThat(partitionMetadataFromProto.isPartitionShared).isEqualTo(isPartitionShared);
+    assertThat(partitionMetadataFromProto.provisionedCapacity).isEqualTo(provisionedCapacity);
+    assertThat(partitionMetadataFromProto.maxCapacity).isEqualTo(maxCapacity);
+    assertThat(partitionMetadataFromProto.dedicatedPartition).isEqualTo(dedicatedPartition);
   }
 }

@@ -107,6 +107,10 @@ managerConfig:
     maxConcurrentPerNode: ${ASTRA_MANAGER_MAX_CONCURRENT_ASSIGNMENTS_PER_NODE:-2}
   clusterMonitorServiceConfig:
     schedulePeriodMins: ${ASTRA_MANAGER_CLUSTER_MONITOR_PERIOD_MINS:-15}
+  managerApiConfig:
+    maxPartitionCapacity: ${ASTRA_MANAGER_API_MAX_PARTITION_CAPACITY:-5000000}
+    minNumberOfPartitions: ${ASTRA_MANAGER_API_MIN_NUMBER_OF_PARTITIONS:-2}
+
 
 clusterConfig:
   clusterName: ${ASTRA_CLUSTER_NAME:-ASTRA_local}

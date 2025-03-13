@@ -12,15 +12,17 @@ public class PartitionMetadataSerializer implements MetadataSerializer<Partition
 
     return new PartitionMetadata(
         partitionMetadataProto.getPartitionId(),
-        partitionMetadataProto.getUtilization(),
-        partitionMetadataProto.getIsPartitionShared());
+        partitionMetadataProto.getProvisionedCapacity(),
+        partitionMetadataProto.getMaxCapacity(),
+        partitionMetadataProto.getDedicatedPartition());
   }
 
   public static Metadata.PartitionMetadata toPartitionMetadataProto(PartitionMetadata metadata) {
     return Metadata.PartitionMetadata.newBuilder()
         .setPartitionId(metadata.getPartitionID())
-        .setUtilization(metadata.getUtilization())
-        .setIsPartitionShared(metadata.getIsPartitionShared())
+        .setProvisionedCapacity(metadata.getProvisionedCapacity())
+        .setMaxCapacity(metadata.getMaxCapacity())
+        .setDedicatedPartition(metadata.getDedicatedPartition())
         .build();
   }
 

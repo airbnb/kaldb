@@ -34,6 +34,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.naming.SizeLimitExceededException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +50,8 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   private final SnapshotMetadataStore snapshotMetadataStore;
   private final PartitionMetadataStore partitionMetadataStore;
   public static final long MAX_TIME = Long.MAX_VALUE;
+  // TODO: add to config
+  public static final long PARTITION_START_TIME_OFFSET = 15 * 60 * 1000; // 15 minutes
   private final ReplicaRestoreService replicaRestoreService;
 
   public final long maxPartitionCapacity;
@@ -154,6 +157,41 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     }
   }
 
+  /** Delete a data from the metadata store */
+  @Override
+  public void deleteDatasetMetadata(
+      ManagerApi.DeleteDatasetMetadataRequest request,
+      StreamObserver<ManagerApi.DeleteDatasetMetadataResponse> responseObserver) {
+
+    try {
+      DatasetMetadata existingDatasetMetadata = datasetMetadataStore.getSync(request.getName());
+      Optional<DatasetPartitionMetadata> previousActiveDatasetPartition =
+          existingDatasetMetadata.getPartitionConfigs().stream()
+              .filter(
+                  datasetPartitionMetadata ->
+                      datasetPartitionMetadata.getEndTimeEpochMs() == MAX_TIME)
+              .findFirst();
+
+      if (previousActiveDatasetPartition.isPresent()) {
+        Map<String, PartitionMetadata> _ =
+            clearPartitions(
+                previousActiveDatasetPartition.get().getPartitions(),
+                existingDatasetMetadata.getThroughputBytes());
+      }
+      datasetMetadataStore.deleteSync(request.getName());
+      responseObserver.onNext(
+          ManagerApi.DeleteDatasetMetadataResponse.newBuilder()
+              .setStatus(
+                  String.format("Deleted dataset metadata %s successfully.", request.getName()))
+              .build());
+      responseObserver.onCompleted();
+
+    } catch (Exception e) {
+      LOG.error("Error removing dataset metadata ", e);
+      responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
+    }
+  }
+
   /**
    * Allocates a new partition assignment for a dataset. If a rate and a list of partition IDs are
    * provided, it will use it use the list of partition ids as the current allocation and
@@ -163,26 +201,43 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   public void updatePartitionAssignment(
       ManagerApi.UpdatePartitionAssignmentRequest request,
       StreamObserver<ManagerApi.UpdatePartitionAssignmentResponse> responseObserver) {
-    // todo - In the future if only a rate is provided with an empty list the allocation
-    //  will be automatically assigned.
 
     try {
       // todo - add additional validation to ensure the provided allocation makes sense for the
-      //  configured throughput values. If no partitions are provided, auto-allocate.
+      //  configured throughput values.
       Preconditions.checkArgument(
           request.getPartitionIdsList().stream().noneMatch(String::isBlank),
           "PartitionIds list must not contain blank strings");
-
       DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(request.getName());
-      ImmutableList<DatasetPartitionMetadata> updatedDatasetPartitionMetadata =
-          addNewPartition(datasetMetadata.getPartitionConfigs(), request.getPartitionIdsList());
-
       // if the user provided a non-negative value for throughput set it, otherwise default to the
       // existing value
       long updatedThroughputBytes =
           request.getThroughputBytes() < 0
               ? datasetMetadata.getThroughputBytes()
               : request.getThroughputBytes();
+
+      List<String> partitionIdList = List.of();
+
+      if (request.getPartitionIdsList().isEmpty()) {
+        partitionIdList =
+            autoAssignPartition(
+                datasetMetadata, updatedThroughputBytes, request.getRequireDedicatedPartition());
+      } else {
+        partitionIdList = request.getPartitionIdsList();
+        manualAssignPartition(
+            datasetMetadata,
+            partitionIdList,
+            updatedThroughputBytes,
+            request.getRequireDedicatedPartition());
+      }
+      if (partitionIdList.isEmpty()) {
+        String msg = "Error updating partition assignment, could not find partitions to assign";
+        LOG.error(msg);
+        responseObserver.onError(Status.UNKNOWN.withDescription(msg).asException());
+        return;
+      }
+      ImmutableList<DatasetPartitionMetadata> updatedDatasetPartitionMetadata =
+          addNewPartition(datasetMetadata.getPartitionConfigs(), partitionIdList);
 
       DatasetMetadata updatedDatasetMetadata =
           new DatasetMetadata(
@@ -195,7 +250,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
       responseObserver.onNext(
           ManagerApi.UpdatePartitionAssignmentResponse.newBuilder()
-              .addAllAssignedPartitionIds(request.getPartitionIdsList())
+              .addAllAssignedPartitionIds(partitionIdList)
               .build());
       responseObserver.onCompleted();
     } catch (Exception e) {
@@ -365,7 +420,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     //   cut-over already scheduled
     // todo - if introducing an optional padding this should be added as a method parameter
     //   see https://github.com/slackhq/astra/pull/244#discussion_r835424863
-    long partitionCutoverTime = Instant.now().toEpochMilli();
+    long partitionCutoverTime = Instant.now().toEpochMilli() + PARTITION_START_TIME_OFFSET;
 
     ImmutableList.Builder<DatasetPartitionMetadata> builder =
         ImmutableList.<DatasetPartitionMetadata>builder().addAll(remainingDatasetPartitions);
@@ -427,28 +482,41 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       ManagerApi.CreatePartitionRequest request,
       StreamObserver<Metadata.PartitionMetadata> responseObserver) {
     try {
-      partitionMetadataStore.createSync(
-          new PartitionMetadata(
-              request.getPartitionId(), request.getUtilization(), request.getIsPartitionShared()));
-      responseObserver.onNext(
-          toPartitionMetadataProto(partitionMetadataStore.getSync(request.getPartitionId())));
-      responseObserver.onCompleted();
+      long maxCapacity =
+          request.getMaxCapacity() == 0 ? maxPartitionCapacity : request.getMaxCapacity();
+
+      try {
+        PartitionMetadata partitionMetadata =
+            partitionMetadataStore.getSync(request.getPartitionId());
+        // update
+        long provisionedCapacity =
+            request.getProvisionedCapacity() < 0
+                ? request.getProvisionedCapacity()
+                : partitionMetadata.provisionedCapacity;
+        PartitionMetadata updatedPartitionMetadata =
+            new PartitionMetadata(
+                partitionMetadata.partitionId,
+                provisionedCapacity,
+                maxCapacity,
+                request.getDedicatedPartition());
+        partitionMetadataStore.updateSync(updatedPartitionMetadata);
+        responseObserver.onNext(toPartitionMetadataProto(updatedPartitionMetadata));
+        responseObserver.onCompleted();
+      } catch (Exception InternalMetadataStoreException) {
+        // create
+        PartitionMetadata createPartitionMetadata =
+            new PartitionMetadata(
+                request.getPartitionId(),
+                request.getProvisionedCapacity(),
+                maxCapacity,
+                request.getDedicatedPartition());
+        partitionMetadataStore.createSync(createPartitionMetadata);
+        responseObserver.onNext(toPartitionMetadataProto(createPartitionMetadata));
+        responseObserver.onCompleted();
+      }
+
     } catch (Exception e) {
       LOG.error("Error creating new partition", e);
-      responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
-    }
-  }
-
-  @Override
-  public void getPartition(
-      ManagerApi.GetPartitionRequest request,
-      StreamObserver<Metadata.PartitionMetadata> responseObserver) {
-    try {
-      responseObserver.onNext(
-          toPartitionMetadataProto(partitionMetadataStore.getSync(request.getPartitionId())));
-      responseObserver.onCompleted();
-    } catch (Exception e) {
-      LOG.error("Error getting partition", e);
       responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
     }
   }
@@ -484,57 +552,74 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   }
 
   /**
-   * finds the available partitions based utilization and updates the utilization if partitions are
-   * considered.
+   * compares the computed numberOfPartitions with minimumNumber and returns the actual number of
+   * partitions to be assigned (accounting redundancy)
+   *
+   * @param numberOfPartitions raw partition number (w/o redundancy accounted)
+   * @return numOfPartitions to be assigned (with redundancy into account)
+   */
+  public int getMinNumberOfPartitionsToBeAssigned(int numberOfPartitions) {
+    return numberOfPartitions < minNumberOfPartitions
+        ? numberOfPartitions + (minNumberOfPartitions - numberOfPartitions)
+        : numberOfPartitions;
+  }
+
+  /**
+   * finds the available partitions based provisionedCapacity and updates the provisionedCapacity if
+   * partitions are considered.
    *
    * @param requiredThroughput - targeted throughput
    * @param requireDedicatedPartition - if dedicated partitions are required
+   * @param existingPartitionIds - list of existing partitions already to be re-used
    * @return list of string of partition ids
    */
-  public List<String> findPartition(long requiredThroughput, boolean requireDedicatedPartition) {
+  public List<String> findPartition(
+      long requiredThroughput,
+      boolean requireDedicatedPartition,
+      List<String> existingPartitionIds) {
     List<String> partitionIdsList = new ArrayList<>();
     int numberOfPartitions = getPartitionCount(requiredThroughput);
-
-    long perPartitionCapacity = requiredThroughput / numberOfPartitions;
-    // we want minimum of MINIMUM_NUMBER_OF_PARTITIONS assigned to a tenant for redundancy purpose
-    numberOfPartitions =
-        numberOfPartitions < minNumberOfPartitions
-            ? numberOfPartitions + (minNumberOfPartitions - numberOfPartitions)
-            : numberOfPartitions;
+    // we want minimum of minNumberOfPartitions assigned to a tenant for redundancy purpose
+    numberOfPartitions = getMinNumberOfPartitionsToBeAssigned(numberOfPartitions);
+    long perPartitionCapacity = Math.ceilDiv(requiredThroughput, numberOfPartitions);
+    numberOfPartitions = numberOfPartitions - existingPartitionIds.size();
 
     List<PartitionMetadata> partitionMetadataList = partitionMetadataStore.listSync();
     partitionMetadataList.sort(
         Comparator.comparing(partitionMetadata -> partitionMetadata.partitionId));
 
     for (PartitionMetadata partitionMetadata : partitionMetadataList) {
+      if (existingPartitionIds.contains(partitionMetadata.getPartitionID())) {
+        continue;
+      }
       if (requireDedicatedPartition) {
-        if (partitionMetadata.getUtilization() == 0 && !partitionMetadata.isPartitionShared) {
+        if (partitionMetadata.getProvisionedCapacity() == 0) {
           partitionIdsList.add(partitionMetadata.getPartitionID());
         }
       } else {
-        // partition has capacity and (partition is shared or (partition not shared and utilization
+        // partition has capacity and (partition is shared or (partition not shared and
+        // provisionedCapacity
         // = 0))
-        // TODO: to add schema check for shared tenants
-        if (partitionMetadata.utilization + perPartitionCapacity <= maxPartitionCapacity
-            && (partitionMetadata.isPartitionShared
-                || (partitionMetadata.getUtilization() == 0
-                    && !partitionMetadata.isPartitionShared))) {
+        if (partitionMetadata.provisionedCapacity + perPartitionCapacity <= maxPartitionCapacity
+            && (!partitionMetadata.dedicatedPartition
+                || partitionMetadata.getProvisionedCapacity() == 0)) {
           partitionIdsList.add(partitionMetadata.getPartitionID());
         }
       }
       if (partitionIdsList.size() == numberOfPartitions) {
-        // we have found the required number of partitions, update utilization and
-        // isPartitionShared
+        // we have found the required number of partitions, update provisionedCapacity and
+        // dedicatedPartition
         for (String partitionId : partitionIdsList) {
           PartitionMetadata newPartitionMetadata = partitionMetadataStore.getSync(partitionId);
-          newPartitionMetadata.isPartitionShared = !requireDedicatedPartition;
-          newPartitionMetadata.utilization =
-              newPartitionMetadata.utilization + perPartitionCapacity;
+          newPartitionMetadata.dedicatedPartition = requireDedicatedPartition;
+          newPartitionMetadata.provisionedCapacity =
+              newPartitionMetadata.provisionedCapacity + perPartitionCapacity;
           partitionMetadataStore.updateSync(
               new PartitionMetadata(
                   partitionId,
-                  newPartitionMetadata.getUtilization(),
-                  newPartitionMetadata.getIsPartitionShared()));
+                  newPartitionMetadata.getProvisionedCapacity(),
+                  newPartitionMetadata.getMaxCapacity(),
+                  newPartitionMetadata.getDedicatedPartition()));
         }
         return partitionIdsList;
       }
@@ -545,14 +630,177 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   }
 
   /**
-   * fetch the latest active partition metadata update the partition utilization and
-   * isPartitionShared status
+   * fetch the latest active partition metadata update the partition provisionedCapacity and
+   * dedicatedPartition status
    *
-   * @param datasetMetadata tenant metadata object
-   * @return previous active partitionMetadata
+   * @param partitionIds list of partitionIds to clear
+   * @param throughputBytes total throughput bytes to be cleared from partitions
+   * @return map of partitionId and old partitionMetadata (to be used if reassign if failed)
    */
-  public Map<String, PartitionMetadata> clearPartitions(DatasetMetadata datasetMetadata)
-      throws InterruptedException {
+  public Map<String, PartitionMetadata> clearPartitions(
+      List<String> partitionIds, long throughputBytes) {
+
+    Map<String, PartitionMetadata> clearedPartitions = new HashMap<>();
+
+    //    int partitionCount = getPartitionCount(throughputBytes);
+    // we only consider the latest partition config to be updated
+    for (String partitionId : partitionIds) {
+      PartitionMetadata existingPartitionMetadata = partitionMetadataStore.getSync(partitionId);
+      clearedPartitions.put(
+          partitionId,
+          new PartitionMetadata(
+              partitionId,
+              existingPartitionMetadata.getProvisionedCapacity(),
+              existingPartitionMetadata.getMaxCapacity(),
+              existingPartitionMetadata.getDedicatedPartition()));
+      existingPartitionMetadata.provisionedCapacity -=
+          Math.ceilDiv(throughputBytes, partitionIds.size());
+
+      existingPartitionMetadata.dedicatedPartition =
+          existingPartitionMetadata.provisionedCapacity != 0
+              && existingPartitionMetadata.dedicatedPartition;
+      partitionMetadataStore.updateSync(
+          new PartitionMetadata(
+              partitionId,
+              existingPartitionMetadata.getProvisionedCapacity(),
+              existingPartitionMetadata.getMaxCapacity(),
+              existingPartitionMetadata.getDedicatedPartition()));
+    }
+    return clearedPartitions;
+  }
+
+  /**
+   * check if the current partitionIds can be reUsed to minimize the number of changes
+   *
+   * @param partitionIds list of partition IDs
+   * @param oldThroughputBytes old throughput for which the partitions were used
+   * @param newThroughputBytes new throughput for which the partitions will be used
+   * @param requireDedicatedPartitions flag to indicate, if we want dedicated partition moving
+   *     forward
+   * @return map of partition id, oldPartitionMetada of partitions which will be re-used
+   */
+  public Map<String, PartitionMetadata> checkIfPartitionsCanBeReUsed(
+      List<String> partitionIds,
+      long oldThroughputBytes,
+      long newThroughputBytes,
+      boolean requireDedicatedPartitions) {
+    int newPartitionCount = getPartitionCount(newThroughputBytes);
+    long perPartitionCapacityRequired = Math.ceilDiv(newThroughputBytes, newPartitionCount);
+
+    int numberOfPartitions = getPartitionCount(newThroughputBytes);
+
+    // we want minimum of minNumberOfPartitions assigned to a tenant for redundancy purpose
+    numberOfPartitions = getMinNumberOfPartitionsToBeAssigned(numberOfPartitions);
+
+    int oldPartitionCount = getPartitionCount(oldThroughputBytes);
+    long perPartitionCapacityExisting = Math.ceilDiv(oldThroughputBytes, oldPartitionCount);
+
+    Map<String, PartitionMetadata> partitionsToBeReUsed = new HashMap<>();
+    for (String partitionId : partitionIds) {
+      PartitionMetadata partitionMetadata = partitionMetadataStore.getSync(partitionId);
+      if (requireDedicatedPartitions) {
+        if ((partitionMetadata.dedicatedPartition
+                || partitionMetadata.getProvisionedCapacity() - perPartitionCapacityExisting == 0)
+            && (partitionMetadata.getProvisionedCapacity()
+                    - perPartitionCapacityExisting
+                    + perPartitionCapacityRequired
+                <= maxPartitionCapacity)) {
+          partitionsToBeReUsed.put(
+              partitionId,
+              new PartitionMetadata(
+                  partitionId,
+                  partitionMetadata.getProvisionedCapacity(),
+                  partitionMetadata.getMaxCapacity(),
+                  partitionMetadata.getDedicatedPartition()));
+        }
+      } else {
+        if ((!partitionMetadata.dedicatedPartition
+                || partitionMetadata.getProvisionedCapacity() - perPartitionCapacityExisting == 0)
+            && (partitionMetadata.getProvisionedCapacity()
+                    - perPartitionCapacityExisting
+                    + perPartitionCapacityRequired
+                <= maxPartitionCapacity)) {
+          partitionsToBeReUsed.put(
+              partitionId,
+              new PartitionMetadata(
+                  partitionId,
+                  partitionMetadata.getProvisionedCapacity(),
+                  partitionMetadata.getMaxCapacity(),
+                  partitionMetadata.getDedicatedPartition()));
+        }
+      }
+      // we will hit this criteria when downsizing throughput
+      if (partitionsToBeReUsed.size() == numberOfPartitions) {
+        break;
+      }
+    }
+    for (String partitionId : partitionsToBeReUsed.keySet()) {
+      PartitionMetadata existingPartitionMetadata = partitionMetadataStore.getSync(partitionId);
+      existingPartitionMetadata.provisionedCapacity =
+          existingPartitionMetadata.getProvisionedCapacity()
+              - perPartitionCapacityExisting
+              + perPartitionCapacityRequired;
+      existingPartitionMetadata.dedicatedPartition = requireDedicatedPartitions;
+
+      partitionMetadataStore.updateSync(
+          new PartitionMetadata(
+              partitionId,
+              existingPartitionMetadata.getProvisionedCapacity(),
+              existingPartitionMetadata.getMaxCapacity(),
+              existingPartitionMetadata.getDedicatedPartition()));
+    }
+
+    return partitionsToBeReUsed;
+  }
+
+  /**
+   * perform manual partition assignment when doing update partitionAssignment
+   *
+   * @param datasetMetadata datasetMetadata object on which partition assignment will be done
+   * @param newPartitionIdList the new PartitionId list
+   * @param updatedThroughputBytes new throughput bytes
+   * @param requireDedicatedPartitions if we require dedicated partition
+   */
+  public void manualAssignPartition(
+      DatasetMetadata datasetMetadata,
+      List<String> newPartitionIdList,
+      long updatedThroughputBytes,
+      boolean requireDedicatedPartitions) {
+    List<DatasetPartitionMetadata> existingPartitions = datasetMetadata.getPartitionConfigs();
+    Optional<DatasetPartitionMetadata> previousActiveDatasetPartition =
+        existingPartitions.stream()
+            .filter(
+                datasetPartitionMetadata ->
+                    datasetPartitionMetadata.getEndTimeEpochMs() == MAX_TIME)
+            .findFirst();
+    previousActiveDatasetPartition.ifPresent(
+        datasetPartitionMetadata ->
+            clearPartitions(
+                datasetPartitionMetadata.getPartitions(), datasetMetadata.getThroughputBytes()));
+    long perPartitionCapacity = Math.ceilDiv(updatedThroughputBytes, newPartitionIdList.size());
+    for (String partitionId : newPartitionIdList) {
+      PartitionMetadata partitionMetadata = partitionMetadataStore.getSync(partitionId);
+      partitionMetadata.provisionedCapacity += perPartitionCapacity;
+      partitionMetadata.dedicatedPartition = requireDedicatedPartitions;
+      partitionMetadataStore.updateSync(
+          new PartitionMetadata(
+              partitionId,
+              partitionMetadata.provisionedCapacity,
+              partitionMetadata.maxCapacity,
+              partitionMetadata.dedicatedPartition));
+    }
+  }
+
+  /**
+   * automatically finds the partition Ids given requirements. with minimum swaps
+   *
+   * @param datasetMetadata DatasetMetadata object
+   * @param throughputBytes required throughPutBytes
+   * @param requireDedicatedPartition flag to indicate if we need dedicated partitions
+   * @return List of partition Ids to be assigned in the new DatasetPartitionMetadata
+   */
+  public List<String> autoAssignPartition(
+      DatasetMetadata datasetMetadata, long throughputBytes, boolean requireDedicatedPartition) {
 
     Optional<DatasetPartitionMetadata> previousActiveDatasetPartition =
         datasetMetadata.getPartitionConfigs().stream()
@@ -561,159 +809,58 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
                     datasetPartitionMetadata.getEndTimeEpochMs() == MAX_TIME)
             .findFirst();
 
-    if (previousActiveDatasetPartition.isEmpty()) {
-      return null;
-    }
-
     Map<String, PartitionMetadata> clearedPartitions = new HashMap<>();
 
-    int partitionCount = getPartitionCount(datasetMetadata.getThroughputBytes());
-    // we only consider the latest partition config to be updated
-    for (String partitionId : previousActiveDatasetPartition.get().getPartitions()) {
-      PartitionMetadata existingPartitionMetadata = partitionMetadataStore.getSync(partitionId);
-      clearedPartitions.put(
-          partitionId,
-          new PartitionMetadata(
-              partitionId,
-              existingPartitionMetadata.getUtilization(),
-              existingPartitionMetadata.getIsPartitionShared()));
-      existingPartitionMetadata.utilization =
-          existingPartitionMetadata.getUtilization()
-              - datasetMetadata.getThroughputBytes() / partitionCount;
+    Map<String, PartitionMetadata> partitionsToBeResUsed;
+    if (previousActiveDatasetPartition.isPresent()) {
+      partitionsToBeResUsed =
+          checkIfPartitionsCanBeReUsed(
+              previousActiveDatasetPartition.get().getPartitions(),
+              datasetMetadata.getThroughputBytes(),
+              throughputBytes,
+              requireDedicatedPartition);
 
-      existingPartitionMetadata.isPartitionShared =
-          existingPartitionMetadata.utilization != 0 && existingPartitionMetadata.isPartitionShared;
-      partitionMetadataStore.updateSync(
-          new PartitionMetadata(
-              partitionId,
-              existingPartitionMetadata.getUtilization(),
-              existingPartitionMetadata.getIsPartitionShared()));
+      List<String> partitionsToBeCleared =
+          previousActiveDatasetPartition.get().getPartitions().stream()
+              .filter(element -> !partitionsToBeResUsed.containsKey(element))
+              .collect(Collectors.toList());
+
+      clearedPartitions =
+          clearPartitions(partitionsToBeCleared, datasetMetadata.getThroughputBytes());
+    } else {
+      partitionsToBeResUsed = new HashMap<>();
     }
-    return clearedPartitions;
-  }
 
-  @Override
-  public void createTenant(
-      ManagerApi.CreateTenantRequest request,
-      StreamObserver<Metadata.DatasetMetadata> responseObserver) {
-    try {
-      Preconditions.checkArgument(
-          request.getThroughputBytes() > 0, "ThroughputBytes cannot be 0 or negative");
+    List<String> reUsePartitionIds = new ArrayList<>(partitionsToBeResUsed.keySet());
 
-      List<String> partitionIdsList =
-          findPartition(request.getThroughputBytes(), request.getRequireDedicatedPartitions());
+    List<String> newPartitionIds =
+        findPartition(throughputBytes, requireDedicatedPartition, reUsePartitionIds);
 
-      if (partitionIdsList.isEmpty()) {
-        String msg = "Error creating new tenant, Not enough partitions are available";
-        LOG.error(msg);
-        responseObserver.onError(Status.UNKNOWN.withDescription(msg).asException());
-        return;
+    int numberOfPartitions = getPartitionCount(throughputBytes);
+
+    // we want minimum of minNumberOfPartitions assigned to a tenant for redundancy purpose
+    numberOfPartitions = getMinNumberOfPartitionsToBeAssigned(numberOfPartitions);
+
+    // Not enough partitions are available for reassigning
+    if (newPartitionIds.size() + reUsePartitionIds.size() != numberOfPartitions) {
+      clearedPartitions.putAll(partitionsToBeResUsed);
+      // revert the clearing operation
+      for (Map.Entry<String, PartitionMetadata> entry : clearedPartitions.entrySet()) {
+        PartitionMetadata existingPartitionMetadata =
+            partitionMetadataStore.getSync(entry.getKey());
+        existingPartitionMetadata.provisionedCapacity = entry.getValue().getProvisionedCapacity();
+        existingPartitionMetadata.dedicatedPartition = entry.getValue().getDedicatedPartition();
+
+        partitionMetadataStore.updateSync(
+            new PartitionMetadata(
+                entry.getKey(),
+                existingPartitionMetadata.getProvisionedCapacity(),
+                existingPartitionMetadata.getMaxCapacity(),
+                existingPartitionMetadata.getDedicatedPartition()));
       }
-
-      long partitionStartTime = Instant.now().toEpochMilli();
-      ImmutableList.Builder<DatasetPartitionMetadata> builder = ImmutableList.builder();
-      DatasetPartitionMetadata newPartitionMetadata =
-          new DatasetPartitionMetadata(partitionStartTime, MAX_TIME, partitionIdsList);
-      builder.add(newPartitionMetadata);
-
-      datasetMetadataStore.createSync(
-          new DatasetMetadata(
-              request.getName(),
-              request.getOwner(),
-              request.getThroughputBytes(),
-              builder.build(),
-              request.getServiceNamePattern()));
-      responseObserver.onNext(
-          toDatasetMetadataProto(datasetMetadataStore.getSync(request.getName())));
-      responseObserver.onCompleted();
-    } catch (Exception e) {
-      LOG.error("Error creating new tenant", e);
-      responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
+      return List.of();
     }
-  }
-
-  @Override
-  public void removeTenant(
-      ManagerApi.RemoveTenantRequest request,
-      StreamObserver<ManagerApi.RemoveTenantResponse> responseObserver) {
-
-    try {
-      DatasetMetadata existingDatasetMetadata = datasetMetadataStore.getSync(request.getName());
-      Map<String, PartitionMetadata> _ = clearPartitions(existingDatasetMetadata);
-      datasetMetadataStore.deleteSync(request.getName());
-      responseObserver.onNext(
-          ManagerApi.RemoveTenantResponse.newBuilder()
-              .setStatus(String.format("Removed tenant %s successfully.", request.getName()))
-              .build());
-      responseObserver.onCompleted();
-
-    } catch (Exception e) {
-      LOG.error("Error removing tenant ", e);
-      responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
-    }
-  }
-
-  @Override
-  public void reassignTenant(
-      ManagerApi.ReassignTenantRequest request,
-      StreamObserver<Metadata.DatasetMetadata> responseObserver) {
-
-    try {
-      DatasetMetadata existingDatasetMetadata = datasetMetadataStore.getSync(request.getName());
-
-      Map<String, PartitionMetadata> clearedPartitions = clearPartitions(existingDatasetMetadata);
-
-      // if the user provided a non-negative value for throughput set it, otherwise default to the
-      // existing value
-      long updatedThroughputBytes =
-          request.getThroughputBytes() < 0
-              ? existingDatasetMetadata.getThroughputBytes()
-              : request.getThroughputBytes();
-
-      List<String> newPartitionIds =
-          findPartition(updatedThroughputBytes, request.getRequireDedicatedPartitions());
-      // Not enough partitions are available for reassigning
-      if (newPartitionIds.isEmpty()) {
-        if (!clearedPartitions.isEmpty()) {
-          // revert the clearing operation
-          for (Map.Entry<String, PartitionMetadata> entry : clearedPartitions.entrySet()) {
-            PartitionMetadata existingPartitionMetadata =
-                partitionMetadataStore.getSync(entry.getKey());
-            existingPartitionMetadata.utilization = entry.getValue().getUtilization();
-            existingPartitionMetadata.isPartitionShared = entry.getValue().getIsPartitionShared();
-
-            partitionMetadataStore.updateSync(
-                new PartitionMetadata(
-                    entry.getKey(),
-                    existingPartitionMetadata.getUtilization(),
-                    existingPartitionMetadata.getIsPartitionShared()));
-          }
-        }
-        String msg =
-            String.format(
-                "Error updating new tenant %s, Not enough partitions are available",
-                request.getName());
-        LOG.error(msg);
-        responseObserver.onError(Status.UNKNOWN.withDescription(msg).asException());
-        return;
-      }
-      ImmutableList<DatasetPartitionMetadata> updatedDatasetPartitionMetadata =
-          addNewPartition(existingDatasetMetadata.getPartitionConfigs(), newPartitionIds);
-
-      DatasetMetadata updatedDatasetMetadata =
-          new DatasetMetadata(
-              existingDatasetMetadata.getName(),
-              existingDatasetMetadata.getOwner(),
-              updatedThroughputBytes,
-              updatedDatasetPartitionMetadata,
-              existingDatasetMetadata.getServiceNamePattern());
-      datasetMetadataStore.updateSync(updatedDatasetMetadata);
-
-      responseObserver.onNext(toDatasetMetadataProto(updatedDatasetMetadata));
-      responseObserver.onCompleted();
-    } catch (Exception e) {
-      LOG.error("Error updating tenant", e);
-      responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
-    }
+    return Stream.concat(newPartitionIds.stream(), reUsePartitionIds.stream())
+        .collect(Collectors.toList());
   }
 }

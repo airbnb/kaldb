@@ -237,8 +237,9 @@ message CacheNodeMetadata {
 
 message PartitionMetadata {
   string partition_id = 1;
-  int64 utilization = 2;
-  bool is_partition_shared = 3;
+  int64 provisioned_capacity = 2;
+  int64 max_capacity = 3;
+  bool dedicated_partition = 4;
 }
 
 message ListPartitionMetadataResponse {

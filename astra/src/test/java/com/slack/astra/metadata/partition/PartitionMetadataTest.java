@@ -11,23 +11,25 @@ public class PartitionMetadataTest {
   @Test
   public void testPartitionMetadata() {
     final String partitionId = "1";
-    final long utilizaion = 1000000;
-    final boolean isPartitionShared = false;
+    final long provisionedCapacity = 1000000;
+    final long maxCapacity = 5000000;
+    final boolean dedicatedPartition = false;
     PartitionMetadata partitionMetadata =
-        new PartitionMetadata(partitionId, utilizaion, isPartitionShared);
+        new PartitionMetadata(partitionId, provisionedCapacity, maxCapacity, dedicatedPartition);
 
     assertThat(partitionMetadata.name).isEqualTo(partitionId);
     assertThat(partitionMetadata.partitionId).isEqualTo(partitionId);
-    assertThat(partitionMetadata.utilization).isEqualTo(utilizaion);
-    assertThat(partitionMetadata.isPartitionShared).isEqualTo(isPartitionShared);
+    assertThat(partitionMetadata.provisionedCapacity).isEqualTo(provisionedCapacity);
+    assertThat(partitionMetadata.maxCapacity).isEqualTo(maxCapacity);
+    assertThat(partitionMetadata.dedicatedPartition).isEqualTo(dedicatedPartition);
   }
 
   @Test
   public void testEqualsAndHashCode() {
-    PartitionMetadata partitionMetadata1 = new PartitionMetadata("1", 1000000, false);
-    PartitionMetadata partitionMetadata2 = new PartitionMetadata("2", 1000000, false);
-    PartitionMetadata partitionMetadata3 = new PartitionMetadata("1", 2000000, false);
-    PartitionMetadata partitionMetadata4 = new PartitionMetadata("1", 1000000, true);
+    PartitionMetadata partitionMetadata1 = new PartitionMetadata("1", 1000000, 5000000, false);
+    PartitionMetadata partitionMetadata2 = new PartitionMetadata("2", 1000000, 5000000, false);
+    PartitionMetadata partitionMetadata3 = new PartitionMetadata("1", 2000000, 5000000, false);
+    PartitionMetadata partitionMetadata4 = new PartitionMetadata("1", 1000000, 5000000, true);
 
     assertThat(partitionMetadata1).isNotEqualTo(partitionMetadata2);
     assertThat(partitionMetadata1).isNotEqualTo(partitionMetadata3);
