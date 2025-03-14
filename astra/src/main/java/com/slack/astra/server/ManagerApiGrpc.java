@@ -189,7 +189,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      LOG.error("Error removing dataset metadata ", e);
+      LOG.error("Error deleting dataset metadata ", e);
       responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
     }
   }
