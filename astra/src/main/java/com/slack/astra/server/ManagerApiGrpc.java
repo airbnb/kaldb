@@ -543,8 +543,8 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   }
 
   /**
-   * Returns the partition count based of the throughput. Performs div operation, and returns the
-   * ceil of the division. Also, checks if minimum requirement is met
+   * Returns the partition count based of the throughput. Performs div operation, and takes the ceil
+   * of the division. Also, checks if minimum partition requirement is met
    *
    * @param throughput service throughput to calculate number of partitions for
    * @return integer number of partition count
@@ -667,7 +667,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
    *     forward
    * @return map of partition id, oldPartitionMetada of partitions which will be re-used
    */
-  public Map<String, PartitionMetadata> checkIfPartitionsCanBeReUsed(
+  public Map<String, PartitionMetadata> findPartitionsToBeReUsed(
       List<String> oldPartitionIds,
       long oldThroughputBytes,
       long newThroughputBytes,
@@ -778,7 +778,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   }
 
   /**
-   * automatically finds the partition Ids given requirements. with minimum swaps
+   * automatically finds the partition Ids given requirements, with minimum swaps
    *
    * @param datasetMetadata DatasetMetadata object
    * @param throughputBytes required throughPutBytes
@@ -800,7 +800,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
     if (previousActiveDatasetPartition.isPresent()) {
       partitionsToBeResUsed =
-          checkIfPartitionsCanBeReUsed(
+          findPartitionsToBeReUsed(
               previousActiveDatasetPartition.get().getPartitions(),
               datasetMetadata.getThroughputBytes(),
               throughputBytes,
