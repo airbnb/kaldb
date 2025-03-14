@@ -2,6 +2,7 @@ package com.slack.astra.server;
 
 import static com.slack.astra.metadata.dataset.DatasetMetadataSerializer.toDatasetMetadataProto;
 import static com.slack.astra.metadata.partition.PartitionMetadataSerializer.toPartitionMetadataProto;
+import static org.awaitility.Awaitility.await;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
@@ -589,8 +590,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         }
       } else {
         // partition has capacity and (partition is shared or (partition not shared and
-        // provisionedCapacity
-        // = 0))
+        // provisionedCapacity = 0))
         if (partitionMetadata.provisionedCapacity + perPartitionCapacity <= maxPartitionCapacity
             && (!partitionMetadata.dedicatedPartition
                 || partitionMetadata.getProvisionedCapacity() == 0)) {
@@ -602,21 +602,28 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         // dedicatedPartition
         for (String partitionId : partitionIdsList) {
           PartitionMetadata newPartitionMetadata = partitionMetadataStore.getSync(partitionId);
-          newPartitionMetadata.dedicatedPartition = requireDedicatedPartition;
-          newPartitionMetadata.provisionedCapacity =
+          long provisionedCapacity =
               newPartitionMetadata.provisionedCapacity + perPartitionCapacity;
           partitionMetadataStore.updateSync(
               new PartitionMetadata(
                   partitionId,
-                  newPartitionMetadata.getProvisionedCapacity(),
+                  provisionedCapacity,
                   newPartitionMetadata.getMaxCapacity(),
-                  newPartitionMetadata.getDedicatedPartition()));
+                  requireDedicatedPartition));
+          await()
+              .until(
+                  () -> {
+                    PartitionMetadata getPartitionMetadata =
+                        partitionMetadataStore.getSync(partitionId);
+                    return getPartitionMetadata.getProvisionedCapacity() == provisionedCapacity
+                        && getPartitionMetadata.getDedicatedPartition()
+                            == requireDedicatedPartition;
+                  });
         }
         return partitionIdsList;
       }
     }
-    // if we reached here means we did not find required number of partitions hence returning empty
-    // list
+    // if we reached here means we did not find required number of partitions, returning empty list
     return List.of();
   }
 
@@ -642,17 +649,25 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               existingPartitionMetadata.getProvisionedCapacity(),
               existingPartitionMetadata.getMaxCapacity(),
               existingPartitionMetadata.getDedicatedPartition()));
-      existingPartitionMetadata.provisionedCapacity -= perPartitionCapacity;
+      long provisionedCapacity =
+          existingPartitionMetadata.getProvisionedCapacity() - perPartitionCapacity;
 
-      existingPartitionMetadata.dedicatedPartition =
-          existingPartitionMetadata.provisionedCapacity != 0
-              && existingPartitionMetadata.dedicatedPartition;
+      boolean dedicatedPartition =
+          provisionedCapacity != 0 && existingPartitionMetadata.dedicatedPartition;
       partitionMetadataStore.updateSync(
           new PartitionMetadata(
               partitionId,
-              existingPartitionMetadata.getProvisionedCapacity(),
+              provisionedCapacity,
               existingPartitionMetadata.getMaxCapacity(),
-              existingPartitionMetadata.getDedicatedPartition()));
+              dedicatedPartition));
+      await()
+          .until(
+              () -> {
+                PartitionMetadata getPartitionMetadata =
+                    partitionMetadataStore.getSync(partitionId);
+                return getPartitionMetadata.getProvisionedCapacity() == provisionedCapacity
+                    && getPartitionMetadata.getDedicatedPartition() == dedicatedPartition;
+              });
     }
     return clearedPartitions;
   }
@@ -719,18 +734,25 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     }
     for (String partitionId : partitionsToBeReUsed.keySet()) {
       PartitionMetadata existingPartitionMetadata = partitionMetadataStore.getSync(partitionId);
-      existingPartitionMetadata.provisionedCapacity =
+      long provisionedCapacity =
           existingPartitionMetadata.provisionedCapacity
               - perPartitionCapacityExisting
               + perPartitionCapacityRequired;
-      existingPartitionMetadata.dedicatedPartition = requireDedicatedPartitions;
 
       partitionMetadataStore.updateSync(
           new PartitionMetadata(
               partitionId,
-              existingPartitionMetadata.getProvisionedCapacity(),
+              provisionedCapacity,
               existingPartitionMetadata.getMaxCapacity(),
-              existingPartitionMetadata.getDedicatedPartition()));
+              requireDedicatedPartitions));
+      await()
+          .until(
+              () -> {
+                PartitionMetadata getPartitionMetadata =
+                    partitionMetadataStore.getSync(partitionId);
+                return getPartitionMetadata.getProvisionedCapacity() == provisionedCapacity
+                    && getPartitionMetadata.getDedicatedPartition() == requireDedicatedPartitions;
+              });
     }
 
     return partitionsToBeReUsed;
@@ -766,14 +788,13 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     long perPartitionCapacity = Math.ceilDiv(updatedThroughputBytes, newPartitionIdList.size());
     for (String partitionId : newPartitionIdList) {
       PartitionMetadata partitionMetadata = partitionMetadataStore.getSync(partitionId);
-      partitionMetadata.provisionedCapacity += perPartitionCapacity;
-      partitionMetadata.dedicatedPartition = requireDedicatedPartitions;
+      long provisionedCapacity = partitionMetadata.provisionedCapacity + perPartitionCapacity;
       partitionMetadataStore.updateSync(
           new PartitionMetadata(
               partitionId,
-              partitionMetadata.provisionedCapacity,
+              provisionedCapacity,
               partitionMetadata.maxCapacity,
-              partitionMetadata.dedicatedPartition));
+              requireDedicatedPartitions));
     }
   }
 
@@ -833,17 +854,13 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       clearedPartitions.putAll(partitionsToBeResUsed);
       // revert the clearing operation
       for (Map.Entry<String, PartitionMetadata> entry : clearedPartitions.entrySet()) {
-        PartitionMetadata existingPartitionMetadata =
-            partitionMetadataStore.getSync(entry.getKey());
-        existingPartitionMetadata.provisionedCapacity = entry.getValue().getProvisionedCapacity();
-        existingPartitionMetadata.dedicatedPartition = entry.getValue().getDedicatedPartition();
 
         partitionMetadataStore.updateSync(
             new PartitionMetadata(
                 entry.getKey(),
-                existingPartitionMetadata.getProvisionedCapacity(),
-                existingPartitionMetadata.getMaxCapacity(),
-                existingPartitionMetadata.getDedicatedPartition()));
+                entry.getValue().getProvisionedCapacity(),
+                entry.getValue().getMaxCapacity(),
+                entry.getValue().getDedicatedPartition()));
       }
       return List.of();
     }
