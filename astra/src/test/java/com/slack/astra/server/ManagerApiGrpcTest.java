@@ -1091,6 +1091,51 @@ public class ManagerApiGrpcTest {
   }
 
   @Test
+  public void shouldErrorUpdatingPartitionAutoAssignmentNotEnoughPartitions() {
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 0, 5000000, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 0, 5000000, false));
+
+    Metadata.DatasetMetadata initialDatasetRequest =
+        managerApiStub.createDatasetMetadata(
+            ManagerApi.CreateDatasetMetadataRequest.newBuilder()
+                .setName(datasetName)
+                .setOwner(datasetOwner)
+                .build());
+    assertThat(initialDatasetRequest.getPartitionConfigsList().size()).isEqualTo(0);
+
+    StatusRuntimeException throwable1 =
+        (StatusRuntimeException)
+            catchThrowable(
+                () ->
+                    managerApiStub.updatePartitionAssignment(
+                        ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
+                            .setName(datasetName)
+                            .setThroughputBytes(15000000)
+                            .build()));
+    assertThat(throwable1.getStatus().getCode()).isEqualTo(Status.UNKNOWN.getCode());
+    assertThat(throwable1.getMessage())
+        .isEqualTo(
+            "UNKNOWN: Error updating partition assignment, could not find partitions to assign");
+
+    assertThat(AstraMetadataTestUtils.listSyncUncached(datasetMetadataStore).size()).isEqualTo(1);
+
+    Metadata.DatasetMetadata firstAssignment =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName).build());
+    assertThat(firstAssignment.getPartitionConfigsList().size()).isEqualTo(0);
+
+    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(partitionMetadata1.getDedicatedPartition()).isEqualTo(false);
+    PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(partitionMetadata2.getDedicatedPartition()).isEqualTo(false);
+  }
+
+  @Test
   public void shouldErrorUpdatingPartitionAssignmentNonexistentDataset() {
     String datasetName = "testDataset";
     List<String> partitionList = List.of("1", "2");
