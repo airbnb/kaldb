@@ -141,6 +141,7 @@ public class OpenSearchAdapter {
   public void reloadSchema() {
     // TreeMap here ensures the schema is sorted by natural order - to ensure multifields are
     // registered by their parent first, and then fields added second
+    LOG.debug("Reloading schema: {}", chunkSchema);
     for (Map.Entry<String, LuceneFieldDef> entry : new TreeMap<>(chunkSchema).entrySet()) {
       String fieldMapping = getFieldMapping(entry.getValue().fieldType);
       try {
@@ -507,10 +508,10 @@ public class OpenSearchAdapter {
       CheckedConsumer<XContentBuilder, IOException> buildField) {
     MappedFieldType fieldType = mapperService.fieldType(fieldName);
     if (mapperService.isMetadataField(fieldName)) {
-      LOG.trace("Skipping metadata field '{}'", fieldName);
+      LOG.debug("Skipping metadata field '{}, fieldType {}'", fieldName, fieldType);
       return false;
     } else if (fieldType != null) {
-      LOG.trace(
+      LOG.debug(
           "Field '{}' already exists as typeName '{}', skipping query mapping update",
           fieldType.name(),
           fieldType.familyTypeName());
@@ -547,8 +548,9 @@ public class OpenSearchAdapter {
             MapperService.MergeReason.MAPPING_UPDATE);
       } catch (Exception e) {
         LOG.warn(
-            "Error doing map update which affects aggregation failure for field={} errorMsg={} exception={}",
+            "Error doing map update which affects aggregation failure for field={}, fieldType={}, errorMsg={} exception={}",
             fieldName,
+            fieldType,
             e.getMessage(),
             e.getStackTrace());
       }
