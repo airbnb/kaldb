@@ -204,6 +204,13 @@
             <version>${kafka.version}</version>
         </dependency>
 
+        <!-- Duckdb dependencies -->
+        <dependency>
+            <groupId>org.duckdb</groupId>
+            <artifactId>duckdb_jdbc</artifactId>
+            <version>1.2.1</version>
+        </dependency>
+
         <!-- Jackson JSON parser dependencies -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
