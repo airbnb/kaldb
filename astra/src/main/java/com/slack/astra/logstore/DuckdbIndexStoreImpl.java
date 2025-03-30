@@ -8,13 +8,8 @@ import com.slack.service.murron.trace.Trace;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.commons.io.FileUtils;
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.index.IndexCommit;
 import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.KeepOnlyLastCommitDeletionPolicy;
-import org.apache.lucene.index.SnapshotDeletionPolicy;
 import org.apache.lucene.search.SearcherManager;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
@@ -25,9 +20,14 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Duration;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -40,13 +40,24 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class DuckdbIndexStoreImpl implements LogStore {
 
-  public DuckdbIndexStoreImpl() {
+  private final Connection conn;
+  private final Statement stmt;
 
+  public DuckdbIndexStoreImpl() throws SQLException {
+    // TODO: Set connection properties.
+    Properties connectionProperties = new Properties();
+    String jdbcURL = "jdbc:duckdb:/tmp/duckdb_test/duckdb_test_db";
+    conn = DriverManager.getConnection(jdbcURL, connectionProperties);
+    stmt = conn.createStatement();
+
+    // TODO: Use passed in folder. Remove replace once we use the passed in folder. Also, a random uuid as folder name.
+    stmt.execute(
+            "CREATE OR REPLACE TABLE items (item VARCHAR, value DECIMAL(10, 2), count INTEGER)");
+    // Create the table.
   }
 
   @Override
   public void addMessage(Trace.Span message) {
-
   }
 
   @Override
