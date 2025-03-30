@@ -32,7 +32,7 @@ public class DuckdbSample {
     try (ResultSet rs = stmt.executeQuery(parquet_scan_query)) {
       while (rs.next()) {
         System.out.println(rs.getString(1));
-        System.out.println(rs.getString(3));
+        System.out.println(rs.getString(4));
       }
     }
     System.out.println("Finished parquet file read");
@@ -47,7 +47,7 @@ public class DuckdbSample {
     try (ResultSet rs = stmt.executeQuery("SELECT * FROM items")) {
       while (rs.next()) {
         System.out.println(rs.getString(1));
-        System.out.println(rs.getInt(3));
+        System.out.println(rs.getInt(4));
       }
     }
   }
@@ -73,10 +73,43 @@ public class DuckdbSample {
         """;
     stmt.execute(sql1);
 
+    String sql2 =
+        """
+            INSERT INTO items VALUES (
+                '2', '1', 'trace-123', 'child-span-1', TIMESTAMP '2025-03-30 10:00:01', 45.0,
+                MAP(['http.method'], ['POST']),
+                MAP(['db.duration'], [10.2]),
+                MAP(['retry_count'], ['0'])
+            );
+        """;
+    stmt.execute(sql2);
+
+    String sql3 =
+        """
+            INSERT INTO items VALUES (
+                '3', '1', 'trace-123', 'child-span-2', TIMESTAMP '2025-03-30 10:00:02', 30.7,
+                MAP(['cache.status'], ['hit']),
+                MAP(['cache.lookup_time'], [3.8]),
+                MAP(['retry_count'], ['1'])
+            );
+        """;
+    stmt.execute(sql3);
+
+    String sql4 =
+        """
+            INSERT INTO items VALUES (
+                '4', '2', 'trace-123', 'grandchild-span', TIMESTAMP '2025-03-30 10:00:03', 20.1,
+                MAP(['operation'], ['db.write']),
+                MAP(['disk.io'], [7.2]),
+                MAP(['attempt'], ['1'])
+            );
+        """;
+    stmt.execute(sql4);
+
     try (ResultSet rs = stmt.executeQuery("SELECT * FROM items")) {
       while (rs.next()) {
         System.out.println(rs.getString(1));
-        System.out.println(rs.getString(3));
+        System.out.println(rs.getString(4));
       }
     }
   }
