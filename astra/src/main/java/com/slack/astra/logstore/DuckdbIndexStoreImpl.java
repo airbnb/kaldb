@@ -30,14 +30,76 @@ public class DuckdbIndexStoreImpl implements LogStore {
     stmt = conn.createStatement();
 
     // TODO: Use passed in folder. Remove replace once we use the passed in folder. Also, a random
+    // TODO: Use INTERVAL for duration?
+    // TODO: UUID for id, trace_id and parent_id. May be not since bytes can be string.
+    // TODO: How is map stored? Need a test. chatgpt says it is encoded. Needs verification. Can't
     // uuid as folder name.
-    stmt.execute(
-        "CREATE OR REPLACE TABLE items (item VARCHAR, value DECIMAL(10, 2), count INTEGER)");
+
     // Create the table.
+    stmt.execute(
+        """
+    CREATE OR REPLACE TABLE spans (
+        id STRING,
+        parent_id STRING,
+        trace_id STRING,
+        name STRING,
+        timestamp TIMESTAMP,
+        duration FLOAT,
+        stringMap MAP(STRING, STRING),
+        numericMap MAP(STRING, FLOAT),
+        integerMap MAP(STRING, STRING)
+    );
+    """);
   }
 
+  /** TODO: Use insert for now. It's slow. So use appender once this works. */
   @Override
-  public void addMessage(Trace.Span message) {}
+  public void addMessage(Trace.Span message) {
+    // Sample data
+    String id = message.getId().toString();
+    String parentId =
+        (message.getParentId() == null) ? "NULL" : "'" + message.getParentId().toString() + "'";
+    String traceId = message.getTraceId().toString();
+    String name = message.getName();
+    long timestamp = message.getTimestamp();
+    float duration = message.getDuration();
+    // TODO: Add remaining fields later
+    String stringMap = "MAP(['http.method', 'http.status_code'], ['GET', '200'])";
+    String numericMap = "MAP(['db.duration', 'cpu.usage'], [12.3, 55.5])";
+    String integerMap = "MAP(['retry_count', 'attempt'], ['1', '2'])";
+
+    // Template for SQL
+    String insertTemplate =
+        """
+            INSERT INTO items VALUES (
+                '%s', %s, '%s', '%s', TIMESTAMP '%s', %f,
+                %s,
+                %s,
+                %s
+            );
+            """;
+
+    // Build SQL string
+    String sql =
+        String.format(
+            insertTemplate,
+            id,
+            parentId,
+            traceId,
+            name,
+            timestamp,
+            duration,
+            stringMap,
+            numericMap,
+            integerMap);
+
+    System.out.println("Executing SQL:\n" + sql);
+    try {
+      stmt.execute(sql);
+    } catch (SQLException e) {
+      throw new IllegalArgumentException("SQL failed with exception: " + sql, e);
+    }
+  }
 
   @Override
   public SearcherManager getSearcherManager() {
