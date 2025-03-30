@@ -2,11 +2,6 @@ package com.slack.astra.logstore;
 
 import com.slack.astra.metadata.schema.LuceneFieldDef;
 import com.slack.service.murron.trace.Trace;
-import org.apache.lucene.index.IndexCommit;
-import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.search.SearcherManager;
-import org.apache.lucene.store.FSDirectory;
-
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -14,6 +9,10 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
+import org.apache.lucene.index.IndexCommit;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.search.SearcherManager;
+import org.apache.lucene.store.FSDirectory;
 
 /*
  * RocksdbIndexStore stores a log message in a duckdb database.
@@ -30,15 +29,15 @@ public class DuckdbIndexStoreImpl implements LogStore {
     conn = DriverManager.getConnection(jdbcURL, connectionProperties);
     stmt = conn.createStatement();
 
-    // TODO: Use passed in folder. Remove replace once we use the passed in folder. Also, a random uuid as folder name.
+    // TODO: Use passed in folder. Remove replace once we use the passed in folder. Also, a random
+    // uuid as folder name.
     stmt.execute(
-            "CREATE OR REPLACE TABLE items (item VARCHAR, value DECIMAL(10, 2), count INTEGER)");
+        "CREATE OR REPLACE TABLE items (item VARCHAR, value DECIMAL(10, 2), count INTEGER)");
     // Create the table.
   }
 
   @Override
-  public void addMessage(Trace.Span message) {
-  }
+  public void addMessage(Trace.Span message) {}
 
   @Override
   public SearcherManager getSearcherManager() {
@@ -46,19 +45,13 @@ public class DuckdbIndexStoreImpl implements LogStore {
   }
 
   @Override
-  public void commit() {
-
-  }
+  public void commit() {}
 
   @Override
-  public void refresh() {
-
-  }
+  public void refresh() {}
 
   @Override
-  public void finalMerge() {
-
-  }
+  public void finalMerge() {}
 
   @Override
   public boolean isOpen() {
@@ -66,9 +59,7 @@ public class DuckdbIndexStoreImpl implements LogStore {
   }
 
   @Override
-  public void cleanup() throws IOException {
-
-  }
+  public void cleanup() throws IOException {}
 
   @Override
   public FSDirectory getDirectory() {
@@ -86,9 +77,7 @@ public class DuckdbIndexStoreImpl implements LogStore {
   }
 
   @Override
-  public void releaseIndexCommit(IndexCommit indexCommit) {
-
-  }
+  public void releaseIndexCommit(IndexCommit indexCommit) {}
 
   @Override
   public ConcurrentHashMap<String, LuceneFieldDef> getSchema() {
@@ -96,7 +85,5 @@ public class DuckdbIndexStoreImpl implements LogStore {
   }
 
   @Override
-  public void close() throws IOException {
-
-  }
+  public void close() throws IOException {}
 }
