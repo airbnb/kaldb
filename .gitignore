@@ -24,3 +24,7 @@ indices/
 
 # go vendor files.
 vendor/
+
+# Wrong to ignore?
+astra/dependency-reduced-pom.xml
+benchmarks/dependency-reduced-pom.xml
