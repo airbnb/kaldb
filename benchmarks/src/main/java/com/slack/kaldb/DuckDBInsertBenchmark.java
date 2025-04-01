@@ -1,5 +1,6 @@
 package com.slack.kaldb;
 
+import java.io.File;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
@@ -19,9 +20,11 @@ public class DuckDBInsertBenchmark {
   private Connection conn;
   private Statement stmt;
 
+  private final String MAP_DB_FILE = "map_table.duckdb";
+
   @Setup(Level.Trial)
   public void setup() throws Exception {
-    conn = DriverManager.getConnection("jdbc:duckdb:");
+    conn = DriverManager.getConnection("jdbc:duckdb:"+MAP_DB_FILE);
     stmt = conn.createStatement();
 
     String createTable =
@@ -46,6 +49,9 @@ public class DuckDBInsertBenchmark {
   public void teardown() throws Exception {
     stmt.close();
     conn.close();
+    File mapFile = new File(MAP_DB_FILE);
+    long mapSize = mapFile.length();
+    System.out.printf("Map DB file size:       %,.2f KB%n", mapSize / 1024.0);
   }
 
   @Benchmark
