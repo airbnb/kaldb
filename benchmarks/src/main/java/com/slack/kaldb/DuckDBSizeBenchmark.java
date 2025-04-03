@@ -32,7 +32,7 @@ public class DuckDBSizeBenchmark {
   private Connection conn;
   private Statement stmt;
 
-  private final String MAP_DB_FILE = "map_table.duckdb";
+  private final String MAP_DB_FILE = "/tmp/map_table.duckdb";
 
   @Setup(Level.Trial)
   public void setup() throws Exception {
