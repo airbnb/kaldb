@@ -79,10 +79,10 @@ public class DuckdbIndexStoreImplTest {
     return count;
   }
 
-  private int findMessagesWithId(DuckdbIndexStoreImpl duckdbIndexStore, String messageId)
+  private int findMessagesWithId(DuckdbIndexStoreImpl duckdbStore, String messageId)
       throws SQLException {
     String selectQuery = String.format("SELECT COUNT(*) from spans WHERE id = '%s'", messageId);
-    ResultSet countResult = duckdbIndexStore.executeSQLQuery(selectQuery);
+    ResultSet countResult = duckdbStore.executeSQLQuery(selectQuery);
     int count = 0;
     while (countResult.next()) {
       count = Integer.valueOf(countResult.getString(1));
