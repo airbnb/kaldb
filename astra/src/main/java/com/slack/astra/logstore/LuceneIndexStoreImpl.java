@@ -341,7 +341,8 @@ public class LuceneIndexStoreImpl implements LogStore {
         + '}';
   }
 
-  // getIndexCommit is used to get a list of file names. We can safely add that function instead of leaking this info.
+  // getIndexCommit is used to get a list of file names. We can safely add that function instead of
+  // leaking this info.
   @Override
   public IndexCommit getIndexCommit() {
     try {
@@ -352,7 +353,8 @@ public class LuceneIndexStoreImpl implements LogStore {
     return null;
   }
 
-  // TODO: IndexWriter is unused, so can be safely removed. This reduces lucene surface area from code.
+  // TODO: IndexWriter is unused, so can be safely removed. This reduces lucene surface area from
+  // code.
   @Override
   public IndexWriter getIndexWriter() {
     return indexWriter.get();

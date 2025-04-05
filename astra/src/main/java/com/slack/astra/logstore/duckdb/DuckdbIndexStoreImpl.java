@@ -1,10 +1,13 @@
 package com.slack.astra.logstore.duckdb;
 
+import static com.slack.astra.logstore.LuceneIndexStoreImpl.MESSAGES_RECEIVED_COUNTER;
+
 import com.slack.astra.logstore.LogStore;
 import com.slack.astra.logstore.schema.SchemaAwareLogDocumentBuilderImpl;
 import com.slack.astra.metadata.schema.LuceneFieldDef;
 import com.slack.service.murron.trace.Trace;
-
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.io.File;
 import java.io.IOException;
 import java.sql.Connection;
@@ -14,8 +17,6 @@ import java.sql.Statement;
 import java.time.Duration;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
-
-import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.lucene.index.IndexCommit;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.search.SearcherManager;
@@ -26,23 +27,26 @@ import org.apache.lucene.store.FSDirectory;
  */
 public class DuckdbIndexStoreImpl implements LogStore {
 
-  public static final String INSERT_STATEMENT_TEMPLATE = """
+  public static final String INSERT_STATEMENT_TEMPLATE =
+      """
           INSERT INTO spans VALUES (
-              '%s', %s, '%s', '%s', TIMESTAMP '%s', %f,
+              '%s', %s, '%s', '%s', '%s', %f,
               %s,
               %s,
               %s
           );
           """;
+  public final MeterRegistry registry;
+  public Counter messagesReceivedCounter;
 
-  public static LogStore makeLogStore(
-          File dataDirectory,
-          Duration commitInterval,
-          Duration refreshInterval,
-          boolean enableFullTextSearch,
-          SchemaAwareLogDocumentBuilderImpl.FieldConflictPolicy fieldConflictPolicy,
-          MeterRegistry metricsRegistry)
-          throws IOException {
+  public static DuckdbIndexStoreImpl makeLogStore(
+      File dataDirectory,
+      Duration commitInterval,
+      Duration refreshInterval,
+      boolean enableFullTextSearch,
+      SchemaAwareLogDocumentBuilderImpl.FieldConflictPolicy fieldConflictPolicy,
+      MeterRegistry metricsRegistry)
+      throws IOException {
     try {
       return new DuckdbIndexStoreImpl(dataDirectory, metricsRegistry);
     } catch (SQLException e) {
@@ -56,13 +60,15 @@ public class DuckdbIndexStoreImpl implements LogStore {
   // TODO: Get this schema from config? Make this schema dynamic?
   // TODO: Add known fields.
   // TODO: Make schema a bit more flat?
-  public static final String TABLE_SCHEMA = """
-          CREATE TABLE spans (
+  // TODO: Remove REPLACE TABLE
+  private static final String TABLE_SCHEMA =
+      """
+          CREATE OR REPLACE TABLE spans(
               id STRING,
               parent_id STRING,
               trace_id STRING,
               name STRING,
-              timestamp TIMESTAMP,
+              timestamp BIGINT,
               duration FLOAT,
               stringMap MAP(STRING, STRING),
               numericMap MAP(STRING, FLOAT),
@@ -73,7 +79,10 @@ public class DuckdbIndexStoreImpl implements LogStore {
   private final Statement stmt;
   private final String jdbcURL;
 
-  public DuckdbIndexStoreImpl(File dataDirectory, MeterRegistry metricsRegistry) throws SQLException {
+  public DuckdbIndexStoreImpl(File dataDirectory, MeterRegistry metricsRegistry)
+      throws SQLException {
+    registry = metricsRegistry;
+
     // TODO: Set connection properties.
     Properties connectionProperties = new Properties();
     // TODO: Use passed in folder. Remove replace once we use the passed in folder.
@@ -84,23 +93,26 @@ public class DuckdbIndexStoreImpl implements LogStore {
     stmt.execute(TABLE_SCHEMA);
     // Disable auto-commit.
     conn.setAutoCommit(false);
+
+    messagesReceivedCounter = registry.counter(MESSAGES_RECEIVED_COUNTER);
   }
 
   /** TODO: Use insert for now. It's slow. So use appender once this works. */
   @Override
   public void addMessage(Trace.Span message) {
-    // Sample data
-    String id = message.getId().toString();
+    messagesReceivedCounter.increment();
+
+    String id = message.getId().toStringUtf8();
     String parentId =
-        (message.getParentId() == null) ? "NULL" : "'" + message.getParentId().toString() + "'";
-    String traceId = message.getTraceId().toString();
+        (message.getParentId() == null) ? "NULL" : "'" + message.getParentId().toStringUtf8() + "'";
+    String traceId = message.getTraceId().toStringUtf8();
     String name = message.getName();
     long timestamp = message.getTimestamp();
     float duration = message.getDuration();
-    // TODO: Add remaining fields later
-    String stringMap = "";
-    String numericMap = "";
-    String integerMap = "";
+    // TODO: Sample data. Add real data.
+    String stringMap = "MAP(['http.method', 'http.status_code'], ['GET', '200'])";
+    String numericMap = "MAP(['db.duration', 'cpu.usage'], [12.3, 55.5])";
+    String integerMap = "MAP(['retry_count', 'attempt'], ['1', '2'])";
 
     // Build SQL string
     String sql =
@@ -131,11 +143,11 @@ public class DuckdbIndexStoreImpl implements LogStore {
 
   @Override
   public void commit() {
-      try {
-          conn.commit();
-      } catch (SQLException e) {
-          throw new RuntimeException("Failed to commit transaction", e);
-      }
+    try {
+      conn.commit();
+    } catch (SQLException e) {
+      throw new RuntimeException("Failed to commit transaction", e);
+    }
   }
 
   @Override
