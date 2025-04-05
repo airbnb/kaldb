@@ -83,8 +83,10 @@ public class DuckdbIndexStoreImpl implements LogStore {
   // TODO: Does single writer query slow down ingestion?
   // TODO: Use appender API for improved write performance. No support for MAP fields via appender.
   private final Statement writeStatement;
-  // Create seperate statements for read and write path so we can make sure commit works. Needed for tests and exports to work correctly.
-  // Statement output is also tied to last query. So, if we are using statement objects across queries we will see inconsistent results. For now it's all single reader and writer.
+  // Create seperate statements for read and write path so we can make sure commit works. Needed for
+  // tests and exports to work correctly.
+  // Statement output is also tied to last query. So, if we are using statement objects across
+  // queries we will see inconsistent results. For now it's all single reader and writer.
   // TODO: Use seperate statement for every query?
   private final Statement readStatement;
   private final String jdbcURL;

@@ -62,11 +62,8 @@ public class DuckdbIndexStoreImplTest {
     addMessages(logStore, 1, 100, true);
     logStore.commit();
     assertThat(countInsertedRows(logStore)).isEqualTo(100);
-
-    //        Collection<LogMessage> results =
-    //                findAllMessages(logStore.logSearcher, MessageUtil.TEST_DATASET_NAME,
-    // "Message1", 10);
-    //        assertThat(results.size()).isEqualTo(1);
+    assertThat(findMessagesWithId(logStore, "Message1")).isEqualTo(1);
+    assertThat(findMessagesWithId(logStore, "Message100")).isEqualTo(1);
     assertThat(getCount(MESSAGES_RECEIVED_COUNTER, logStore.registry)).isEqualTo(100);
     //        assertThat(getCount(MESSAGES_FAILED_COUNTER, logStore.metricsRegistry)).isEqualTo(0);
     //        assertThat(getTimerCount(REFRESHES_TIMER, logStore.metricsRegistry)).isEqualTo(1);
@@ -76,7 +73,18 @@ public class DuckdbIndexStoreImplTest {
   private int countInsertedRows(DuckdbIndexStoreImpl duckdbIndexStore) throws SQLException {
     ResultSet countResult = duckdbIndexStore.executeSQLQuery("SELECT COUNT(*) from spans");
     int count = 0;
-    while(countResult.next()) {
+    while (countResult.next()) {
+      count = Integer.valueOf(countResult.getString(1));
+    }
+    return count;
+  }
+
+  private int findMessagesWithId(DuckdbIndexStoreImpl duckdbIndexStore, String messageId)
+      throws SQLException {
+    String selectQuery = String.format("SELECT COUNT(*) from spans WHERE id = '%s'", messageId);
+    ResultSet countResult = duckdbIndexStore.executeSQLQuery(selectQuery);
+    int count = 0;
+    while (countResult.next()) {
       count = Integer.valueOf(countResult.getString(1));
     }
     return count;
