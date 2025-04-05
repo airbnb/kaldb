@@ -70,8 +70,8 @@ public class DuckdbIndexStoreImplTest {
     //        assertThat(getTimerCount(COMMITS_TIMER, logStore.metricsRegistry)).isEqualTo(1);
   }
 
-  private int countInsertedRows(DuckdbIndexStoreImpl duckdbIndexStore) throws SQLException {
-    ResultSet countResult = duckdbIndexStore.executeSQLQuery("SELECT COUNT(*) from spans");
+  private int countInsertedRows(DuckdbIndexStoreImpl duckdbStore) throws SQLException {
+    ResultSet countResult = duckdbStore.executeSQLQuery("SELECT COUNT(*) from spans");
     int count = 0;
     while (countResult.next()) {
       count = Integer.valueOf(countResult.getString(1));
