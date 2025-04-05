@@ -11,6 +11,7 @@ import com.slack.service.murron.trace.Trace;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.File;
 import java.io.IOException;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.concurrent.TimeoutException;
@@ -57,8 +58,11 @@ public class DuckdbIndexStoreImplTest {
   }
 
   @Test
-  public void testDuckdbLogStoreImpl() {
+  public void testDuckdbLogStoreImpl() throws SQLException {
     addMessages(logStore, 1, 100, true);
+    logStore.commit();
+    assertThat(countInsertedRows(logStore)).isEqualTo(100);
+
     //        Collection<LogMessage> results =
     //                findAllMessages(logStore.logSearcher, MessageUtil.TEST_DATASET_NAME,
     // "Message1", 10);
@@ -67,5 +71,14 @@ public class DuckdbIndexStoreImplTest {
     //        assertThat(getCount(MESSAGES_FAILED_COUNTER, logStore.metricsRegistry)).isEqualTo(0);
     //        assertThat(getTimerCount(REFRESHES_TIMER, logStore.metricsRegistry)).isEqualTo(1);
     //        assertThat(getTimerCount(COMMITS_TIMER, logStore.metricsRegistry)).isEqualTo(1);
+  }
+
+  private int countInsertedRows(DuckdbIndexStoreImpl duckdbIndexStore) throws SQLException {
+    ResultSet countResult = duckdbIndexStore.executeSQLQuery("SELECT COUNT(*) from spans");
+    int count = 0;
+    while(countResult.next()) {
+      count = Integer.valueOf(countResult.getString(1));
+    }
+    return count;
   }
 }

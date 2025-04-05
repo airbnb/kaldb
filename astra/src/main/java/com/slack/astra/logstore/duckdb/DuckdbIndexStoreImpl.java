@@ -12,6 +12,7 @@ import java.io.File;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
@@ -21,11 +22,14 @@ import org.apache.lucene.index.IndexCommit;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.search.SearcherManager;
 import org.apache.lucene.store.FSDirectory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /*
  * RocksdbIndexStore stores a log message in a duckdb database.
  */
 public class DuckdbIndexStoreImpl implements LogStore {
+  private static final Logger LOG = LoggerFactory.getLogger(DuckdbIndexStoreImpl.class);
 
   public static final String INSERT_STATEMENT_TEMPLATE =
       """
@@ -76,7 +80,13 @@ public class DuckdbIndexStoreImpl implements LogStore {
           );
           """;
   private final Connection conn;
-  private final Statement stmt;
+  // TODO: Does single writer query slow down ingestion?
+  // TODO: Use appender API for improved write performance. No support for MAP fields via appender.
+  private final Statement writeStatement;
+  // Create seperate statements for read and write path so we can make sure commit works. Needed for tests and exports to work correctly.
+  // Statement output is also tied to last query. So, if we are using statement objects across queries we will see inconsistent results. For now it's all single reader and writer.
+  // TODO: Use seperate statement for every query?
+  private final Statement readStatement;
   private final String jdbcURL;
 
   public DuckdbIndexStoreImpl(File dataDirectory, MeterRegistry metricsRegistry)
@@ -88,11 +98,13 @@ public class DuckdbIndexStoreImpl implements LogStore {
     // TODO: Use passed in folder. Remove replace once we use the passed in folder.
     jdbcURL = "jdbc:duckdb:/tmp/duckdb_test/duckdb_test_db";
     conn = DriverManager.getConnection(jdbcURL, connectionProperties);
-    stmt = conn.createStatement();
+    writeStatement = conn.createStatement();
     // Create the table.
-    stmt.execute(TABLE_SCHEMA);
+    writeStatement.execute(TABLE_SCHEMA);
     // Disable auto-commit.
     conn.setAutoCommit(false);
+
+    readStatement = conn.createStatement();
 
     messagesReceivedCounter = registry.counter(MESSAGES_RECEIVED_COUNTER);
   }
@@ -128,9 +140,9 @@ public class DuckdbIndexStoreImpl implements LogStore {
             numericMap,
             integerMap);
 
-    System.out.println("Executing SQL:\n" + sql);
+    LOG.trace("Executing SQL:\n" + sql);
     try {
-      stmt.execute(sql);
+      writeStatement.execute(sql);
     } catch (SQLException e) {
       throw new IllegalArgumentException("SQL failed with exception: " + sql, e);
     }
@@ -139,6 +151,11 @@ public class DuckdbIndexStoreImpl implements LogStore {
   @Override
   public SearcherManager getSearcherManager() {
     return null;
+  }
+
+  public ResultSet executeSQLQuery(String sql) throws SQLException {
+    LOG.info("Executing read query: " + sql);
+    return readStatement.executeQuery(sql);
   }
 
   @Override
@@ -151,7 +168,9 @@ public class DuckdbIndexStoreImpl implements LogStore {
   }
 
   @Override
-  public void refresh() {}
+  public void refresh() {
+    // Commit commits the data to disk. No refresh is needed unlike Lucene.
+  }
 
   @Override
   public void finalMerge() {}
