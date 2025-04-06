@@ -58,9 +58,8 @@ public class DuckdbIndexStoreImpl implements LogStore {
     }
   }
 
-  // TODO: Use INTERVAL for duration?
   // TODO: UUID for id, trace_id and parent_id. May be not since bytes can be string.
-  // TODO: How is map stored? Need a test. chatgpt says it is encoded. Needs verification. Can't
+  // TODO: How is map stored? Need a test. chatgpt says it is encoded. Needs verification.
   // TODO: Get this schema from config? Make this schema dynamic?
   // TODO: Add known fields.
   // TODO: Make schema a bit more flat?
