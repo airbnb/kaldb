@@ -89,7 +89,6 @@ public class DuckdbIndexStoreImpl implements LogStore {
   // queries we will see inconsistent results. For now it's all single reader and writer.
   // TODO: Use seperate statement for every query?
   private final Statement readStatement;
-  private final String jdbcURL;
 
   public DuckdbIndexStoreImpl(File dataDirectory, MeterRegistry metricsRegistry)
       throws SQLException {
@@ -97,12 +96,13 @@ public class DuckdbIndexStoreImpl implements LogStore {
 
     // TODO: Set connection properties.
     Properties connectionProperties = new Properties();
-    // TODO: Use passed in folder. Remove replace once we use the passed in folder.
-    jdbcURL = "jdbc:duckdb:/tmp/duckdb_test/duckdb_test_db";
+    String jdbcURL = "jdbc:duckdb:" + dataDirectory.getAbsolutePath() + "/test_db.duckdb";
     conn = DriverManager.getConnection(jdbcURL, connectionProperties);
+    LOG.debug("Created database at: {}", jdbcURL);
     writeStatement = conn.createStatement();
     // Create the table.
     writeStatement.execute(TABLE_SCHEMA);
+    LOG.debug("Created table at: {}", TABLE_SCHEMA);
     // Disable auto-commit.
     conn.setAutoCommit(false);
 
@@ -185,6 +185,8 @@ public class DuckdbIndexStoreImpl implements LogStore {
   @Override
   public void cleanup() throws IOException {}
 
+  // TODO: GetDirectory is used to get absolute path. We can replace the return value with an actual
+  // file path.
   @Override
   public FSDirectory getDirectory() {
     return null;
