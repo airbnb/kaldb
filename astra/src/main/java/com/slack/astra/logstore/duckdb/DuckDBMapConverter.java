@@ -5,37 +5,30 @@ import java.util.Map;
 
 public class DuckDBMapConverter {
 
-  // String
   public static String convertStringMapToDuckDBMap(Map<String, String> inputMap) {
     return buildMapLiteral(inputMap, val -> "'" + escape(val) + "'");
   }
 
-  // Integer
   public static String convertIntMapToDuckDBMap(Map<String, Integer> inputMap) {
     return buildMapLiteral(inputMap, Object::toString);
   }
 
-  // Long
   public static String convertLongMapToDuckDBMap(Map<String, Long> inputMap) {
     return buildMapLiteral(inputMap, Object::toString);
   }
 
-  // Double
   public static String convertDoubleMapToDuckDBMap(Map<String, Double> inputMap) {
     return buildMapLiteral(inputMap, Object::toString);
   }
 
-  // Float
   public static String convertFloatMapToDuckDBMap(Map<String, Float> inputMap) {
     return buildMapLiteral(inputMap, Object::toString);
   }
 
-  // Boolean
   public static String convertBooleanMapToDuckDBMap(Map<String, Boolean> inputMap) {
     return buildMapLiteral(inputMap, Object::toString);
   }
 
-  // ByteString
   public static String convertBinaryMapToDuckDBMap(Map<String, ByteString> inputMap) {
     return buildMapLiteral(inputMap, val -> "X'" + bytesToHex(val.toByteArray()) + "'");
   }
