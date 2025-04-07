@@ -172,10 +172,6 @@ public class DuckdbIndexStoreImpl implements LogStore {
       }
     }
 
-    String numericMap = "MAP(['db.duration', 'cpu.usage'], [12.3, 55.5])";
-    String integerMap = "MAP(['retry_count', 'attempt'], ['1', '2'])";
-    String emptyMap = "map([], [])";
-
     // Build SQL string
     String sql =
         String.format(
@@ -186,13 +182,13 @@ public class DuckdbIndexStoreImpl implements LogStore {
             name,
             timestamp,
             duration,
-            convertMapToDuckDBMap(stringTags),
-            numericMap,
-            integerMap,
-            emptyMap,
-            emptyMap,
-            emptyMap,
-            emptyMap);
+            DuckDBMapConverter.convertStringMapToDuckDBMap(stringTags),
+            DuckDBMapConverter.convertIntMapToDuckDBMap(intTags),
+            DuckDBMapConverter.convertLongMapToDuckDBMap(longTags),
+            DuckDBMapConverter.convertFloatMapToDuckDBMap(floatTags),
+            DuckDBMapConverter.convertDoubleMapToDuckDBMap(doubleTags),
+            DuckDBMapConverter.convertBooleanMapToDuckDBMap(boolTags),
+            DuckDBMapConverter.convertBinaryMapToDuckDBMap(binaryTags));
 
     LOG.debug("Executing SQL:\n" + sql);
     try {
