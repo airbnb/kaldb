@@ -2,9 +2,11 @@ package com.slack.astra.logstore.duckdb;
 
 import static com.slack.astra.logstore.LuceneIndexStoreImpl.MESSAGES_RECEIVED_COUNTER;
 
+import com.google.protobuf.ByteString;
 import com.slack.astra.logstore.LogStore;
 import com.slack.astra.logstore.schema.SchemaAwareLogDocumentBuilderImpl;
 import com.slack.astra.metadata.schema.LuceneFieldDef;
+import com.slack.astra.proto.schema.Schema;
 import com.slack.service.murron.trace.Trace;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -16,6 +18,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.lucene.index.IndexCommit;
@@ -35,6 +39,10 @@ public class DuckdbIndexStoreImpl implements LogStore {
       """
           INSERT INTO spans VALUES (
               '%s', %s, '%s', '%s', '%s', %f,
+              %s,
+              %s,
+              %s,
+              %s,
               %s,
               %s,
               %s
@@ -74,8 +82,12 @@ public class DuckdbIndexStoreImpl implements LogStore {
               timestamp BIGINT,
               duration FLOAT,
               stringMap MAP(STRING, STRING),
-              numericMap MAP(STRING, FLOAT),
-              integerMap MAP(STRING, STRING)
+              integerMap MAP(STRING, INT),
+              longMap MAP(STRING, LONG),
+              floatMap MAP(STRING, FLOAT),
+              doubleMap MAP(STRING, DOUBLE),
+              booleanMap MAP(STRING, BOOL),
+              binaryMap MAP(STRING, VARBINARY)
           );
           """;
   private final Connection conn;
@@ -122,10 +134,47 @@ public class DuckdbIndexStoreImpl implements LogStore {
     String name = message.getName();
     long timestamp = message.getTimestamp();
     float duration = message.getDuration();
+
+    // TODO: StringBuffer is more efficient?
+    Map<String, String> stringTags = new HashMap<>();
+    Map<String, Integer> intTags = new HashMap<>();
+    Map<String, Long> longTags = new HashMap<>();
+    Map<String, Double> doubleTags = new HashMap<>();
+    Map<String, Float> floatTags = new HashMap<>();
+    Map<String, Boolean> boolTags = new HashMap<>();
+    Map<String, ByteString> binaryTags = new HashMap<>();
     // TODO: Sample data. Add real data.
-    String stringMap = "MAP(['http.method', 'http.status_code'], ['GET', '200'])";
+    // TODO: Make case more efficient. Make this map more efficient since it's hot path.
+    for (Trace.KeyValue tag : message.getTagsList()) {
+      switch (tag.getFieldType()) {
+        case Schema.SchemaFieldType.KEYWORD,
+                Schema.SchemaFieldType.BYTE,
+                Schema.SchemaFieldType.ID,
+                Schema.SchemaFieldType.STRING,
+                Schema.SchemaFieldType.TEXT ->
+            stringTags.put(tag.getKey(), tag.getVStr());
+        case Schema.SchemaFieldType.BINARY -> binaryTags.put(tag.getKey(), tag.getVBinary());
+        case Schema.SchemaFieldType.IP, Schema.SchemaFieldType.DATE ->
+            longTags.put(tag.getKey(), tag.getVInt64());
+        case Schema.SchemaFieldType.BOOLEAN -> boolTags.put(tag.getKey(), tag.getVBool());
+        case Schema.SchemaFieldType.LONG, Schema.SchemaFieldType.SCALED_LONG ->
+            doubleTags.put(tag.getKey(), tag.getVFloat64());
+        case Schema.SchemaFieldType.FLOAT, Schema.SchemaFieldType.HALF_FLOAT ->
+            floatTags.put(tag.getKey(), tag.getVFloat32());
+        case Schema.SchemaFieldType.INTEGER, Schema.SchemaFieldType.SHORT ->
+            intTags.put(tag.getKey(), tag.getVInt32());
+        // TODO: Index unknown type as string?
+        default ->
+            LOG.error(
+                "unhandled field type: {} in message {}",
+                tag.getFieldType().getDescriptorForType().toString(),
+                message);
+      }
+    }
+
     String numericMap = "MAP(['db.duration', 'cpu.usage'], [12.3, 55.5])";
     String integerMap = "MAP(['retry_count', 'attempt'], ['1', '2'])";
+    String emptyMap = "map([], [])";
 
     // Build SQL string
     String sql =
@@ -137,16 +186,60 @@ public class DuckdbIndexStoreImpl implements LogStore {
             name,
             timestamp,
             duration,
-            stringMap,
+            convertMapToDuckDBMap(stringTags),
             numericMap,
-            integerMap);
+            integerMap,
+            emptyMap,
+            emptyMap,
+            emptyMap,
+            emptyMap);
 
-    LOG.trace("Executing SQL:\n" + sql);
+    LOG.debug("Executing SQL:\n" + sql);
     try {
       writeStatement.execute(sql);
     } catch (SQLException e) {
       throw new IllegalArgumentException("SQL failed with exception: " + sql, e);
     }
+  }
+
+  /**
+   * Converts a Java Map<String, String> to a DuckDB-compatible MAP literal string using
+   * StringBuilder. Example output: map(['key1', 'key2'], ['value1', 'value2'])
+   */
+  public static String convertMapToDuckDBMap(Map<String, String> inputMap) {
+    if (inputMap == null || inputMap.isEmpty()) {
+      return "map([], [])";
+    }
+
+    // Estimate capacity roughly to avoid resizing
+    int estimatedSize = inputMap.size() * 16;
+    StringBuilder keys = new StringBuilder(estimatedSize);
+    StringBuilder values = new StringBuilder(estimatedSize);
+
+    keys.append("[");
+    values.append("[");
+
+    boolean first = true;
+    for (Map.Entry<String, String> entry : inputMap.entrySet()) {
+      if (!first) {
+        keys.append(", ");
+        values.append(", ");
+      }
+
+      keys.append("'").append(escape(entry.getKey())).append("'");
+      values.append("'").append(escape(entry.getValue())).append("'");
+
+      first = false;
+    }
+
+    keys.append("]");
+    values.append("]");
+
+    return "map(" + keys + ", " + values + ")";
+  }
+
+  private static String escape(String str) {
+    return str == null ? "" : str.replace("'", "''");
   }
 
   @Override
