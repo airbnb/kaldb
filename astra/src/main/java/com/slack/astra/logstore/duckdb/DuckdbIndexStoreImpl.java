@@ -109,13 +109,13 @@ public class DuckdbIndexStoreImpl implements LogStore {
     Properties connectionProperties = new Properties();
     String jdbcURL = "jdbc:duckdb:" + dataDirectory.getAbsolutePath() + "/test_db.duckdb";
     conn = DriverManager.getConnection(jdbcURL, connectionProperties);
+    conn.setAutoCommit(false);
     LOG.debug("Created database at: {}", jdbcURL);
     writeStatement = conn.createStatement();
     // Create the table.
     writeStatement.execute(TABLE_SCHEMA);
-    LOG.debug("Created table at: {}", TABLE_SCHEMA);
+    LOG.trace("Created table at: {}", TABLE_SCHEMA);
     // Disable auto-commit.
-    conn.setAutoCommit(false);
 
     readStatement = conn.createStatement();
 
@@ -157,7 +157,9 @@ public class DuckdbIndexStoreImpl implements LogStore {
         case Schema.SchemaFieldType.IP, Schema.SchemaFieldType.DATE ->
             longTags.put(tag.getKey(), tag.getVInt64());
         case Schema.SchemaFieldType.BOOLEAN -> boolTags.put(tag.getKey(), tag.getVBool());
-        case Schema.SchemaFieldType.LONG, Schema.SchemaFieldType.SCALED_LONG ->
+        case Schema.SchemaFieldType.LONG,
+                Schema.SchemaFieldType.SCALED_LONG,
+                Schema.SchemaFieldType.DOUBLE ->
             doubleTags.put(tag.getKey(), tag.getVFloat64());
         case Schema.SchemaFieldType.FLOAT, Schema.SchemaFieldType.HALF_FLOAT ->
             floatTags.put(tag.getKey(), tag.getVFloat32());
@@ -166,8 +168,9 @@ public class DuckdbIndexStoreImpl implements LogStore {
         // TODO: Index unknown type as string?
         default ->
             LOG.error(
-                "unhandled field type: {} in message {}",
-                tag.getFieldType().getDescriptorForType().toString(),
+                "unhandled field type: {} for tag {} in message {}",
+                tag.getFieldType().getDescriptorForType(),
+                tag,
                 message);
       }
     }
@@ -190,7 +193,7 @@ public class DuckdbIndexStoreImpl implements LogStore {
             DuckDBMapConverter.convertBooleanMapToDuckDBMap(boolTags),
             DuckDBMapConverter.convertBinaryMapToDuckDBMap(binaryTags));
 
-    LOG.debug("Executing SQL:\n" + sql);
+    LOG.trace("Executing SQL:\n" + sql);
     try {
       writeStatement.execute(sql);
     } catch (SQLException e) {

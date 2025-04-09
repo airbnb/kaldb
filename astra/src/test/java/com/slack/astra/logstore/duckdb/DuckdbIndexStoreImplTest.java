@@ -59,8 +59,7 @@ public class DuckdbIndexStoreImplTest {
 
   @Test
   public void testDuckdbLogStoreImpl() throws SQLException {
-    addMessages(logStore, 1, 100, true);
-    logStore.commit();
+    addMessages(logStore, 1, 100, false);
     assertThat(countInsertedRows(logStore)).isEqualTo(100);
     assertThat(findMessagesWithId(logStore, "Message1")).isEqualTo(1);
     assertThat(findMessagesWithId(logStore, "Message100")).isEqualTo(1);
