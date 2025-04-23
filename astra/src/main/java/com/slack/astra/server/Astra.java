@@ -281,8 +281,14 @@ public class Astra {
           new RecoveryNodeMetadataStore(curatorFramework, true);
       CacheSlotMetadataStore cacheSlotMetadataStore = new CacheSlotMetadataStore(curatorFramework);
       DatasetMetadataStore datasetMetadataStore = new DatasetMetadataStore(curatorFramework, true);
+
+      long maxPartitionCapacity =
+          astraConfig.getManagerConfig().getManagerApiConfig().getMaxPartitionCapacity();
+      int minNumberOfPartitions =
+          astraConfig.getManagerConfig().getManagerApiConfig().getMinNumberOfPartitions();
       PartitionMetadataStore partitionMetadataStore =
-          new PartitionMetadataStore(curatorFramework, true);
+          new PartitionMetadataStore(
+              curatorFramework, true, maxPartitionCapacity, minNumberOfPartitions);
 
       HpaMetricMetadataStore hpaMetricMetadataStore =
           new HpaMetricMetadataStore(curatorFramework, true);
@@ -293,11 +299,6 @@ public class Astra {
           new ReplicaRestoreService(replicaMetadataStore, meterRegistry, managerConfig);
       services.add(replicaRestoreService);
 
-      long maxPartitionCapacity =
-          astraConfig.getManagerConfig().getManagerApiConfig().getMaxPartitionCapacity();
-      int minNumberOfPartitions =
-          astraConfig.getManagerConfig().getManagerApiConfig().getMinNumberOfPartitions();
-
       ArmeriaService armeriaService =
           new ArmeriaService.Builder(serverPort, "astraManager", meterRegistry)
               .withRequestTimeout(requestTimeout)
@@ -307,9 +308,7 @@ public class Astra {
                       datasetMetadataStore,
                       partitionMetadataStore,
                       snapshotMetadataStore,
-                      replicaRestoreService,
-                      maxPartitionCapacity,
-                      minNumberOfPartitions))
+                      replicaRestoreService))
               .build();
       services.add(armeriaService);
 

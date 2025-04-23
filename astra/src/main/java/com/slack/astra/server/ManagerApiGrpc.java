@@ -51,26 +51,17 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   private final SnapshotMetadataStore snapshotMetadataStore;
   private final PartitionMetadataStore partitionMetadataStore;
   public static final long MAX_TIME = Long.MAX_VALUE;
-  // TODO: add to config
-  public static final long PARTITION_START_TIME_OFFSET = 15 * 60 * 1000; // 15 minutes
   private final ReplicaRestoreService replicaRestoreService;
-
-  public final long maxPartitionCapacity;
-  public final int minNumberOfPartitions;
 
   public ManagerApiGrpc(
       DatasetMetadataStore datasetMetadataStore,
       PartitionMetadataStore partitionMetadataStore,
       SnapshotMetadataStore snapshotMetadataStore,
-      ReplicaRestoreService replicaRestoreService,
-      long maxPartitionCapacity,
-      int minNumberOfPartitions) {
+      ReplicaRestoreService replicaRestoreService) {
     this.datasetMetadataStore = datasetMetadataStore;
     this.snapshotMetadataStore = snapshotMetadataStore;
     this.replicaRestoreService = replicaRestoreService;
     this.partitionMetadataStore = partitionMetadataStore;
-    this.maxPartitionCapacity = maxPartitionCapacity;
-    this.minNumberOfPartitions = minNumberOfPartitions;
   }
 
   /** Initializes a new dataset in the metadata store with no initial allocated capacity */
@@ -423,7 +414,8 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     //   cut-over already scheduled
     // todo - if introducing an optional padding this should be added as a method parameter
     //   see https://github.com/slackhq/astra/pull/244#discussion_r835424863
-    long partitionCutoverTime = Instant.now().toEpochMilli() + PARTITION_START_TIME_OFFSET;
+    long partitionCutoverTime =
+        Instant.now().toEpochMilli() + PartitionMetadataStore.PARTITION_START_TIME_OFFSET;
 
     ImmutableList.Builder<DatasetPartitionMetadata> builder =
         ImmutableList.<DatasetPartitionMetadata>builder().addAll(remainingDatasetPartitions);
@@ -485,17 +477,14 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       ManagerApi.CreatePartitionRequest request,
       StreamObserver<Metadata.PartitionMetadata> responseObserver) {
     try {
-      long maxCapacity =
-          request.getMaxCapacity() == 0 ? maxPartitionCapacity : request.getMaxCapacity();
+      long maxCapacity = partitionMetadataStore.getMaxCapacityOrDefaultTo(request.getMaxCapacity());
 
+      long requestedProvisionedCapacity = request.getProvisionedCapacity();
       try {
         PartitionMetadata partitionMetadata =
             partitionMetadataStore.getSync(request.getPartitionId());
         // update
-        long provisionedCapacity =
-            request.getProvisionedCapacity() < 0
-                ? request.getProvisionedCapacity()
-                : partitionMetadata.provisionedCapacity;
+        long provisionedCapacity = PartitionMetadataStore.getProvisionedCapacity(requestedProvisionedCapacity, partitionMetadata);
         PartitionMetadata updatedPartitionMetadata =
             new PartitionMetadata(
                 partitionMetadata.partitionId,
@@ -510,7 +499,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         PartitionMetadata createPartitionMetadata =
             new PartitionMetadata(
                 request.getPartitionId(),
-                request.getProvisionedCapacity(),
+              requestedProvisionedCapacity,
                 maxCapacity,
                 request.getDedicatedPartition());
         partitionMetadataStore.createSync(createPartitionMetadata);
@@ -544,20 +533,6 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   }
 
   /**
-   * Returns the partition count based of the throughput. Performs div operation, and takes the ceil
-   * of the division. Also, checks if minimum partition requirement is met
-   *
-   * @param throughput service throughput to calculate number of partitions for
-   * @return integer number of partition count
-   */
-  public int getPartitionCount(long throughput) {
-    int numberOfPartitions = (int) Math.ceilDiv(throughput, maxPartitionCapacity);
-    return numberOfPartitions < minNumberOfPartitions
-        ? numberOfPartitions + (minNumberOfPartitions - numberOfPartitions)
-        : numberOfPartitions;
-  }
-
-  /**
    * finds the available partitions based provisionedCapacity and updates the provisionedCapacity if
    * partitions are considered.
    *
@@ -571,7 +546,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       boolean requireDedicatedPartition,
       List<String> existingPartitionIds) {
     List<String> partitionIdsList = new ArrayList<>();
-    int numberOfPartitions = getPartitionCount(requiredThroughput);
+    int numberOfPartitions = partitionMetadataStore.partitionCountForThroughput(requiredThroughput);
 
     long perPartitionCapacity = Math.ceilDiv(requiredThroughput, numberOfPartitions);
     numberOfPartitions = numberOfPartitions - existingPartitionIds.size();
@@ -585,15 +560,15 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         continue;
       }
       if (requireDedicatedPartition) {
-        if (partitionMetadata.getProvisionedCapacity() == 0) {
+        if (PartitionMetadataStore.isUnprovisioned(partitionMetadata)) {
           partitionIdsList.add(partitionMetadata.getPartitionID());
         }
       } else {
         // partition has capacity and (partition is shared or (partition not shared and
         // provisionedCapacity = 0))
-        if (partitionMetadata.provisionedCapacity + perPartitionCapacity <= maxPartitionCapacity
+        if (partitionMetadataStore.hasSpaceForAdditionalProvisioning(partitionMetadata, perPartitionCapacity)
             && (!partitionMetadata.dedicatedPartition
-                || partitionMetadata.getProvisionedCapacity() == 0)) {
+                || PartitionMetadataStore.isUnprovisioned(partitionMetadata))) {
           partitionIdsList.add(partitionMetadata.getPartitionID());
         }
       }
@@ -673,58 +648,58 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   }
 
   /**
-   * check if the current partitionIds can be reUsed to minimize the number of changes
+   * check if the current partitionIds can be reused to minimize the number of changes
    *
    * @param oldPartitionIds list of old partition IDs
    * @param oldThroughputBytes old throughput for which the partitions were used
    * @param newThroughputBytes new throughput for which the partitions will be used
    * @param requireDedicatedPartitions flag to indicate, if we want dedicated partition moving
    *     forward
-   * @return map of partition id, oldPartitionMetada of partitions which will be re-used
+   * @return map of partition id, oldPartitionMetadata of partitions which will be re-used
    */
   public Map<String, PartitionMetadata> findPartitionsToBeReUsed(
       List<String> oldPartitionIds,
       long oldThroughputBytes,
       long newThroughputBytes,
       boolean requireDedicatedPartitions) {
-    int newPartitionCount = getPartitionCount(newThroughputBytes);
+    int newPartitionCount = partitionMetadataStore.partitionCountForThroughput(newThroughputBytes);
     long perPartitionCapacityRequired = Math.ceilDiv(newThroughputBytes, newPartitionCount);
 
     int oldPartitionCount = oldPartitionIds.size();
     long perPartitionCapacityExisting = Math.ceilDiv(oldThroughputBytes, oldPartitionCount);
 
+    // go through the existing partitions
+    // if dedicated partitions are required
+    // - select partitions that are dedicated or have the same capacity usage, and can accommodate the new usage
+    // if dedicated partitions are not required
+    // - pick partitions that are not dedicated, or are dedicated but have the same provisioning as before
+    //
+    // what we want are existing partitions that
     Map<String, PartitionMetadata> partitionsToBeReUsed = new HashMap<>();
     for (String partitionId : oldPartitionIds) {
       PartitionMetadata partitionMetadata = partitionMetadataStore.getSync(partitionId);
+      boolean provisionedCapacityMatchesExisting = partitionMetadata.getProvisionedCapacity() - perPartitionCapacityExisting == 0;
+      boolean hasSpaceAfterRepartitioning = partitionMetadataStore.hasSpaceForAdditionalProvisioning(partitionMetadata, perPartitionCapacityRequired-perPartitionCapacityExisting);
+      PartitionMetadata currentPartition = new PartitionMetadata(
+        partitionId,
+        partitionMetadata.getProvisionedCapacity(),
+        partitionMetadata.getMaxCapacity(),
+        partitionMetadata.getDedicatedPartition());
       if (requireDedicatedPartitions) {
         if ((partitionMetadata.dedicatedPartition
-                || partitionMetadata.getProvisionedCapacity() - perPartitionCapacityExisting == 0)
-            && (partitionMetadata.getProvisionedCapacity()
-                    - perPartitionCapacityExisting
-                    + perPartitionCapacityRequired
-                <= maxPartitionCapacity)) {
+                || provisionedCapacityMatchesExisting)
+            && hasSpaceAfterRepartitioning) {
           partitionsToBeReUsed.put(
               partitionId,
-              new PartitionMetadata(
-                  partitionId,
-                  partitionMetadata.getProvisionedCapacity(),
-                  partitionMetadata.getMaxCapacity(),
-                  partitionMetadata.getDedicatedPartition()));
+            currentPartition);
         }
       } else {
         if ((!partitionMetadata.dedicatedPartition
-                || partitionMetadata.getProvisionedCapacity() - perPartitionCapacityExisting == 0)
-            && (partitionMetadata.getProvisionedCapacity()
-                    - perPartitionCapacityExisting
-                    + perPartitionCapacityRequired
-                <= maxPartitionCapacity)) {
+                || provisionedCapacityMatchesExisting)
+            && hasSpaceAfterRepartitioning) {
           partitionsToBeReUsed.put(
               partitionId,
-              new PartitionMetadata(
-                  partitionId,
-                  partitionMetadata.getProvisionedCapacity(),
-                  partitionMetadata.getMaxCapacity(),
-                  partitionMetadata.getDedicatedPartition()));
+            currentPartition);
         }
       }
       // we will hit this criteria when downsizing throughput
@@ -847,7 +822,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     List<String> newPartitionIds =
         findPartition(throughputBytes, requireDedicatedPartition, reUsePartitionIds);
 
-    int numberOfPartitions = getPartitionCount(throughputBytes);
+    int numberOfPartitions = partitionMetadataStore.partitionCountForThroughput(throughputBytes);
 
     // Not enough partitions are available for reassigning
     if (newPartitionIds.size() + reUsePartitionIds.size() != numberOfPartitions) {
