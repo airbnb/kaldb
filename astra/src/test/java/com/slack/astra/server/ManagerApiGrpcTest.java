@@ -474,7 +474,7 @@ public class ManagerApiGrpcTest {
             });
 
     assertThat(thirdAssignment.get().getThroughputBytes()).isEqualTo(updatedThroughputBytes);
-    assertThat(thirdAssignment.get().getPartitionConfigsList().size()).isEqualTo(3);
+    assertThat(thirdAssignment.get().getPartitionConfigsList().size()).isEqualTo(2);
     assertThat(thirdAssignment.get().getPartitionConfigsList().get(0).getPartitionsList())
         .isEqualTo(List.of("1", "2"));
     assertThat(thirdAssignment.get().getPartitionConfigsList().get(0).getEndTimeEpochMs())
@@ -482,14 +482,9 @@ public class ManagerApiGrpcTest {
 
     assertThat(thirdAssignment.get().getPartitionConfigsList().get(1).getPartitionsList())
         .isEqualTo(List.of("3", "4", "5"));
-    assertThat(thirdAssignment.get().getPartitionConfigsList().get(1).getEndTimeEpochMs())
-        .isNotEqualTo(MAX_TIME);
-
-    assertThat(thirdAssignment.get().getPartitionConfigsList().get(2).getPartitionsList())
-        .isEqualTo(List.of("3", "4", "5"));
-    assertThat(thirdAssignment.get().getPartitionConfigsList().get(2).getStartTimeEpochMs())
+    assertThat(thirdAssignment.get().getPartitionConfigsList().get(1).getStartTimeEpochMs())
         .isGreaterThanOrEqualTo(nowMs);
-    assertThat(thirdAssignment.get().getPartitionConfigsList().get(2).getEndTimeEpochMs())
+    assertThat(thirdAssignment.get().getPartitionConfigsList().get(1).getEndTimeEpochMs())
         .isEqualTo(MAX_TIME);
 
     assertThat(partitionMetadataStore.getSync("1"))
@@ -507,7 +502,7 @@ public class ManagerApiGrpcTest {
     assertThat(thirdDatasetMetadata.getName()).isEqualTo(datasetName);
     assertThat(thirdDatasetMetadata.getOwner()).isEqualTo(datasetOwner);
     assertThat(thirdDatasetMetadata.getThroughputBytes()).isEqualTo(updatedThroughputBytes);
-    assertThat(thirdDatasetMetadata.getPartitionConfigs().size()).isEqualTo(3);
+    assertThat(thirdDatasetMetadata.getPartitionConfigs().size()).isEqualTo(2);
   }
 
   @Test
@@ -1438,7 +1433,10 @@ public class ManagerApiGrpcTest {
         managerApiStub.createPartition(
             ManagerApi.CreatePartitionRequest.newBuilder().setPartitionId(partitionId).build());
 
-    assertThat(createdPartition).isEqualTo(createSharedPartitionMetadata(partitionId));
+    assertThat(createdPartition.getPartitionId()).isEqualTo(partitionId);
+    assertThat(createdPartition.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(createdPartition.getMaxCapacity()).isEqualTo(5000000);
+    assertThat(createdPartition.getDedicatedPartition()).isEqualTo(false);
 
     assertThat(partitionMetadataStore.getSync(partitionId))
         .isEqualTo(createSharedPartitionMetadata(partitionId));

@@ -195,7 +195,6 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   public void updatePartitionAssignment(
       ManagerApi.UpdatePartitionAssignmentRequest request,
       StreamObserver<ManagerApi.UpdatePartitionAssignmentResponse> responseObserver) {
-
     try {
       // todo - add additional validation to ensure the provided allocation makes sense for the
       //  configured throughput values.
@@ -210,8 +209,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               ? datasetMetadata.getThroughputBytes()
               : request.getThroughputBytes();
 
-      List<String> partitionIdList = List.of();
-
+      List<String> partitionIdList;
       if (request.getPartitionIdsList().isEmpty()) {
         partitionIdList =
             autoAssignPartition(
@@ -401,6 +399,11 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
                 datasetPartitionMetadata ->
                     datasetPartitionMetadata.getEndTimeEpochMs() == MAX_TIME)
             .findFirst();
+
+    if (previousActiveDatasetPartition.isPresent()
+        && previousActiveDatasetPartition.get().getPartitions().equals(newPartitionIdsList)) {
+      return ImmutableList.copyOf(existingPartitions);
+    }
 
     List<DatasetPartitionMetadata> remainingDatasetPartitions =
         existingPartitions.stream()
