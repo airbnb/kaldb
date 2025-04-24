@@ -28,7 +28,8 @@ public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata
     this.minNumberOfPartitions = minNumberOfPartitions;
   }
 
-  public static long getProvisionedCapacity(long requestedProvisionedCapacity, PartitionMetadata partitionMetadata) {
+  public static long getProvisionedCapacity(
+      long requestedProvisionedCapacity, PartitionMetadata partitionMetadata) {
     return requestedProvisionedCapacity < 0
         ? requestedProvisionedCapacity
         : partitionMetadata.provisionedCapacity;
@@ -42,26 +43,23 @@ public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata
    * Returns the partition count based of the throughput. Performs div operation, and takes the ceil
    * of the division. Also, checks if minimum partition requirement is met
    *
-   * @param throughput     service throughput to calculate number of partitions for
+   * @param throughput service throughput to calculate number of partitions for
    * @return integer number of partition count
    */
   public int partitionCountForThroughput(long throughput) {
-    int numberOfPartitions =
-        (int) Math.ceilDiv(throughput, maxPartitionCapacity);
+    int numberOfPartitions = (int) Math.ceilDiv(throughput, maxPartitionCapacity);
     return numberOfPartitions < minNumberOfPartitions
         ? numberOfPartitions + (minNumberOfPartitions - numberOfPartitions)
         : numberOfPartitions;
   }
 
   public long getMaxCapacityOrDefaultTo(long requestedMaxCapacity) {
-    return requestedMaxCapacity == 0
-        ? maxPartitionCapacity
-        : requestedMaxCapacity;
+    return requestedMaxCapacity == 0 ? maxPartitionCapacity : requestedMaxCapacity;
   }
 
-  public boolean hasSpaceForAdditionalProvisioning(PartitionMetadata partitionMetadata, long perPartitionCapacity) {
-    return partitionMetadata.provisionedCapacity + perPartitionCapacity
-      <= maxPartitionCapacity;
+  public boolean hasSpaceForAdditionalProvisioning(
+      PartitionMetadata partitionMetadata, long perPartitionCapacity) {
+    return partitionMetadata.provisionedCapacity + perPartitionCapacity <= maxPartitionCapacity;
     // maybe should use the partitionMetadata's max capacity instead
   }
 }
