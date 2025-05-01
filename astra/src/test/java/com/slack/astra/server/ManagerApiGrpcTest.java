@@ -44,6 +44,7 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.curator.test.TestingServer;
 import org.apache.curator.x.async.AsyncCuratorFramework;
+import org.assertj.core.api.Condition;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -511,7 +512,10 @@ public class ManagerApiGrpcTest {
   // - one dataset
   // --
   // not enough partitions, add partitions, see that the update worked
-
+  // manual assign
+  // 1. updating empty dataset
+  // 2. updating existing dataset where there are partitions in common (I think this is currently
+  // broken)
   // cases where shared/dedicated doesn't matter
   // 1. dataset to update with blank name  -> error
   // 1. dataset to update doesn't exist  -> error
@@ -521,9 +525,15 @@ public class ManagerApiGrpcTest {
   // 1. happy path, 0 existing datasets, 5 partitions, all empty
   // 2. 1 existing shared dataset, 2 partitions, both used but with enough space
   // 3. 1 existing shared dataset, 3 partitions, 2 used, one free, but not enough space without
-  // reassigning
-  // 4. 1 existing dedicated dataset, 3 partitions, 2 used, one free -> error (space doesn't matter
+  // reassigning -> say that there's capacity perhaps, but would need to change other dataset
+  // configs
+  // 4. 1 existing shared dataset, 3 partitions, 3 used, enough space if assigned to 3 but not
+  // enough if assigned to 2
+  // 5. 1 existing dedicated dataset, 3 partitions, 2 used, one free -> error (space doesn't matter
   // because can't have 2 partitions for both)
+  // 6. 1 existing dedicated dataset, 4 partitions, 2 used, 2 free -> success
+  // because can have 2 partitions for both)
+  //
   // adding dedicated
   // 1. happy path. no existing datasets, 5 partitions setup
   // 2. 1 existing dedicated dataset, 3 partitions, 2 used, one free -> error (space doesn't matter)
@@ -536,6 +546,30 @@ public class ManagerApiGrpcTest {
   // reassignment based on throughput amounts requested
   // 7. 1 existing shared dataset, 3 partitions, 2 used, one free -> error (space doesn't matter
   // because can't have 2 partitions for both)
+  // updating
+  // 1. switch from shared to dedicated partitions, 0 other datasets, enough space available
+  // 1. switch from shared to dedicated partitions, 1 other datasets, enough empty partitions
+  // available
+  // 2. switch from shared to dedicated partitions, 1 other datasets, not enough space available
+  // -- shared partitions with other dataset
+  // -- shared partitions with no other dataset
+  // -- shared partitions some with other dataset some with just the one under test
+  //
+  // 3. switch from dedicated to shared partitions
+  // -- this is easy unless you want to rebalance onto the other shared partitions to make space,
+  // but tbh that should be
+  // -- a different operation
+  //
+  // - increasing the throughput of a dataset. shared vs dedicated
+  // - switching from shared to dedicated for a dataset
+  // - switching from dedicated to shared for a dataset
+  // - 4 partitions, 2 used, 2 empty, adding a shared dataset, should it use the empty ones first or
+  // the shared ones?
+  // I'd expect empty
+  // - it'd be nice if there were errors that differentiated between needing rebalancing and needing
+  // more partitions
+  // though that's not strictly necessary
+  // - invalid starting configurations and how it handles that
 
   @Test
   public void shouldAutoAssignAddShared1() {
@@ -594,10 +628,7 @@ public class ManagerApiGrpcTest {
                 new DatasetPartitionMetadata(
                     Instant.now().toEpochMilli(), MAX_TIME, existingPartitions)),
             "whatever"));
-    for (String number : existingPartitions) {
-      partitionMetadataStore.createSync(
-          createSharedPartitionMetadata(number, existingDatasetThroughputBytes / 2));
-    }
+    createPartitions(existingPartitions, existingDatasetThroughputBytes / 2);
     // action
     // - create an empty dataset
     // - update its partitions with some throughputs
@@ -634,7 +665,10 @@ public class ManagerApiGrpcTest {
     // - 3 partitions, 2 used, one free
     // - 1 existing datasets
 
-    int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY + 1_000;
+    // existing using max capacity * 2 - 1 on two partitions
+    // requesting max capacity * 1 - 1
+    // would require the existing dataset to be reassigned to all three partitions
+    int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY * 2 - 2;
     List<String> usedExistingPartitions = List.of("1", "2");
     datasetMetadataStore.createAsync(
         new DatasetMetadata(
@@ -645,11 +679,43 @@ public class ManagerApiGrpcTest {
                 new DatasetPartitionMetadata(
                     Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
             "whatever"));
-    for (String number : usedExistingPartitions) {
-      partitionMetadataStore.createSync(
-          createSharedPartitionMetadata(number, existingDatasetThroughputBytes / 2));
-    }
+    createPartitions(usedExistingPartitions, existingDatasetThroughputBytes / 2);
     createPartitions("3");
+    // action
+    // - create an empty dataset
+    // - update its partitions with some throughputs
+    // should have at least 2 partitions assigned to it
+    // the partition metadata should reflect the throughput
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+    createEmptyDatasetGRPC(datasetName, datasetOwner);
+
+    long throughputBytes = DEFAULT_MAX_CAPACITY;
+    assertThatThrownBy(() -> updatePartitionAssignmentGRPC(datasetName, throughputBytes))
+        .isInstanceOf(StatusRuntimeException.class)
+        .hasMessageContaining("TODO");
+  }
+
+  @Test
+  public void shouldAutoAssignAddShared4() {
+    // 4. 1 existing shared dataset, 3 partitions, 3 used, enough space if assigned to 3 but not
+    // enough if assigned to 2
+    // setup
+    // - 3 partitions, 3 used
+    // - 1 existing datasets
+    int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY * 2 - 2;
+    List<String> usedExistingPartitions = List.of("1", "2", "3");
+    datasetMetadataStore.createAsync(
+        new DatasetMetadata(
+            "existingDataset1",
+            "existingDatasetOwner",
+            existingDatasetThroughputBytes,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
+            "whatever"));
+    createPartitions(
+        usedExistingPartitions, existingDatasetThroughputBytes / usedExistingPartitions.size());
     // action
     // - create an empty dataset
     // - update its partitions with some throughputs
@@ -663,7 +729,7 @@ public class ManagerApiGrpcTest {
     long throughputBytes = DEFAULT_MAX_CAPACITY;
     ManagerApi.UpdatePartitionAssignmentResponse updateResponse =
         updatePartitionAssignmentGRPC(datasetName, throughputBytes);
-    assertThat(updateResponse.getAssignedPartitionIdsList()).isEqualTo(List.of("1", "2"));
+    assertThat(updateResponse.getAssignedPartitionIdsList()).isEqualTo(List.of("1", "2", "3"));
     await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs));
 
     // assert that there are >= 2 partitions assigned to the dataset
@@ -671,13 +737,120 @@ public class ManagerApiGrpcTest {
             latestPartitionConfig(datasetMetadataStore.getSync(datasetName)).getPartitions().size())
         .isEqualTo(2);
     // assert that the partition metadata has the throughput for those partitions
-    long expectedNewProvisionedCapacity = throughputBytes / 2 + existingDatasetThroughputBytes / 2;
+    long expectedNewProvisionedCapacity = throughputBytes / 3 + existingDatasetThroughputBytes / 3;
     assertThat(partitionMetadataStore.getSync("1"))
         .isEqualTo(createSharedPartitionMetadata("1", expectedNewProvisionedCapacity));
     assertThat(partitionMetadataStore.getSync("2"))
         .isEqualTo(createSharedPartitionMetadata("2", expectedNewProvisionedCapacity));
     assertThat(partitionMetadataStore.getSync("3"))
         .isEqualTo(createSharedPartitionMetadata("3", expectedNewProvisionedCapacity));
+  }
+
+  @Test
+  public void shouldAutoAssignAddShared5() {
+    // 5. 1 existing dedicated dataset, 3 partitions, 2 used, one free -> error (space doesn't
+    // matter
+    // because can't have 2 partitions for both)
+    // setup
+    // - 3 partitions, 2 used, one free
+    // - 1 existing datasets
+
+    // existing using max capacity * 2 - 2 on three partitions, which should leave a third for the
+    // new dataset
+    // requesting max capacity * 1 - 1
+    // would require the existing dataset to be reassigned to all three partitions
+    int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY * 2 - 2;
+    List<String> usedExistingPartitions = List.of("1", "2");
+    datasetMetadataStore.createAsync(
+        new DatasetMetadata(
+            "existingDataset1",
+            "existingDatasetOwner",
+            existingDatasetThroughputBytes,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
+            "whatever"));
+    createDedicatedPartitions(
+        usedExistingPartitions, existingDatasetThroughputBytes / usedExistingPartitions.size());
+    // action
+    // - create an empty dataset
+    // - update its partitions with some throughputs
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+    createEmptyDatasetGRPC(datasetName, datasetOwner);
+
+    assertThatThrownBy(() -> updatePartitionAssignmentGRPC(datasetName, DEFAULT_MAX_CAPACITY))
+        .isInstanceOf(StatusRuntimeException.class)
+        .hasMessageContaining("TODO");
+  }
+
+  @Test
+  public void shouldAutoAssignAddShared6() {
+    // 6. 1 existing dedicated dataset, 4 partitions, 2 used, 2 free -> success
+    // because can't have 2 partitions for both)
+    int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY * 2 - 2;
+    List<String> usedExistingPartitions = List.of("1", "2");
+    List<String> unusedExistingPartitions = List.of("3", "4");
+    datasetMetadataStore.createAsync(
+        new DatasetMetadata(
+            "existingDataset1",
+            "existingDatasetOwner",
+            existingDatasetThroughputBytes,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
+            "whatever"));
+    createDedicatedPartitions(
+        usedExistingPartitions, existingDatasetThroughputBytes / usedExistingPartitions.size());
+    createPartitions(unusedExistingPartitions.toArray(new String[0]));
+    // action
+    // - create an empty dataset
+    // - update its partitions with some throughputs
+    // should have at least 2 partitions assigned to it
+    // the partition metadata should reflect the throughput
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+    createEmptyDatasetGRPC(datasetName, datasetOwner);
+
+    long nowMs = Instant.now().toEpochMilli();
+    long throughputBytes = DEFAULT_MAX_CAPACITY;
+    ManagerApi.UpdatePartitionAssignmentResponse updateResponse =
+        updatePartitionAssignmentGRPC(datasetName, throughputBytes);
+    assertThat(updateResponse.getAssignedPartitionIdsList()).isEqualTo(unusedExistingPartitions);
+    await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs));
+
+    // assert that there are >= 2 partitions assigned to the dataset
+    assertThat(
+            latestPartitionConfig(datasetMetadataStore.getSync(datasetName)).getPartitions().size())
+        .isEqualTo(2);
+    // assert that the partition metadata has the throughput for those partitions
+    long expectedNewProvisionedCapacity = throughputBytes / 2;
+    assertThat(partitionMetadataStore.getSync("1"))
+        .isEqualTo(createDedicatedPartitionMetadata("1", existingDatasetThroughputBytes / 2));
+    assertThat(partitionMetadataStore.getSync("2"))
+        .isEqualTo(createDedicatedPartitionMetadata("2", existingDatasetThroughputBytes / 2));
+    assertThat(partitionMetadataStore.getSync("3"))
+        .isEqualTo(createSharedPartitionMetadata("3", expectedNewProvisionedCapacity));
+    assertThat(partitionMetadataStore.getSync("4"))
+        .isEqualTo(createSharedPartitionMetadata("4", expectedNewProvisionedCapacity));
+  }
+
+  private List<PartitionMetadata> getPartitionMetadata(String... partitionIds) {
+    return Arrays.stream(partitionIds).map(partitionMetadataStore::getSync).toList();
+  }
+
+  private void createPartitions(List<String> usedExistingPartitions, int provisionedCapacity) {
+    for (String number : usedExistingPartitions) {
+      partitionMetadataStore.createSync(createSharedPartitionMetadata(number, provisionedCapacity));
+    }
+  }
+
+  private void createDedicatedPartitions(
+      List<String> usedExistingPartitions, int provisionedCapacity) {
+    for (String number : usedExistingPartitions) {
+      partitionMetadataStore.createSync(
+          createDedicatedPartitionMetadata(number, provisionedCapacity));
+    }
   }
 
   @Test
