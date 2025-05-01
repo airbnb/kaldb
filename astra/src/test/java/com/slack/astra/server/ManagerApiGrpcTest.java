@@ -375,10 +375,7 @@ public class ManagerApiGrpcTest {
     assertThat(firstAssignment.getPartitionConfigsList().get(0).getEndTimeEpochMs())
         .isEqualTo(MAX_TIME);
 
-    assertThat(partitionMetadataStore.getSync("1"))
-        .isEqualTo(createSharedPartitionMetadata("1", 5));
-    assertThat(partitionMetadataStore.getSync("2"))
-        .isEqualTo(createSharedPartitionMetadata("2", 5));
+    assertThat(getPartitionMetadata("1", "2")).have(sharedPartitionsWithCapacity(5));
 
     DatasetMetadata firstDatasetMetadata = datasetMetadataStore.getSync(datasetName);
     assertThat(firstDatasetMetadata.getName()).isEqualTo(datasetName);
@@ -420,16 +417,8 @@ public class ManagerApiGrpcTest {
     assertThat(secondAssignment.get().getPartitionConfigsList().get(1).getEndTimeEpochMs())
         .isEqualTo(MAX_TIME);
 
-    assertThat(partitionMetadataStore.getSync("1"))
-        .isEqualTo(createSharedPartitionMetadata("1", 0));
-    assertThat(partitionMetadataStore.getSync("2"))
-        .isEqualTo(createSharedPartitionMetadata("2", 0));
-    assertThat(partitionMetadataStore.getSync("3"))
-        .isEqualTo(createSharedPartitionMetadata("3", 4));
-    assertThat(partitionMetadataStore.getSync("4"))
-        .isEqualTo(createSharedPartitionMetadata("4", 4));
-    assertThat(partitionMetadataStore.getSync("5"))
-        .isEqualTo(createSharedPartitionMetadata("5", 4));
+    assertThat(getPartitionMetadata("1", "2")).have(sharedPartitionsWithCapacity(0));
+    assertThat(getPartitionMetadata("3", "4", "5")).have(sharedPartitionsWithCapacity(4));
 
     DatasetMetadata secondDatasetMetadata = datasetMetadataStore.getSync(datasetName);
     assertThat(secondDatasetMetadata.getName()).isEqualTo(datasetName);
@@ -469,16 +458,8 @@ public class ManagerApiGrpcTest {
     assertThat(thirdAssignment.get().getPartitionConfigsList().get(1).getEndTimeEpochMs())
         .isEqualTo(MAX_TIME);
 
-    assertThat(partitionMetadataStore.getSync("1"))
-        .isEqualTo(createSharedPartitionMetadata("1", 0));
-    assertThat(partitionMetadataStore.getSync("2"))
-        .isEqualTo(createSharedPartitionMetadata("2", 0));
-    assertThat(partitionMetadataStore.getSync("3"))
-        .isEqualTo(createSharedPartitionMetadata("3", 4));
-    assertThat(partitionMetadataStore.getSync("4"))
-        .isEqualTo(createSharedPartitionMetadata("4", 4));
-    assertThat(partitionMetadataStore.getSync("5"))
-        .isEqualTo(createSharedPartitionMetadata("5", 4));
+    assertThat(getPartitionMetadata("1", "2")).have(sharedPartitionsWithCapacity(0));
+    assertThat(getPartitionMetadata("3", "4", "5")).have(sharedPartitionsWithCapacity(4));
 
     DatasetMetadata thirdDatasetMetadata = datasetMetadataStore.getSync(datasetName);
     assertThat(thirdDatasetMetadata.getName()).isEqualTo(datasetName);
@@ -599,15 +580,10 @@ public class ManagerApiGrpcTest {
             latestPartitionConfig(datasetMetadataStore.getSync(datasetName)).getPartitions().size())
         .isEqualTo(2);
     // assert that the partition metadata has the throughput for those partitions
-    assertThat(partitionMetadataStore.getSync("1"))
-        .isEqualTo(createSharedPartitionMetadata("1", throughputBytes / 2));
-    assertThat(partitionMetadataStore.getSync("2"))
-        .isEqualTo(createSharedPartitionMetadata("2", throughputBytes / 2));
+    assertThat(getPartitionMetadata("1", "2"))
+        .have(sharedPartitionsWithCapacity(throughputBytes / 2));
     // assert that the other partitions are not updated
-    for (String partition : List.of("3", "4", "5")) {
-      assertThat(partitionMetadataStore.getSync(partition))
-          .isEqualTo(createSharedPartitionMetadata(partition, 0));
-    }
+    assertThat(getPartitionMetadata("3", "4", "5")).have(sharedPartitionsWithCapacity(0));
   }
 
   @Test
@@ -650,11 +626,9 @@ public class ManagerApiGrpcTest {
             latestPartitionConfig(datasetMetadataStore.getSync(datasetName)).getPartitions().size())
         .isEqualTo(2);
     // assert that the partition metadata has the throughput for those partitions
-    long expectedNewProvisionedCapacity = throughputBytes / 2 + existingDatasetThroughputBytes / 2;
-    assertThat(partitionMetadataStore.getSync("1"))
-        .isEqualTo(createSharedPartitionMetadata("1", expectedNewProvisionedCapacity));
-    assertThat(partitionMetadataStore.getSync("2"))
-        .isEqualTo(createSharedPartitionMetadata("2", expectedNewProvisionedCapacity));
+    assertThat(getPartitionMetadata("1", "2"))
+        .are(
+            sharedPartitionsWithCapacity(throughputBytes / 2 + existingDatasetThroughputBytes / 2));
   }
 
   @Test
@@ -737,13 +711,9 @@ public class ManagerApiGrpcTest {
             latestPartitionConfig(datasetMetadataStore.getSync(datasetName)).getPartitions().size())
         .isEqualTo(2);
     // assert that the partition metadata has the throughput for those partitions
-    long expectedNewProvisionedCapacity = throughputBytes / 3 + existingDatasetThroughputBytes / 3;
-    assertThat(partitionMetadataStore.getSync("1"))
-        .isEqualTo(createSharedPartitionMetadata("1", expectedNewProvisionedCapacity));
-    assertThat(partitionMetadataStore.getSync("2"))
-        .isEqualTo(createSharedPartitionMetadata("2", expectedNewProvisionedCapacity));
-    assertThat(partitionMetadataStore.getSync("3"))
-        .isEqualTo(createSharedPartitionMetadata("3", expectedNewProvisionedCapacity));
+    assertThat(getPartitionMetadata("1", "2", "3"))
+        .are(
+            sharedPartitionsWithCapacity(throughputBytes / 3 + existingDatasetThroughputBytes / 3));
   }
 
   @Test
@@ -825,14 +795,27 @@ public class ManagerApiGrpcTest {
         .isEqualTo(2);
     // assert that the partition metadata has the throughput for those partitions
     long expectedNewProvisionedCapacity = throughputBytes / 2;
-    assertThat(partitionMetadataStore.getSync("1"))
-        .isEqualTo(createDedicatedPartitionMetadata("1", existingDatasetThroughputBytes / 2));
-    assertThat(partitionMetadataStore.getSync("2"))
-        .isEqualTo(createDedicatedPartitionMetadata("2", existingDatasetThroughputBytes / 2));
-    assertThat(partitionMetadataStore.getSync("3"))
-        .isEqualTo(createSharedPartitionMetadata("3", expectedNewProvisionedCapacity));
-    assertThat(partitionMetadataStore.getSync("4"))
-        .isEqualTo(createSharedPartitionMetadata("4", expectedNewProvisionedCapacity));
+    assertThat(getPartitionMetadata("1", "2"))
+        .are(dedicatedPartitionsWithCapacity(existingDatasetThroughputBytes / 2));
+    assertThat(getPartitionMetadata("3", "4"))
+        .have(sharedPartitionsWithCapacity(expectedNewProvisionedCapacity));
+  }
+
+  private Condition<? super PartitionMetadata> dedicatedPartitionsWithCapacity(
+      long provisionedCapacity) {
+    return partitionsWithCapacityAndDedicated(provisionedCapacity, true);
+  }
+
+  private Condition<? super PartitionMetadata> sharedPartitionsWithCapacity(
+      long provisionedCapacity) {
+    return partitionsWithCapacityAndDedicated(provisionedCapacity, false);
+  }
+
+  private Condition<? super PartitionMetadata> partitionsWithCapacityAndDedicated(
+      long provisionedCapacity, boolean dedicated) {
+    return new Condition<>(
+        p -> p.getProvisionedCapacity() == provisionedCapacity && p.dedicatedPartition == dedicated,
+        (dedicated ? "dedicated" : "shared") + " partition with capacity " + provisionedCapacity);
   }
 
   private List<PartitionMetadata> getPartitionMetadata(String... partitionIds) {
@@ -987,10 +970,7 @@ public class ManagerApiGrpcTest {
     assertThat(firstPartitionConfig.getStartTimeEpochMs()).isGreaterThanOrEqualTo(nowMs);
     assertThat(firstPartitionConfig.getEndTimeEpochMs()).isEqualTo(MAX_TIME);
 
-    assertThat(partitionMetadataStore.getSync("1"))
-        .isEqualTo(createSharedPartitionMetadata("1", 5));
-    assertThat(partitionMetadataStore.getSync("2"))
-        .isEqualTo(createSharedPartitionMetadata("2", 5));
+    assertThat(getPartitionMetadata("1", "2")).have(sharedPartitionsWithCapacity(5));
 
     DatasetMetadata firstDatasetMetadata = datasetMetadataStore.getSync(datasetName);
     assertThat(firstDatasetMetadata.getName()).isEqualTo(datasetName);
@@ -1035,10 +1015,7 @@ public class ManagerApiGrpcTest {
     assertThat(secondAssignment.getPartitionConfigsList().get(1).getEndTimeEpochMs())
         .isEqualTo(MAX_TIME);
 
-    assertThat(partitionMetadataStore.getSync("1"))
-        .isEqualTo(createDedicatedPartitionMetadata("1", 5));
-    assertThat(partitionMetadataStore.getSync("2"))
-        .isEqualTo(createDedicatedPartitionMetadata("2", 5));
+    assertThat(getPartitionMetadata("1", "2")).have(dedicatedPartitionsWithCapacity(5));
 
     DatasetMetadata secondDatasetMetadata = datasetMetadataStore.getSync(datasetName);
     assertThat(secondDatasetMetadata.getName()).isEqualTo(datasetName);
@@ -1082,16 +1059,8 @@ public class ManagerApiGrpcTest {
     assertThat(thirdAssignment.getPartitionConfigsList().get(2).getEndTimeEpochMs())
         .isEqualTo(MAX_TIME);
 
-    assertThat(partitionMetadataStore.getSync("1"))
-        .isEqualTo(createSharedPartitionMetadata("1", 0));
-    assertThat(partitionMetadataStore.getSync("2"))
-        .isEqualTo(createSharedPartitionMetadata("2", 0));
-    assertThat(partitionMetadataStore.getSync("3"))
-        .isEqualTo(createSharedPartitionMetadata("3", 4));
-    assertThat(partitionMetadataStore.getSync("4"))
-        .isEqualTo(createSharedPartitionMetadata("4", 4));
-    assertThat(partitionMetadataStore.getSync("5"))
-        .isEqualTo(createSharedPartitionMetadata("5", 4));
+    assertThat(getPartitionMetadata("1", "2")).have(sharedPartitionsWithCapacity(0));
+    assertThat(getPartitionMetadata("3", "4", "5")).have(sharedPartitionsWithCapacity(4));
 
     DatasetMetadata thirdDatasetMetadata = datasetMetadataStore.getSync(datasetName);
     assertThat(thirdDatasetMetadata.getName()).isEqualTo(datasetName);
@@ -1138,16 +1107,9 @@ public class ManagerApiGrpcTest {
     assertThat(fourthAssignment.getPartitionConfigsList().get(3).getEndTimeEpochMs())
         .isEqualTo(MAX_TIME);
 
-    assertThat(partitionMetadataStore.getSync("1"))
-        .isEqualTo(createSharedPartitionMetadata("1", 0));
-    assertThat(partitionMetadataStore.getSync("2"))
-        .isEqualTo(createSharedPartitionMetadata("2", 0));
-    assertThat(partitionMetadataStore.getSync("3"))
-        .isEqualTo(createSharedPartitionMetadata("3", 6));
-    assertThat(partitionMetadataStore.getSync("4"))
-        .isEqualTo(createSharedPartitionMetadata("4", 6));
-    assertThat(partitionMetadataStore.getSync("5"))
-        .isEqualTo(createSharedPartitionMetadata("5", 0));
+    assertThat(getPartitionMetadata("1", "2")).have(sharedPartitionsWithCapacity(0));
+    assertThat(getPartitionMetadata("3", "4")).have(sharedPartitionsWithCapacity(6));
+    assertThat(getPartitionMetadata("5")).have(sharedPartitionsWithCapacity(0));
 
     DatasetMetadata fourthDatasetMetadata = datasetMetadataStore.getSync(datasetName);
     assertThat(fourthDatasetMetadata.getName()).isEqualTo(datasetName);
@@ -1219,12 +1181,8 @@ public class ManagerApiGrpcTest {
     assertThat(firstAssignment2.getPartitionConfigsList().get(0).getEndTimeEpochMs())
         .isEqualTo(MAX_TIME);
 
-    assertThat(partitionMetadataStore.getSync("1"))
-        .isEqualTo(createSharedPartitionMetadata("1", 5000000));
-    assertThat(partitionMetadataStore.getSync("2"))
-        .isEqualTo(createSharedPartitionMetadata("2", 5000000));
-    assertThat(partitionMetadataStore.getSync("3"))
-        .isEqualTo(createSharedPartitionMetadata("3", 4000000));
+    assertThat(getPartitionMetadata("1", "2")).have(sharedPartitionsWithCapacity(5000000));
+    assertThat(getPartitionMetadata("3")).have(sharedPartitionsWithCapacity(4000000));
 
     DatasetMetadata firstDatasetMetadata1 = datasetMetadataStore.getSync(datasetName1);
     assertThat(firstDatasetMetadata1.getName()).isEqualTo(datasetName1);
@@ -1283,16 +1241,8 @@ public class ManagerApiGrpcTest {
     assertThat(secondAssignment2.getPartitionConfigsList().get(0).getEndTimeEpochMs())
         .isEqualTo(MAX_TIME);
 
-    assertThat(partitionMetadataStore.getSync("1"))
-        .isEqualTo(createSharedPartitionMetadata("1", 1000000));
-    assertThat(partitionMetadataStore.getSync("2"))
-        .isEqualTo(createSharedPartitionMetadata("2", 1000000));
-    assertThat(partitionMetadataStore.getSync("3"))
-        .isEqualTo(createDedicatedPartitionMetadata("3", 4000000));
-    assertThat(partitionMetadataStore.getSync("4"))
-        .isEqualTo(createDedicatedPartitionMetadata("4", 4000000));
-    assertThat(partitionMetadataStore.getSync("5"))
-        .isEqualTo(createDedicatedPartitionMetadata("5", 4000000));
+    assertThat(getPartitionMetadata("1", "2")).have(dedicatedPartitionsWithCapacity(1000000));
+    assertThat(getPartitionMetadata("3", "4", "5")).have(dedicatedPartitionsWithCapacity(4000000));
 
     DatasetMetadata secondDatasetMetadata1 = datasetMetadataStore.getSync(datasetName1);
     assertThat(secondDatasetMetadata1.getName()).isEqualTo(datasetName1);
@@ -1354,16 +1304,9 @@ public class ManagerApiGrpcTest {
     assertThat(thirdAssignment2.getPartitionConfigsList().get(0).getEndTimeEpochMs())
         .isEqualTo(MAX_TIME);
 
-    assertThat(partitionMetadataStore.getSync("1"))
-        .isEqualTo(createSharedPartitionMetadata("1", 1000000));
-    assertThat(partitionMetadataStore.getSync("2"))
-        .isEqualTo(createSharedPartitionMetadata("2", 1000000));
-    assertThat(partitionMetadataStore.getSync("3"))
-        .isEqualTo(createSharedPartitionMetadata("3", 4000000));
-    assertThat(partitionMetadataStore.getSync("4"))
-        .isEqualTo(createSharedPartitionMetadata("4", 4000000));
-    assertThat(partitionMetadataStore.getSync("5"))
-        .isEqualTo(createSharedPartitionMetadata("5", 0));
+    assertThat(getPartitionMetadata("1", "2")).have(sharedPartitionsWithCapacity(1000000));
+    assertThat(getPartitionMetadata("3", "4")).have(sharedPartitionsWithCapacity(4000000));
+    assertThat(getPartitionMetadata("5")).have(sharedPartitionsWithCapacity(0));
 
     DatasetMetadata thirdDatasetMetadata1 = datasetMetadataStore.getSync(datasetName1);
     assertThat(thirdDatasetMetadata1.getName()).isEqualTo(datasetName1);
@@ -1428,16 +1371,10 @@ public class ManagerApiGrpcTest {
     assertThat(fourthAssignment2.getPartitionConfigsList().get(0).getEndTimeEpochMs())
         .isEqualTo(MAX_TIME);
 
-    assertThat(partitionMetadataStore.getSync("1"))
-        .isEqualTo(createSharedPartitionMetadata("1", 5000000));
-    assertThat(partitionMetadataStore.getSync("2"))
-        .isEqualTo(createSharedPartitionMetadata("2", 1000000));
-    assertThat(partitionMetadataStore.getSync("3"))
-        .isEqualTo(createSharedPartitionMetadata("3", 4000000));
-    assertThat(partitionMetadataStore.getSync("4"))
-        .isEqualTo(createSharedPartitionMetadata("4", 4000000));
-    assertThat(partitionMetadataStore.getSync("5"))
-        .isEqualTo(createSharedPartitionMetadata("5", 0));
+    assertThat(getPartitionMetadata("1")).have(sharedPartitionsWithCapacity(5000000));
+    assertThat(getPartitionMetadata("2")).have(sharedPartitionsWithCapacity(1000000));
+    assertThat(getPartitionMetadata("3", "4")).have(sharedPartitionsWithCapacity(4000000));
+    assertThat(getPartitionMetadata("5")).have(sharedPartitionsWithCapacity(0));
 
     DatasetMetadata fourthDatasetMetadata1 = datasetMetadataStore.getSync(datasetName1);
     assertThat(fourthDatasetMetadata1.getName()).isEqualTo(datasetName1);
