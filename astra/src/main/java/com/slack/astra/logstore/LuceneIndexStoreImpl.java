@@ -1,6 +1,8 @@
 package com.slack.astra.logstore;
 
 import com.slack.astra.logstore.schema.SchemaAwareLogDocumentBuilderImpl;
+import com.slack.astra.logstore.search.LogIndexSearcher;
+import com.slack.astra.logstore.search.LogIndexSearcherImpl;
 import com.slack.astra.metadata.schema.LuceneFieldDef;
 import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.astra.util.RuntimeHalterImpl;
@@ -425,6 +427,12 @@ public class LuceneIndexStoreImpl implements LogStore {
     return searcherManager;
   }
 
+  @Override
+  public LogIndexSearcher getLogSearcher() {
+    return new LogIndexSearcherImpl(getSearcherManager(), getSchema());
+  }
+
+  @Override
   public String getId() {
     return id;
   }

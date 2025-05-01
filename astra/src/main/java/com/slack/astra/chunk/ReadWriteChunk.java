@@ -6,9 +6,7 @@ import static com.slack.astra.writer.SpanFormatter.isValidTimestamp;
 import com.google.common.annotations.VisibleForTesting;
 import com.slack.astra.blobfs.BlobStore;
 import com.slack.astra.logstore.LogStore;
-import com.slack.astra.logstore.LuceneIndexStoreImpl;
 import com.slack.astra.logstore.search.LogIndexSearcher;
-import com.slack.astra.logstore.search.LogIndexSearcherImpl;
 import com.slack.astra.logstore.search.SearchQuery;
 import com.slack.astra.logstore.search.SearchResult;
 import com.slack.astra.metadata.schema.ChunkSchema;
@@ -99,10 +97,8 @@ public abstract class ReadWriteChunk<T> implements Chunk<T> {
       Logger logger) {
     // TODO: Add checkArgument for the fields.
     this.logStore = logStore;
-    String logStoreId = ((LuceneIndexStoreImpl) logStore).getId();
-    this.logSearcher =
-        (LogIndexSearcher<T>)
-            new LogIndexSearcherImpl(logStore.getSearcherManager(), logStore.getSchema());
+    String logStoreId = logStore.getId();
+    this.logSearcher = logStore.getLogSearcher();
 
     // Create chunk metadata
     Instant chunkCreationTime = Instant.now();

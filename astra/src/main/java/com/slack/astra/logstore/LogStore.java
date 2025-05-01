@@ -1,5 +1,6 @@
 package com.slack.astra.logstore;
 
+import com.slack.astra.logstore.search.LogIndexSearcher;
 import com.slack.astra.metadata.schema.LuceneFieldDef;
 import com.slack.service.murron.trace.Trace;
 import java.io.Closeable;
@@ -16,6 +17,10 @@ public interface LogStore extends Closeable {
 
   // TODO: Instead of exposing the searcherManager, consider returning an instance of the searcher.
   SearcherManager getSearcherManager();
+
+  LogIndexSearcher getLogSearcher();
+
+  String getId();
 
   void commit();
 

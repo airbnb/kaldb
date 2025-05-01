@@ -21,7 +21,7 @@ import com.slack.astra.chunkrollover.ChunkRollOverStrategy;
 import com.slack.astra.chunkrollover.DiskOrMessageCountBasedRolloverStrategy;
 import com.slack.astra.logstore.LogMessage;
 import com.slack.astra.logstore.LogStore;
-import com.slack.astra.logstore.LuceneIndexStoreImpl;
+import com.slack.astra.logstore.duckdb.DuckdbIndexStoreImpl;
 import com.slack.astra.metadata.search.SearchMetadataStore;
 import com.slack.astra.metadata.snapshot.SnapshotMetadataStore;
 import com.slack.astra.proto.config.AstraConfigs;
@@ -257,7 +257,7 @@ public class IndexingChunkManager<T> extends ChunkManagerBase<T> {
     if (activeChunk == null) {
       @SuppressWarnings("unchecked")
       LogStore logStore =
-          LuceneIndexStoreImpl.makeLogStore(
+          DuckdbIndexStoreImpl.makeLogStore(
               dataDirectory, indexerConfig.getLuceneConfig(), meterRegistry);
 
       chunkRollOverStrategy.setActiveChunkDirectory(logStore.getDirectory());

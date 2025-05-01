@@ -4,8 +4,9 @@ import static com.slack.astra.logstore.LuceneIndexStoreImpl.MESSAGES_RECEIVED_CO
 
 import com.google.protobuf.ByteString;
 import com.slack.astra.logstore.LogStore;
-import com.slack.astra.logstore.schema.SchemaAwareLogDocumentBuilderImpl;
+import com.slack.astra.logstore.search.LogIndexSearcher;
 import com.slack.astra.metadata.schema.LuceneFieldDef;
+import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.astra.proto.schema.Schema;
 import com.slack.service.murron.trace.Trace;
 import io.micrometer.core.instrument.Counter;
@@ -17,10 +18,10 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.lucene.index.IndexCommit;
 import org.apache.lucene.index.IndexWriter;
@@ -34,6 +35,8 @@ import org.slf4j.LoggerFactory;
  */
 public class DuckdbIndexStoreImpl implements LogStore {
   private static final Logger LOG = LoggerFactory.getLogger(DuckdbIndexStoreImpl.class);
+
+  private final String id = UUID.randomUUID().toString();
 
   public static final String INSERT_STATEMENT_TEMPLATE =
       """
@@ -50,21 +53,6 @@ public class DuckdbIndexStoreImpl implements LogStore {
           """;
   public final MeterRegistry registry;
   public Counter messagesReceivedCounter;
-
-  public static DuckdbIndexStoreImpl makeLogStore(
-      File dataDirectory,
-      Duration commitInterval,
-      Duration refreshInterval,
-      boolean enableFullTextSearch,
-      SchemaAwareLogDocumentBuilderImpl.FieldConflictPolicy fieldConflictPolicy,
-      MeterRegistry metricsRegistry)
-      throws IOException {
-    try {
-      return new DuckdbIndexStoreImpl(dataDirectory, metricsRegistry);
-    } catch (SQLException e) {
-      throw new RuntimeException("Failed to create duckDB store.", e);
-    }
-  }
 
   // TODO: UUID for id, trace_id and parent_id. May be not since bytes can be string.
   // TODO: How is map stored? Need a test. chatgpt says it is encoded. Needs verification.
@@ -120,6 +108,15 @@ public class DuckdbIndexStoreImpl implements LogStore {
     readStatement = conn.createStatement();
 
     messagesReceivedCounter = registry.counter(MESSAGES_RECEIVED_COUNTER);
+  }
+
+  public static LogStore makeLogStore(
+      File dataDirectory, AstraConfigs.LuceneConfig luceneConfig, MeterRegistry metricsRegistry) {
+    try {
+      return new DuckdbIndexStoreImpl(dataDirectory, metricsRegistry);
+    } catch (SQLException e) {
+      throw new RuntimeException("Failed to create duckDB store.", e);
+    }
   }
 
   /** TODO: Use insert for now. It's slow. So use appender once this works. */
@@ -244,6 +241,16 @@ public class DuckdbIndexStoreImpl implements LogStore {
   @Override
   public SearcherManager getSearcherManager() {
     return null;
+  }
+
+  @Override
+  public LogIndexSearcher getLogSearcher() {
+    return new DuckdbSearcher();
+  }
+
+  @Override
+  public String getId() {
+    return id;
   }
 
   public ResultSet executeSQLQuery(String sql) throws SQLException {
