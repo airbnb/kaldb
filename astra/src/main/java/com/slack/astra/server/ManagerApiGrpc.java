@@ -22,6 +22,7 @@ import com.slack.astra.proto.manager_api.ManagerApi;
 import com.slack.astra.proto.manager_api.ManagerApiServiceGrpc;
 import com.slack.astra.proto.metadata.Metadata;
 import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -201,12 +202,18 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       Preconditions.checkArgument(
           request.getPartitionIdsList().stream().noneMatch(String::isBlank),
           "PartitionIds list must not contain blank strings");
-      // TODO
-      //   Preconditions.checkArgument(
-      //          !request.getName().isBlank(),
-      //          "Dataset name must not be blank string");
+      Preconditions.checkArgument(
+          !request.getName().isBlank(), "Dataset name must not be blank string");
 
-      DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(request.getName());
+      DatasetMetadata datasetMetadata;
+      try {
+        datasetMetadata = datasetMetadataStore.getSync(request.getName());
+      } catch (Exception e) {
+        String msg = "Dataset with name, '" + request.getName() + "', does not exist";
+        LOG.error(msg);
+        responseObserver.onError(Status.NOT_FOUND.withDescription(msg).asException());
+        return;
+      }
       // if the user provided a non-negative value for throughput set it, otherwise default to the
       // existing value
       long updatedThroughputBytes =
@@ -216,9 +223,15 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
       List<String> partitionIdList;
       if (request.getPartitionIdsList().isEmpty()) {
-        partitionIdList =
-            autoAssignPartition(
-                datasetMetadata, updatedThroughputBytes, request.getRequireDedicatedPartition());
+        try {
+          partitionIdList =
+              autoAssignPartition(
+                  datasetMetadata, updatedThroughputBytes, request.getRequireDedicatedPartition());
+        } catch (StatusRuntimeException e) {
+          LOG.error("Error autoassigning partitions", e);
+          responseObserver.onError(e);
+          return;
+        }
       } else {
         partitionIdList = request.getPartitionIdsList();
         manualAssignPartition(
@@ -250,6 +263,10 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               .addAllAssignedPartitionIds(partitionIdList)
               .build());
       responseObserver.onCompleted();
+    } catch (IllegalArgumentException e) {
+      LOG.error("Error updating partition assignment", e);
+      responseObserver.onError(
+          Status.INVALID_ARGUMENT.withDescription(e.getMessage()).asException());
     } catch (Exception e) {
       LOG.error("Error updating partition assignment", e);
       responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
@@ -826,6 +843,18 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
   private List<String> proposeNewPartitions(
       DatasetMetadata datasetMetadata, long throughputBytes, boolean requireDedicatedPartition) {
+    List<PartitionMetadata> partitionMetadataList = partitionMetadataStore.listSync();
+    if (partitionMetadataList.isEmpty()) {
+      throw Status.FAILED_PRECONDITION
+          .withDescription("no partitions to assign to")
+          .asRuntimeException();
+    }
+    List<String> ERROR_CASE_RESULT = List.of();
+    long smallestMaxCapacityForPartition =
+        partitionMetadataList.stream()
+            .mapToLong(PartitionMetadata::getMaxCapacity)
+            .min()
+            .orElseThrow();
     Optional<DatasetPartitionMetadata> currentlyActiveDatasetPartition =
         datasetMetadata.getPartitionConfigs().stream()
             .filter(
@@ -836,12 +865,6 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         currentlyActiveDatasetPartition
             .map(DatasetPartitionMetadata::getPartitions)
             .orElseGet(ImmutableList::of);
-    List<PartitionMetadata> partitionMetadataList = partitionMetadataStore.listSync();
-    long smallestMaxCapacityForPartition =
-        partitionMetadataList.stream()
-            .mapToLong(PartitionMetadata::getMaxCapacity)
-            .min()
-            .orElseThrow();
     List<String> currentEmptyPartitions =
         partitionMetadataList.stream()
             .filter(p -> p.getProvisionedCapacity() == 0)
@@ -885,7 +908,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     long maxNumNeededPartitions = partitionMetadataList.size();
     // - max number of partitions: largest ct of partitions where available throughput is greater
     // than requested at that ct
-    List<String> ERROR_CASE_RESULT = List.of();
+
     if (requireDedicatedPartition) {
       List<String> reusablePartitions;
       if (!currentlyDedicatedOrEmpty

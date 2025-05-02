@@ -42,6 +42,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import org.apache.curator.test.TestingServer;
 import org.apache.curator.x.async.AsyncCuratorFramework;
 import org.assertj.core.api.Condition;
@@ -551,6 +552,11 @@ public class ManagerApiGrpcTest {
   // more partitions
   // though that's not strictly necessary
   // - invalid starting configurations and how it handles that
+  //
+  // what are the not enough space cases
+  // - no partitions at all (should only happen the first time?)
+  // - not enough empty partitions
+  // - not enough space available total
 
   @Test
   public void shouldAutoAssignAddShared1() {
@@ -845,12 +851,13 @@ public class ManagerApiGrpcTest {
     // - update dataset
     // expect error of type what?
     // error should say what to do or at least hint at it?
-    String datasetName = "testDataset";
-    String datasetOwner = "testOwner";
-    createEmptyDatasetGRPC(datasetName, datasetOwner);
-    assertThatThrownBy(() -> updatePartitionAssignmentGRPC(datasetName, 10))
-        .isInstanceOf(io.grpc.StatusRuntimeException.class)
-        .hasMessageContaining("TODO");
+    createEmptyDatasetGRPC("testDataset", "testOwner");
+    assertThatThrownBy(() -> updatePartitionAssignmentGRPC("testDataset", 10))
+        .isInstanceOfSatisfying(
+            io.grpc.StatusRuntimeException.class,
+            withGrpcStatusAndDescription(
+                Status.FAILED_PRECONDITION,
+                "no partitions to assign to")); // TODO better error message
   }
 
   @Test
@@ -872,19 +879,31 @@ public class ManagerApiGrpcTest {
         .hasMessageContaining("TODO");
   }
 
-  // TODO handle this case
   @Test
-  public void should404OnUpdatingMissingDataset() {
-    // setup
-    // - no partitions
-    // - no dataset
-    // action
-    // - update dataset
-    // expect error 404
+  public void shouldNotFoundOnUpdatingMissingDataset() {
     String datasetName = "testDataset";
     assertThatThrownBy(() -> updatePartitionAssignmentGRPC(datasetName, 10))
-        .isInstanceOf(io.grpc.StatusRuntimeException.class)
-        .hasMessageContaining("TODO");
+        .isInstanceOfSatisfying(
+            io.grpc.StatusRuntimeException.class,
+            withGrpcStatusAndDescription(
+                Status.NOT_FOUND, "Dataset with name, '" + datasetName + "', does not exist"));
+  }
+
+  @Test
+  public void shouldInvalidArgumentOnUpdatingWithBlankDataset() {
+    assertThatThrownBy(() -> updatePartitionAssignmentGRPC("", 10))
+        .isInstanceOfSatisfying(
+            io.grpc.StatusRuntimeException.class,
+            withGrpcStatusAndDescription(
+                Status.INVALID_ARGUMENT, "Dataset name must not be blank string"));
+  }
+
+  private static Consumer<StatusRuntimeException> withGrpcStatusAndDescription(
+      Status expectedStatus, String expectedDescription) {
+    return e -> {
+      assertThat(e.getStatus().getCode()).isEqualTo(expectedStatus.getCode());
+      assertThat(e.getStatus().getDescription()).isEqualTo(expectedDescription);
+    };
   }
 
   private ManagerApi.UpdatePartitionAssignmentResponse updatePartitionAssignmentGRPC(
