@@ -945,8 +945,8 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       if (proposedPartitionIds.size() < minNumNeededPartitions) {
         // we couldn't find enough partitions
         System.out.println("couldn't find enough partitions");
-        // TODO throw
         return ERROR_CASE_RESULT;
+        //  TODO      throw Status.FAILED_PRECONDITION.withDescription().asRuntimeException();
       }
       return proposedPartitionIds;
       // if we currently use dedicated partitions
@@ -956,7 +956,6 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       // do the same as the other case
 
     } else {
-
       List<String> reusablePartitions;
       if (currentlyDedicatedOrEmpty) {
         // if we currently use dedicated partitions, mark them as shared, and look for new
@@ -968,11 +967,12 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       }
       // try to find a split that works, starting with the min and going to the max
 
-      // sort partitions by provisioned capacity and id asc
+      // sort partitions by provisioned capacity desc and id asc
       Map<Boolean, List<PartitionMetadata>> eitherReusableOrUnused =
           partitionMetadataList.stream()
               .sorted(
                   Comparator.comparing(PartitionMetadata::getProvisionedCapacity)
+                      .reversed()
                       .thenComparing(PartitionMetadata::getPartitionID))
               .collect(
                   Collectors.partitioningBy(p -> reusablePartitions.contains(p.getPartitionID())));
@@ -1042,9 +1042,10 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               "proposedPartitionct: " + proposedPartitionCt + " couldn't make a proposal");
         }
       }
-      //      return ERROR_CASE_RESULT;
+      throw Status.FAILED_PRECONDITION
+          .withDescription("not enough partitions with sufficient unprovisioned capacity")
+          .asRuntimeException();
     }
-    return ERROR_CASE_RESULT;
   }
   // for each proposed partition
   //    partitionMetadataStore.updateSync(
