@@ -1207,7 +1207,7 @@ public class ManagerApiGrpcTest {
         .has(throughputBytesOf(12000000))
         .has(partitionConfigsSizeOf(2))
         .has(partitionsForIndexOf(0, List.of("1", "2", "3")))
-        .has(partitionsForIndexOf(1, List.of("3", "4", "5")))
+        .has(partitionsForIndexOf(1, List.of("3", "4")))
         .has(oldPartitionConfigWithIndexOf(0))
         .has(latestPartitionConfigWithIndexOf(1, nowMs));
 
@@ -1217,34 +1217,15 @@ public class ManagerApiGrpcTest {
         .has(partitionsForIndexOf(0, List.of("1", "2")))
         .has(latestPartitionConfigWithIndexOf(0, nowMs));
 
-    //    Metadata.DatasetMetadata secondAssignment1 = getDatasetMetadataGRPC(datasetName1);
-    //    Metadata.DatasetMetadata secondAssignment2 = getDatasetMetadataGRPC(datasetName2);
-    //
-    //    assertThat(secondAssignment1.getThroughputBytes()).isEqualTo(12000000);
-    //    assertThat(secondAssignment1.getPartitionConfigsList().size()).isEqualTo(2);
-    //    assertThat(secondAssignment1.getPartitionConfigsList().get(0).getPartitionsList())
-    //        .isEqualTo(List.of("1", "2", "3"));
-    //    assertThat(secondAssignment1.getPartitionConfigsList().get(0).getEndTimeEpochMs())
-    //        .isNotEqualTo(MAX_TIME);
-    //
-    //    assertThat(secondAssignment1.getPartitionConfigsList().get(1).getPartitionsList())
-    //        .isEqualTo(List.of("3", "4", "5"));
-    //    assertThat(secondAssignment1.getPartitionConfigsList().get(1).getStartTimeEpochMs())
-    //        .isGreaterThanOrEqualTo(nowMs);
-    //    assertThat(secondAssignment1.getPartitionConfigsList().get(1).getEndTimeEpochMs())
-    //        .isEqualTo(MAX_TIME);
-    //
-    //    assertThat(secondAssignment2.getThroughputBytes()).isEqualTo(2000000);
-    //    assertThat(secondAssignment2.getPartitionConfigsList().size()).isEqualTo(1);
-    //    assertThat(secondAssignment2.getPartitionConfigsList().get(0).getPartitionsList())
-    //        .isEqualTo(List.of("1", "2"));
-    //    assertThat(secondAssignment2.getPartitionConfigsList().get(0).getStartTimeEpochMs())
-    //        .isGreaterThanOrEqualTo(nowMs);
-    //    assertThat(secondAssignment2.getPartitionConfigsList().get(0).getEndTimeEpochMs())
-    //        .isEqualTo(MAX_TIME);
-
-    assertThat(getPartitionMetadata("1", "2")).have(dedicatedPartitionsWithCapacity(1000000));
-    assertThat(getPartitionMetadata("3", "4", "5")).have(dedicatedPartitionsWithCapacity(4000000));
+    assertThat(getPartitionMetadata("1", "2")).have(sharedPartitionsWithCapacity(1000000));
+    // TODO when moving from shared to dedicated, should we try to reassign to the same number of
+    // partitions first?
+    // options for constraints:
+    // - always use the smallest number of partitions (current)
+    // - always use at least the same number of partitions if the throughput is the same
+    // - try to avoid changing currently used partitions when possible
+    assertThat(getPartitionMetadata("3", "4")).have(dedicatedPartitionsWithCapacity(6000000));
+    assertThat(getPartitionMetadata("5")).have(sharedPartitionsWithCapacity(0));
 
     // third Assignment: move dataset 1 to shared partitions, decrease throughput to 8000000
     nowMs = Instant.now().toEpochMilli();
@@ -1255,23 +1236,15 @@ public class ManagerApiGrpcTest {
             .setRequireDedicatedPartition(false)
             .build());
 
-    await()
-        .until(
-            () ->
-                datasetMetadataStore.listSync().size() == 2
-                    && datasetMetadataStore.getSync(datasetName1).getPartitionConfigs().size() == 3
-                    && datasetMetadataStore.getSync(datasetName2).getPartitionConfigs().size()
-                        == 1);
+    await().until(() -> datasetMetadataStore.getSync(datasetName1).getThroughputBytes() == 8000000);
 
     assertThat(getDatasetMetadataGRPC(datasetName1))
         .has(throughputBytesOf(8000000))
-        .has(partitionConfigsSizeOf(3))
+        .has(partitionConfigsSizeOf(2))
         .has(partitionsForIndexOf(0, List.of("1", "2", "3")))
-        .has(partitionsForIndexOf(1, List.of("3", "4", "5")))
-        .has(partitionsForIndexOf(2, List.of("3", "4")))
+        .has(partitionsForIndexOf(1, List.of("3", "4")))
         .has(oldPartitionConfigWithIndexOf(0))
-        .has(oldPartitionConfigWithIndexOf(1))
-        .has(latestPartitionConfigWithIndexOf(2, nowMs));
+        .has(latestPartitionConfigWithIndexOf(1, nowMs));
 
     // unchanged
     assertThat(getDatasetMetadataGRPC(datasetName2))
@@ -1294,24 +1267,17 @@ public class ManagerApiGrpcTest {
             .build());
 
     await()
-        .until(
-            () ->
-                datasetMetadataStore.listSync().size() == 2
-                    && datasetMetadataStore.getSync(datasetName1).getPartitionConfigs().size() == 4
-                    && datasetMetadataStore.getSync(datasetName2).getPartitionConfigs().size()
-                        == 1);
+        .until(() -> datasetMetadataStore.getSync(datasetName1).getThroughputBytes() == 12000000);
 
     assertThat(getDatasetMetadataGRPC(datasetName1))
         .has(throughputBytesOf(12000000))
-        .has(partitionConfigsSizeOf(4))
+        .has(partitionConfigsSizeOf(3))
         .has(partitionsForIndexOf(0, List.of("1", "2", "3")))
-        .has(partitionsForIndexOf(1, List.of("3", "4", "5")))
-        .has(partitionsForIndexOf(2, List.of("3", "4")))
-        .has(partitionsForIndexOf(3, List.of("3", "4", "1")))
+        .has(partitionsForIndexOf(1, List.of("3", "4")))
+        .has(partitionsForIndexOf(2, List.of("3", "4", "1")))
         .has(oldPartitionConfigWithIndexOf(0))
         .has(oldPartitionConfigWithIndexOf(1))
-        .has(oldPartitionConfigWithIndexOf(2))
-        .has(latestPartitionConfigWithIndexOf(3, nowMs));
+        .has(latestPartitionConfigWithIndexOf(2, nowMs));
 
     // unchanged
     assertThat(getDatasetMetadataGRPC(datasetName2))
