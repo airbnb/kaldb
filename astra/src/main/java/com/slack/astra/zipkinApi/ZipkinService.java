@@ -222,7 +222,7 @@ public class ZipkinService {
 
     brave.Span span = Tracing.currentTracer().currentSpan();
     span.tag("startTimeEpochMs", String.valueOf(startTime));
-    span.tag("endTimeEpochMs", String.valueOf(endTimeEpochMs));
+    span.tag("endTimeEpochMs", String.valueOf(endTime));
     span.tag("howMany", String.valueOf(howMany));
 
     // TODO: when MAX_SPANS is hit the results will look weird because the index is sorted in
