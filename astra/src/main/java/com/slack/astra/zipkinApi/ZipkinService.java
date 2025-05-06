@@ -149,7 +149,6 @@ public class ZipkinService {
   private final int defaultMaxSpans;
   private final int defaultLookbackMins;
   private static long LOOKBACK_MINS = 60 * 24 * 7;
-
   private final AstraQueryServiceBase searcher;
 
   private static final ObjectMapper objectMapper =
@@ -219,7 +218,7 @@ public class ZipkinService {
 
     long endTime =
         endTimeEpochMs.orElseGet(
-            () -> Instant.now().plus(LOOKBACK_MINS, ChronoUnit.MINUTES).toEpochMilli());
+            () -> Instant.now().plus(this.defaultLookbackMins, ChronoUnit.MINUTES).toEpochMilli());
     int howMany = maxSpans.orElse(this.defaultMaxSpans);
 
     brave.Span span = Tracing.currentTracer().currentSpan();
