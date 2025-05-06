@@ -131,6 +131,7 @@ message QueryServiceConfig {
   // of more batches, aggregations, etc.
   int32 per_batch_query_timeout_ms = 5;
   int32 zipkin_default_max_spans = 6;
+  int32 zipkin_default_lookback_mins = 7;
 }
 
 message RedactionUpdateServiceConfig {
