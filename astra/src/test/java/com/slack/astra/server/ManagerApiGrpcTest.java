@@ -343,8 +343,7 @@ public class ManagerApiGrpcTest {
     String datasetName = "testDataset";
     String datasetOwner = "testOwner";
 
-    partitionMetadataStore.createSync(createSharedPartitionMetadata("1"));
-    partitionMetadataStore.createSync(createSharedPartitionMetadata("2"));
+    createPartitions("1", "2");
 
     Metadata.DatasetMetadata initialDatasetRequest =
         createEmptyDatasetGRPC(datasetName, datasetOwner);
@@ -1016,11 +1015,7 @@ public class ManagerApiGrpcTest {
             .setThroughputBytes(throughputBytes)
             .addAllPartitionIds(List.of("3", "4", "5"))
             .build());
-    await()
-        .until(
-            () ->
-                datasetMetadataStore.listSync().size() == 1
-                    && datasetMetadataStore.listSync().get(0).getPartitionConfigs().size() == 3);
+    await().until(() -> datasetMetadataStore.getSync(datasetName).getThroughputBytes() == 12);
 
     assertThat(getDatasetMetadataGRPC(datasetName))
         .has(throughputBytesOf(12))
@@ -1045,7 +1040,7 @@ public class ManagerApiGrpcTest {
         .until(
             () ->
                 datasetMetadataStore.listSync().size() == 1
-                    && datasetMetadataStore.listSync().get(0).getPartitionConfigs().size() == 4);
+                    && datasetMetadataStore.listSync().get(0).getPartitionConfigs().size() == 3);
 
     assertThat(getDatasetMetadataGRPC(datasetName))
         .has(throughputBytesOf(12))
