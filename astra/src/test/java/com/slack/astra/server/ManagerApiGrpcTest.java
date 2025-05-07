@@ -556,6 +556,231 @@ public class ManagerApiGrpcTest {
   // - no partitions at all (should only happen the first time?)
   // - not enough empty partitions
   // - not enough space available total
+  // also missing manual assignment cases that cover some things
+
+  @Test
+  public void shouldAutoAssignAddDedicated1() {
+    String datasetName = "testDataset";
+
+    createPartitions("1", "2", "3", "4", "5");
+    createEmptyDatasetGRPC(datasetName, "testOwner");
+
+    long nowMs = Instant.now().toEpochMilli();
+    long throughputBytes = 10;
+    ManagerApi.UpdatePartitionAssignmentResponse updateResponse =
+        updatePartitionAssignmentGRPC(datasetName, throughputBytes, true);
+    assertThat(updateResponse.getAssignedPartitionIdsList()).isEqualTo(List.of("1", "2"));
+    await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs));
+
+    // assert that there are >= 2 partitions assigned to the dataset
+    assertThat(
+            latestPartitionConfig(datasetMetadataStore.getSync(datasetName)).getPartitions().size())
+        .isEqualTo(2);
+    assertThat(getPartitionMetadata("1", "2"))
+        .have(dedicatedPartitionsWithCapacity(throughputBytes / 2));
+    assertThat(getPartitionMetadata("3", "4", "5")).have(sharedPartitionsWithCapacity(0));
+  }
+
+  @Test
+  public void shouldAutoAssignAddDedicated2() {
+    // 2. 1 existing dedicated dataset, 3 partitions, 2 used, one free -> error (space doesn't
+    // matter)
+
+    int existingDatasetThroughputBytes = 1_000;
+    List<String> usedPartitions = List.of("1", "2");
+    datasetMetadataStore.createAsync(
+        new DatasetMetadata(
+            "existingDataset1",
+            "existingDatasetOwner",
+            existingDatasetThroughputBytes,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, usedPartitions)),
+            "whatever"));
+    createDedicatedPartitions(usedPartitions, existingDatasetThroughputBytes / 2);
+    createPartitions("3");
+
+    String datasetName = "testDataset";
+    createEmptyDatasetGRPC(datasetName, "testOwner");
+
+    long throughputBytes = 1_000;
+    assertThatThrownBy(() -> updatePartitionAssignmentGRPC(datasetName, throughputBytes, true))
+        .isInstanceOfSatisfying(
+            StatusRuntimeException.class,
+            withGrpcStatusAndDescription(
+                Status.FAILED_PRECONDITION,
+                "not enough partitions with sufficient unprovisioned capacity"));
+  }
+
+  @Test
+  public void shouldAutoAssignAddDedicated3() {
+    // 3. 1 existing dedicated dataset, 4 partitions, 2 used, 2 free
+    int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY * 2;
+    List<String> usedExistingPartitions = List.of("1", "2");
+    datasetMetadataStore.createAsync(
+        new DatasetMetadata(
+            "existingDataset1",
+            "existingDatasetOwner",
+            existingDatasetThroughputBytes,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
+            "whatever"));
+    createDedicatedPartitions(usedExistingPartitions, existingDatasetThroughputBytes / 2);
+    createPartitions("3", "4");
+    // action
+    // - create an empty dataset
+    // - update its partitions with some throughputs
+    // should have at least 2 partitions assigned to it
+    // the partition metadata should reflect the throughput
+    String datasetName = "testDataset";
+    long nowMs = Instant.now().toEpochMilli();
+    createEmptyDatasetGRPC(datasetName, "testOwner");
+    updatePartitionAssignmentGRPC(datasetName, DEFAULT_MAX_CAPACITY, true);
+
+    await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs));
+
+    // assert that there are >= 2 partitions assigned to the dataset
+    assertThat(
+            latestPartitionConfig(datasetMetadataStore.getSync(datasetName)).getPartitions().size())
+        .isEqualTo(2);
+    assertThat(getPartitionMetadata("1", "2"))
+        .have(dedicatedPartitionsWithCapacity(DEFAULT_MAX_CAPACITY));
+    assertThat(getPartitionMetadata("3", "4"))
+        .have(dedicatedPartitionsWithCapacity(DEFAULT_MAX_CAPACITY / 2));
+  }
+
+  @Test
+  public void shouldAutoAssignAddDedicated4() {
+    // 4. 1 existing dedicated dataset, 4 partitions, all used but could be reassigned based on
+    // throughput amounts requested
+
+    int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY;
+    List<String> usedExistingPartitions = List.of("1", "2", "3", "4");
+    datasetMetadataStore.createAsync(
+        new DatasetMetadata(
+            "existingDataset1",
+            "existingDatasetOwner",
+            existingDatasetThroughputBytes,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
+            "whatever"));
+    createDedicatedPartitions(
+        usedExistingPartitions, existingDatasetThroughputBytes / usedExistingPartitions.size());
+
+    String datasetName = "testDataset";
+    createEmptyDatasetGRPC(datasetName, "testOwner");
+
+    long throughputBytes = DEFAULT_MAX_CAPACITY;
+
+    assertThatThrownBy(() -> updatePartitionAssignmentGRPC(datasetName, throughputBytes, true))
+        .isInstanceOfSatisfying(
+            StatusRuntimeException.class,
+            withGrpcStatusAndDescription(
+                Status.FAILED_PRECONDITION,
+                "not enough partitions with sufficient unprovisioned capacity")); // TODO error
+    // message?
+  }
+
+  @Test
+  public void shouldAutoAssignAddDedicated5() {
+    // 5. 1 existing dedicated dataset, 4 partitions, 3 used 1 free but could be reassigned based on
+    // throughput amounts requested
+
+    int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY;
+    List<String> usedExistingPartitions = List.of("1", "2", "3");
+    createDedicatedPartitions(
+        usedExistingPartitions, existingDatasetThroughputBytes / usedExistingPartitions.size());
+    createPartitions("4");
+
+    datasetMetadataStore.createAsync(
+        new DatasetMetadata(
+            "existingDataset1",
+            "existingDatasetOwner",
+            existingDatasetThroughputBytes,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
+            "whatever"));
+
+    String datasetName = "testDataset";
+    createEmptyDatasetGRPC(datasetName, "testOwner");
+
+    assertThatThrownBy(() -> updatePartitionAssignmentGRPC(datasetName, DEFAULT_MAX_CAPACITY, true))
+        .isInstanceOfSatisfying(
+            StatusRuntimeException.class,
+            withGrpcStatusAndDescription(
+                Status.FAILED_PRECONDITION,
+                "not enough partitions with sufficient unprovisioned capacity")); // todo better
+    // error message?
+  }
+
+  // 7. 1 existing shared dataset, 3 partitions, 2 used, one free -> error (space doesn't matter
+  // because can't have 2 partitions for both)
+  @Test
+  public void shouldAutoAssignAddDedicated6() {
+    // 6. 1 existing dedicated dataset, 4 partitions, 3 used 1 free but not enough space even with
+    // reassignment based on throughput amounts requested
+
+    int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY * 3;
+    List<String> usedExistingPartitions = List.of("1", "2", "3");
+    createDedicatedPartitions(
+        usedExistingPartitions, existingDatasetThroughputBytes / usedExistingPartitions.size());
+    createPartitions("4");
+
+    datasetMetadataStore.createAsync(
+        new DatasetMetadata(
+            "existingDataset1",
+            "existingDatasetOwner",
+            existingDatasetThroughputBytes,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
+            "whatever"));
+
+    String datasetName = "testDataset";
+    createEmptyDatasetGRPC(datasetName, "testOwner");
+
+    assertThatThrownBy(() -> updatePartitionAssignmentGRPC(datasetName, DEFAULT_MAX_CAPACITY))
+        .isInstanceOfSatisfying(
+            StatusRuntimeException.class,
+            withGrpcStatusAndDescription(
+                Status.FAILED_PRECONDITION,
+                "not enough partitions with sufficient unprovisioned capacity")); // todo better
+    // error message?
+  }
+
+  @Test
+  public void shouldAutoAssignAddDedicated7() {
+    // 2. 1 existing shared dataset, 3 partitions, 2 used, one free -> error (space doesn't matter)
+
+    int existingDatasetThroughputBytes = 1_000;
+    List<String> usedPartitions = List.of("1", "2");
+    datasetMetadataStore.createAsync(
+        new DatasetMetadata(
+            "existingDataset1",
+            "existingDatasetOwner",
+            existingDatasetThroughputBytes,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, usedPartitions)),
+            "whatever"));
+    createPartitions(usedPartitions, existingDatasetThroughputBytes / 2);
+    createPartitions("3");
+
+    String datasetName = "testDataset";
+    createEmptyDatasetGRPC(datasetName, "testOwner");
+
+    long throughputBytes = 1_000;
+
+    assertThatThrownBy(() -> updatePartitionAssignmentGRPC(datasetName, throughputBytes, true))
+        .isInstanceOfSatisfying(
+            StatusRuntimeException.class,
+            withGrpcStatusAndDescription(
+                Status.FAILED_PRECONDITION,
+                "not enough partitions with sufficient unprovisioned capacity"));
+  }
 
   @Test
   public void shouldAutoAssignAddShared1() {
@@ -897,17 +1122,32 @@ public class ManagerApiGrpcTest {
   private static Consumer<StatusRuntimeException> withGrpcStatusAndDescription(
       Status expectedStatus, String expectedDescription) {
     return e -> {
-      assertThat(e.getStatus().getCode()).isEqualTo(expectedStatus.getCode());
-      assertThat(e.getStatus().getDescription()).isEqualTo(expectedDescription);
+      assertThat(e.getStatus())
+          .has(
+              new Condition<>(
+                  s -> s.getCode() == expectedStatus.getCode(),
+                  "expected code %s",
+                  expectedStatus.getCode()))
+          .has(
+              new Condition<>(
+                  s -> s.getDescription().equals(expectedDescription),
+                  "expected description %s",
+                  expectedDescription));
     };
   }
 
   private ManagerApi.UpdatePartitionAssignmentResponse updatePartitionAssignmentGRPC(
       String datasetName, long throughputBytes) {
+    return updatePartitionAssignmentGRPC(datasetName, throughputBytes, false);
+  }
+
+  private ManagerApi.UpdatePartitionAssignmentResponse updatePartitionAssignmentGRPC(
+      String datasetName, long throughputBytes, boolean requireDedicatedPartition) {
     return managerApiStub.updatePartitionAssignment(
         ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
             .setName(datasetName)
             .setThroughputBytes(throughputBytes)
+            .setRequireDedicatedPartition(requireDedicatedPartition)
             .build());
   }
 

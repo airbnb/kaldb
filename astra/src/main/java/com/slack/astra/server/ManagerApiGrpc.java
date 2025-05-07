@@ -676,92 +676,6 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   }
 
   /**
-   * check if the current partitionIds can be reused to minimize the number of changes
-   *
-   * @param oldPartitionIds list of old partition IDs
-   * @param oldThroughputBytes old throughput for which the partitions were used
-   * @param newThroughputBytes new throughput for which the partitions will be used
-   * @param requireDedicatedPartitions flag to indicate, if we want dedicated partition moving
-   *     forward
-   * @return map of partition id, oldPartitionMetadata of partitions which will be re-used
-   */
-  public Map<String, PartitionMetadata> findPartitionsToBeReUsed(
-      List<String> oldPartitionIds,
-      long oldThroughputBytes,
-      long newThroughputBytes,
-      boolean requireDedicatedPartitions) {
-    int newPartitionCount = partitionMetadataStore.partitionCountForThroughput(newThroughputBytes);
-    long perPartitionCapacityRequired = Math.ceilDiv(newThroughputBytes, newPartitionCount);
-
-    int oldPartitionCount = oldPartitionIds.size();
-    long perPartitionCapacityExisting = Math.ceilDiv(oldThroughputBytes, oldPartitionCount);
-
-    // go through the existing partitions
-    // if dedicated partitions are required
-    // - select partitions that are dedicated or have the same capacity usage, and can accommodate
-    // the new usage
-    // if dedicated partitions are not required
-    // - pick partitions that are not dedicated, or are dedicated but have the same provisioning as
-    // before
-    //
-    // what we want are existing partitions that
-    Map<String, PartitionMetadata> partitionsToBeReUsed = new HashMap<>();
-    for (String partitionId : oldPartitionIds) {
-      PartitionMetadata partitionMetadata = partitionMetadataStore.getSync(partitionId);
-      boolean provisionedCapacityMatchesExisting =
-          partitionMetadata.getProvisionedCapacity() - perPartitionCapacityExisting == 0;
-      boolean hasSpaceAfterRepartitioning =
-          partitionMetadataStore.hasSpaceForAdditionalProvisioning(
-              partitionMetadata, perPartitionCapacityRequired - perPartitionCapacityExisting);
-      PartitionMetadata currentPartition =
-          new PartitionMetadata(
-              partitionId,
-              partitionMetadata.getProvisionedCapacity(),
-              partitionMetadata.getMaxCapacity(),
-              partitionMetadata.getDedicatedPartition());
-      if (requireDedicatedPartitions) {
-        if ((partitionMetadata.dedicatedPartition || provisionedCapacityMatchesExisting)
-            && hasSpaceAfterRepartitioning) {
-          partitionsToBeReUsed.put(partitionId, currentPartition);
-        }
-      } else {
-        if ((!partitionMetadata.dedicatedPartition || provisionedCapacityMatchesExisting)
-            && hasSpaceAfterRepartitioning) {
-          partitionsToBeReUsed.put(partitionId, currentPartition);
-        }
-      }
-      // we will hit this criteria when downsizing throughput
-      if (partitionsToBeReUsed.size() == newPartitionCount) {
-        break;
-      }
-    }
-    for (String partitionId : partitionsToBeReUsed.keySet()) {
-      PartitionMetadata existingPartitionMetadata = partitionMetadataStore.getSync(partitionId);
-      long provisionedCapacity =
-          existingPartitionMetadata.provisionedCapacity
-              - perPartitionCapacityExisting
-              + perPartitionCapacityRequired;
-
-      partitionMetadataStore.updateSync(
-          new PartitionMetadata(
-              partitionId,
-              provisionedCapacity,
-              existingPartitionMetadata.getMaxCapacity(),
-              requireDedicatedPartitions));
-      await()
-          .until(
-              () -> {
-                PartitionMetadata getPartitionMetadata =
-                    partitionMetadataStore.getSync(partitionId);
-                return getPartitionMetadata.getProvisionedCapacity() == provisionedCapacity
-                    && getPartitionMetadata.getDedicatedPartition() == requireDedicatedPartitions;
-              });
-    }
-
-    return partitionsToBeReUsed;
-  }
-
-  /**
    * perform manual partition assignment when doing update partitionAssignment
    *
    * @param datasetMetadata datasetMetadata object on which partition assignment will be done
@@ -887,7 +801,6 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
           .withDescription("no partitions to assign to")
           .asRuntimeException();
     }
-    List<String> ERROR_CASE_RESULT = List.of();
     long smallestMaxCapacityForPartition =
         partitionMetadataList.stream()
             .mapToLong(PartitionMetadata::getMaxCapacity)
@@ -983,10 +896,9 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               .collect(Collectors.toList());
       System.out.println("proposed ids:" + proposedPartitionIds);
       if (proposedPartitionIds.size() < minNumNeededPartitions) {
-        // we couldn't find enough partitions
-        System.out.println("couldn't find enough partitions");
-        return ERROR_CASE_RESULT;
-        //  TODO      throw Status.FAILED_PRECONDITION.withDescription().asRuntimeException();
+        throw Status.FAILED_PRECONDITION
+            .withDescription("not enough partitions with sufficient unprovisioned capacity")
+            .asRuntimeException();
       }
       return proposedPartitionIds;
       // if we currently use dedicated partitions
