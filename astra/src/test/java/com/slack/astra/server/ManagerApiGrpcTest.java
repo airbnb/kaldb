@@ -934,13 +934,11 @@ public class ManagerApiGrpcTest {
   }
 
   private Metadata.DatasetMetadata createEmptyDatasetGRPC(String datasetName, String datasetOwner) {
-    Metadata.DatasetMetadata initialDatasetRequest =
-        managerApiStub.createDatasetMetadata(
-            ManagerApi.CreateDatasetMetadataRequest.newBuilder()
-                .setName(datasetName)
-                .setOwner(datasetOwner)
-                .build());
-    return initialDatasetRequest;
+      return managerApiStub.createDatasetMetadata(
+          ManagerApi.CreateDatasetMetadataRequest.newBuilder()
+              .setName(datasetName)
+              .setOwner(datasetOwner)
+              .build());
   }
 
   private void createPartitions(String... numbers) {
@@ -976,23 +974,13 @@ public class ManagerApiGrpcTest {
                 datasetMetadataStore.listSync().size() == 1
                     && datasetMetadataStore.listSync().get(0).getPartitionConfigs().size() == 1);
 
-    Metadata.DatasetMetadata firstAssignment = getDatasetMetadataGRPC(datasetName);
-
-    assertThat(firstAssignment.getThroughputBytes()).isEqualTo(throughputBytes);
-    assertThat(firstAssignment.getPartitionConfigsList().size()).isEqualTo(1);
-    Metadata.DatasetPartitionMetadata firstPartitionConfig =
-        firstAssignment.getPartitionConfigsList().get(0);
-    assertThat(firstPartitionConfig.getPartitionsList()).isEqualTo(List.of("1", "2"));
-    assertThat(firstPartitionConfig.getStartTimeEpochMs()).isGreaterThanOrEqualTo(nowMs);
-    assertThat(firstPartitionConfig.getEndTimeEpochMs()).isEqualTo(MAX_TIME);
+    assertThat(getDatasetMetadataGRPC(datasetName))
+      .has(throughputBytesOf(throughputBytes))
+      .has(partitionConfigsSizeOf(1))
+      .has(partitionsForIndexOf(0, List.of("1", "2")))
+      .has(latestPartitionConfigWithIndexOf(0, nowMs));
 
     assertThat(getPartitionMetadata("1", "2")).have(sharedPartitionsWithCapacity(5));
-
-    DatasetMetadata firstDatasetMetadata = datasetMetadataStore.getSync(datasetName);
-    assertThat(firstDatasetMetadata.getName()).isEqualTo(datasetName);
-    assertThat(firstDatasetMetadata.getOwner()).isEqualTo(datasetOwner);
-    assertThat(firstDatasetMetadata.getThroughputBytes()).isEqualTo(throughputBytes);
-    assertThat(firstDatasetMetadata.getPartitionConfigs().size()).isEqualTo(1);
 
     // second assignment: partitionList empty, ThroughputBytes not provided,
     // requireDedicatedPartition = True
@@ -1006,38 +994,17 @@ public class ManagerApiGrpcTest {
             .build());
     await()
         .until(
-            () -> {
-              System.out.println(datasetMetadataStore.listSync().size());
-              if (datasetMetadataStore.listSync().size() == 1) {
-                System.out.println(
-                    datasetMetadataStore.listSync().get(0).getPartitionConfigs().size());
-              }
-              return datasetMetadataStore.listSync().size() == 1
-                  && datasetMetadataStore.listSync().get(0).getPartitionConfigs().size() == 1;
-            });
+            () -> datasetMetadataStore.listSync().size() == 1
+                && datasetMetadataStore.listSync().get(0).getPartitionConfigs().size() == 1);
 
-    Metadata.DatasetMetadata secondAssignment = getDatasetMetadataGRPC(datasetName);
 
-    assertThat(secondAssignment.getThroughputBytes()).isEqualTo(10);
-    assertThat(secondAssignment.getPartitionConfigsList().size()).isEqualTo(2);
-    assertThat(secondAssignment.getPartitionConfigsList().get(0).getPartitionsList())
-        .isEqualTo(List.of("1", "2"));
-    assertThat(secondAssignment.getPartitionConfigsList().get(0).getEndTimeEpochMs())
-        .isNotEqualTo(MAX_TIME);
-    assertThat(secondAssignment.getPartitionConfigsList().get(1).getPartitionsList())
-        .isEqualTo(List.of("1", "2"));
-    assertThat(secondAssignment.getPartitionConfigsList().get(1).getStartTimeEpochMs())
-        .isGreaterThanOrEqualTo(nowMs);
-    assertThat(secondAssignment.getPartitionConfigsList().get(1).getEndTimeEpochMs())
-        .isEqualTo(MAX_TIME);
+    assertThat(getDatasetMetadataGRPC(datasetName))
+      .has(throughputBytesOf(throughputBytes))
+      .has(partitionConfigsSizeOf(1))
+      .has(partitionsForIndexOf(0, List.of("1", "2")))
+      .has(latestPartitionConfigWithIndexOf(0, nowMs));
 
     assertThat(getPartitionMetadata("1", "2")).have(dedicatedPartitionsWithCapacity(5));
-
-    DatasetMetadata secondDatasetMetadata = datasetMetadataStore.getSync(datasetName);
-    assertThat(secondDatasetMetadata.getName()).isEqualTo(datasetName);
-    assertThat(secondDatasetMetadata.getOwner()).isEqualTo(datasetOwner);
-    assertThat(secondDatasetMetadata.getThroughputBytes()).isEqualTo(10);
-    assertThat(secondDatasetMetadata.getPartitionConfigs().size()).isEqualTo(2);
 
     // third assignment: partitionList given, ThroughputBytes provided, requireDedicatedPartition =
     // False
@@ -1055,34 +1022,16 @@ public class ManagerApiGrpcTest {
                 datasetMetadataStore.listSync().size() == 1
                     && datasetMetadataStore.listSync().get(0).getPartitionConfigs().size() == 3);
 
-    Metadata.DatasetMetadata thirdAssignment = getDatasetMetadataGRPC(datasetName);
-
-    assertThat(thirdAssignment.getThroughputBytes()).isEqualTo(throughputBytes);
-    assertThat(thirdAssignment.getPartitionConfigsList().size()).isEqualTo(3);
-    assertThat(thirdAssignment.getPartitionConfigsList().get(0).getPartitionsList())
-        .isEqualTo(List.of("1", "2"));
-    assertThat(thirdAssignment.getPartitionConfigsList().get(0).getEndTimeEpochMs())
-        .isNotEqualTo(MAX_TIME);
-    assertThat(thirdAssignment.getPartitionConfigsList().get(1).getPartitionsList())
-        .isEqualTo(List.of("1", "2"));
-    assertThat(thirdAssignment.getPartitionConfigsList().get(1).getEndTimeEpochMs())
-        .isNotEqualTo(MAX_TIME);
-
-    assertThat(thirdAssignment.getPartitionConfigsList().get(2).getPartitionsList())
-        .isEqualTo(List.of("3", "4", "5"));
-    assertThat(thirdAssignment.getPartitionConfigsList().get(2).getStartTimeEpochMs())
-        .isGreaterThanOrEqualTo(nowMs);
-    assertThat(thirdAssignment.getPartitionConfigsList().get(2).getEndTimeEpochMs())
-        .isEqualTo(MAX_TIME);
+    assertThat(getDatasetMetadataGRPC(datasetName))
+      .has(throughputBytesOf(throughputBytes))
+      .has(partitionConfigsSizeOf(2))
+      .has(partitionsForIndexOf(0, List.of("1", "2")))
+      .has(partitionsForIndexOf(0, List.of("3", "4", "5")))
+      .has(oldPartitionConfigWithIndexOf(0))
+      .has(latestPartitionConfigWithIndexOf(1, nowMs));
 
     assertThat(getPartitionMetadata("1", "2")).have(sharedPartitionsWithCapacity(0));
     assertThat(getPartitionMetadata("3", "4", "5")).have(sharedPartitionsWithCapacity(4));
-
-    DatasetMetadata thirdDatasetMetadata = datasetMetadataStore.getSync(datasetName);
-    assertThat(thirdDatasetMetadata.getName()).isEqualTo(datasetName);
-    assertThat(thirdDatasetMetadata.getOwner()).isEqualTo(datasetOwner);
-    assertThat(thirdDatasetMetadata.getThroughputBytes()).isEqualTo(throughputBytes);
-    assertThat(thirdDatasetMetadata.getPartitionConfigs().size()).isEqualTo(3);
 
     // fourth assignment: move back to auto-assignment, also decrease in partitions
     nowMs = Instant.now().toEpochMilli();
@@ -1127,11 +1076,6 @@ public class ManagerApiGrpcTest {
     assertThat(getPartitionMetadata("3", "4")).have(sharedPartitionsWithCapacity(6));
     assertThat(getPartitionMetadata("5")).have(sharedPartitionsWithCapacity(0));
 
-    DatasetMetadata fourthDatasetMetadata = datasetMetadataStore.getSync(datasetName);
-    assertThat(fourthDatasetMetadata.getName()).isEqualTo(datasetName);
-    assertThat(fourthDatasetMetadata.getOwner()).isEqualTo(datasetOwner);
-    assertThat(fourthDatasetMetadata.getThroughputBytes()).isEqualTo(12);
-    assertThat(fourthDatasetMetadata.getPartitionConfigs().size()).isEqualTo(4);
   }
 
   @Test
@@ -1330,7 +1274,7 @@ public class ManagerApiGrpcTest {
         expectedPartitionConfigSize);
   }
 
-  private static Condition<Metadata.DatasetMetadata> throughputBytesOf(int expectedThroughput) {
+  private static Condition<Metadata.DatasetMetadata> throughputBytesOf(long expectedThroughput) {
     return new Condition<>(
         d -> d.getThroughputBytes() == expectedThroughput,
         "throughputBytes should be %s",
