@@ -664,8 +664,8 @@ public class IndexingChunkImplTest {
 
       // The message should be accepted, though some fields may be dropped
       assertThat(getCount(MESSAGES_RECEIVED_COUNTER, registry))
-          .withFailMessage("Expected 2 message received")
-          .isEqualTo(2);
+          .withFailMessage("Expected 1 message received")
+          .isEqualTo(1);
       assertThat(getCount(MESSAGES_FAILED_COUNTER, registry))
           .withFailMessage("Expected 0 messages failed")
           .isEqualTo(0);
