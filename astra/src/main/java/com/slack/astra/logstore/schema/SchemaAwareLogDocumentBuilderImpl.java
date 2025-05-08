@@ -9,6 +9,7 @@ import com.slack.astra.logstore.DocumentBuilder;
 import com.slack.astra.logstore.FieldDefMismatchException;
 import com.slack.astra.logstore.LogMessage;
 import com.slack.astra.logstore.LogWireMessage;
+import com.slack.astra.logstore.opensearch.AstraIndexSettings;
 import com.slack.astra.metadata.schema.FieldType;
 import com.slack.astra.metadata.schema.LuceneFieldDef;
 import com.slack.astra.proto.schema.Schema;
@@ -46,6 +47,9 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
 
   // TODO: In future, make this value configurable.
   private static final int MAX_NESTING_DEPTH = 3;
+
+  private static final long MAX_FIELDS =
+      AstraIndexSettings.getInstance().getMappingTotalFieldsLimit();
 
   /**
    * This enum tracks the field conflict policy for a chunk.
@@ -154,10 +158,19 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
 
   private void indexNewField(
       Document doc, String key, Object value, Schema.SchemaFieldType schemaFieldType) {
-    final LuceneFieldDef newFieldDef = getLuceneFieldDef(key, schemaFieldType);
-    totalFieldsCounter.increment();
-    fieldDefMap.put(key, newFieldDef);
-    indexTypedField(doc, key, value, newFieldDef);
+    if (fieldDefMap.entrySet().size() < MAX_FIELDS) {
+      totalFieldsCounter.increment();
+      final LuceneFieldDef newFieldDef = getLuceneFieldDef(key, schemaFieldType);
+      fieldDefMap.put(key, newFieldDef);
+      indexTypedField(doc, key, value, newFieldDef);
+    } else {
+      droppedFieldsCounter.increment();
+      LOG.debug(
+          "Dropped field {} due to field limit of {} fields. Current number of fields is {}",
+          key,
+          MAX_FIELDS,
+          fieldDefMap.entrySet().size());
+    }
   }
 
   private boolean isStored(String fieldName) {

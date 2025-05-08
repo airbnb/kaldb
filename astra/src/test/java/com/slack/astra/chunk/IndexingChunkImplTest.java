@@ -693,7 +693,8 @@ public class IndexingChunkImplTest {
           .isLessThanOrEqualTo(2500);
     }
 
-    // todo add a test that ensures the schema.yaml file is adhered to (e.g. those fields are always included)
+    // todo add a test that ensures the schema.yaml file is adhered to (e.g. those fields are always
+    // included)
 
     @SuppressWarnings("OptionalGetWithoutIsPresent")
     @Test
