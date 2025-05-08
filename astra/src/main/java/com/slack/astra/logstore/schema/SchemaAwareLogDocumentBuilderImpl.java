@@ -166,10 +166,9 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
     } else {
       droppedFieldsCounter.increment();
       LOG.debug(
-          "Dropped field {} due to field limit of {} fields. Current number of fields is {}",
+          "Dropped field {} due to field limit of {} fields. The field is not indexed.",
           key,
-          MAX_FIELDS,
-          fieldDefMap.entrySet().size());
+          MAX_FIELDS);
     }
   }
 
