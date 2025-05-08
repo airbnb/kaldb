@@ -187,6 +187,108 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     }
   }
 
+  // need to know
+  // for each partition,
+  // - is it dedicated or shared
+  // - how many datasets are using it
+  // - how much throughput is assigned to it and how much is left
+  private static class PartitionDataEncapsolator {
+    private final List<PartitionMetadata> partitionMetadataList;
+    private final Map<String, Long> partitionProvisioning = new HashMap<>();
+    private final Map<String, List<String>> partitionDatasets = new HashMap<>();
+    private final Map<String, List<String>> partitionDedication = new HashMap<>();
+
+    public PartitionDataEncapsolator(
+        List<DatasetMetadata> datasetMetadataList, List<PartitionMetadata> partitionMetadataList) {
+      this.partitionMetadataList = partitionMetadataList;
+      for (PartitionMetadata partitionMetadata : partitionMetadataList) {
+        this.partitionProvisioning.put(partitionMetadata.getPartitionID(), (long) 0);
+        this.partitionDedication.put(partitionMetadata.getPartitionID(), new ArrayList<>());
+        this.partitionDatasets.put(partitionMetadata.getPartitionID(), new ArrayList<>());
+      }
+      for (DatasetMetadata datasetMetadata : datasetMetadataList) {
+        Optional<DatasetPartitionMetadata> latest =
+            datasetMetadata.getPartitionConfigs().stream()
+                .filter(p -> p.getEndTimeEpochMs() == MAX_TIME)
+                .findFirst();
+        long perPartitionValue =
+            latest
+                .map(
+                    p ->
+                        Math.ceilDiv(
+                            datasetMetadata.getThroughputBytes(), p.getPartitions().size()))
+                .orElse(0L);
+
+        boolean useDedicatedPartition =
+            latest.map(DatasetPartitionMetadata::isUseDedicatedPartition).orElse(false);
+        for (String partitionId :
+            latest.map(DatasetPartitionMetadata::getPartitions).orElse(ImmutableList.of())) {
+          this.partitionProvisioning.put(
+              partitionId,
+              perPartitionValue + this.partitionProvisioning.getOrDefault(partitionId, (long) 0));
+          this.partitionDatasets.get(partitionId).add(datasetMetadata.getName());
+          if (useDedicatedPartition) {
+            this.partitionDedication.get(partitionId).add(datasetMetadata.getName());
+          }
+        }
+      }
+    }
+
+    private static PartitionDataEncapsolator make(
+        DatasetMetadataStore datasetMetadataStore, PartitionMetadataStore partitionMetadataStore) {
+      return new PartitionDataEncapsolator(
+          datasetMetadataStore.listSync(), partitionMetadataStore.listSync());
+    }
+
+    public boolean hasNoPartitionsDeclared() {
+      return partitionProvisioning.isEmpty();
+    }
+
+    public long maxCapacityForPartitions() {
+      return partitionMetadataList.stream()
+          .mapToLong(PartitionMetadata::getMaxCapacity)
+          .min()
+          .orElseThrow();
+    }
+
+    public List<String> currentEmptyPartitions() {
+      return partitionMetadataList.stream()
+          .filter(p -> p.getProvisionedCapacity() == 0)
+          .map(PartitionMetadata::getPartitionID)
+          .toList();
+    }
+
+    public List<PartitionMetadata> getPartitionMetadataUsedByDataset(
+        List<String> currentPartitions) {
+      return partitionMetadataList.stream()
+          .filter(p -> currentPartitions.contains(p.getPartitionID()))
+          .toList();
+    }
+
+    public long maxPartitionsUsableByDataSet() {
+      return partitionMetadataList.size();
+    }
+
+    public Map<Boolean, List<PartitionMetadata>> getSortedPartitionsSplitByReusedOrUnused(
+        List<String> reusablePartitions) {
+      return partitionMetadataList.stream()
+          .sorted(
+              Comparator.comparing(PartitionMetadata::getProvisionedCapacity)
+                  .reversed()
+                  .thenComparing(PartitionMetadata::getPartitionID))
+          .collect(Collectors.partitioningBy(p -> reusablePartitions.contains(p.getPartitionID())));
+    }
+
+    public List<String> unsharedPartitionsForDataset(String datasetName) {
+      return partitionDatasets.entrySet().stream()
+          .filter(
+              entry ->
+                  entry.getValue().size() == 1 && entry.getValue().getFirst().equals(datasetName))
+          .map(Map.Entry::getKey)
+          .toList();
+    }
+  }
+
   /**
    * Allocates a new partition assignment for a dataset. If a rate and a list of partition IDs are
    * provided, it will use it use the list of partition ids as the current allocation and
@@ -795,17 +897,15 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
   private List<String> proposeNewPartitions(
       DatasetMetadata datasetMetadata, long throughputBytes, boolean requireDedicatedPartition) {
-    List<PartitionMetadata> partitionMetadataList = partitionMetadataStore.listSync();
-    if (partitionMetadataList.isEmpty()) {
+    PartitionDataEncapsolator partitionDataEncapsolator =
+        PartitionDataEncapsolator.make(datasetMetadataStore, partitionMetadataStore);
+    long currentThroughputBytes = datasetMetadata.getThroughputBytes();
+
+    if (partitionDataEncapsolator.hasNoPartitionsDeclared()) {
       throw Status.FAILED_PRECONDITION
           .withDescription("no partitions to assign to")
           .asRuntimeException();
     }
-    long smallestMaxCapacityForPartition =
-        partitionMetadataList.stream()
-            .mapToLong(PartitionMetadata::getMaxCapacity)
-            .min()
-            .orElseThrow();
     Optional<DatasetPartitionMetadata> currentlyActiveDatasetPartition =
         datasetMetadata.getPartitionConfigs().stream()
             .filter(
@@ -816,34 +916,14 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         currentlyActiveDatasetPartition
             .map(DatasetPartitionMetadata::getPartitions)
             .orElseGet(ImmutableList::of);
-    List<String> currentEmptyPartitions =
-        partitionMetadataList.stream()
-            .filter(p -> p.getProvisionedCapacity() == 0)
-            .map(PartitionMetadata::getPartitionID)
-            .toList();
     List<PartitionMetadata> partitionMetadataUsedByDataset =
-        partitionMetadataList.stream()
-            .filter(p -> currentPartitions.contains(p.getPartitionID()))
-            .toList();
+        partitionDataEncapsolator.getPartitionMetadataUsedByDataset(currentPartitions);
 
-    // TODO what if some are dedicated and some are shared, then ugh.
+    // TODO what if some are dedicated and some are shared, then ugh. shouldn't happen but
     boolean currentlyDedicatedOrEmpty =
         partitionMetadataUsedByDataset.isEmpty()
             || partitionMetadataUsedByDataset.stream()
                 .allMatch(PartitionMetadata::getDedicatedPartition);
-    long currentThroughputBytes = datasetMetadata.getThroughputBytes();
-
-    List<PartitionMetadata> currentPartitionsThatHaveProvisionedCapacityBeyondCurrent =
-        partitionMetadataUsedByDataset.stream()
-            .filter(
-                p ->
-                    p.getProvisionedCapacity()
-                        > currentThroughputBytes / partitionMetadataUsedByDataset.size())
-            .toList();
-    Set<String> currentPartitionIdsThatCannotBeReused =
-        currentPartitionsThatHaveProvisionedCapacityBeyondCurrent.stream()
-            .map(PartitionMetadata::getPartitionID)
-            .collect(Collectors.toSet());
 
     // numbers for calc:
     // - current throughputBytes
@@ -852,34 +932,27 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     // - min available throughputBytes for partition
     // min number of partitions needed based on throughput:
     // - min of (max per partition capacity / requested throughput, 2)
+    long smallestMaxCapacityForPartition = partitionDataEncapsolator.maxCapacityForPartitions();
     long minNumNeededPartitions =
         Math.max(
             throughputBytes / smallestMaxCapacityForPartition,
             partitionMetadataStore.minNumberOfPartitions);
-    long maxNumNeededPartitions = partitionMetadataList.size();
+    long maxNumNeededPartitions = partitionDataEncapsolator.maxPartitionsUsableByDataSet();
     // - max number of partitions: largest ct of partitions where available throughput is greater
     // than requested at that ct
 
     if (requireDedicatedPartition) {
-      List<String> reusablePartitions;
-      if (!currentlyDedicatedOrEmpty
-          && !currentPartitionsThatHaveProvisionedCapacityBeyondCurrent.isEmpty()) {
-        // we'll need to move off of them
-        reusablePartitions =
-            currentPartitions.stream()
-                .filter(p -> !currentPartitionIdsThatCannotBeReused.contains(p))
-                .sorted()
-                .collect(Collectors.toList());
-      } else {
-        reusablePartitions = currentPartitions;
-      }
+      List<String> reusablePartitions =
+          partitionDataEncapsolator.unsharedPartitionsForDataset(datasetMetadata.getName());
 
       long numNeededPartitions = minNumNeededPartitions - reusablePartitions.size();
       List<String> partitionsToAdd;
       if (reusablePartitions.size() < minNumNeededPartitions) {
-        // we need more partitions
         partitionsToAdd =
-            currentEmptyPartitions.stream().sorted().limit(numNeededPartitions).toList();
+            partitionDataEncapsolator.currentEmptyPartitions().stream()
+                .sorted()
+                .limit(numNeededPartitions)
+                .toList();
         System.out.println("add: " + partitionsToAdd + " keep: " + reusablePartitions);
         // prepare changeset
       } else {
@@ -921,13 +994,8 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
       // sort partitions by provisioned capacity desc and id asc
       Map<Boolean, List<PartitionMetadata>> eitherReusableOrUnused =
-          partitionMetadataList.stream()
-              .sorted(
-                  Comparator.comparing(PartitionMetadata::getProvisionedCapacity)
-                      .reversed()
-                      .thenComparing(PartitionMetadata::getPartitionID))
-              .collect(
-                  Collectors.partitioningBy(p -> reusablePartitions.contains(p.getPartitionID())));
+          partitionDataEncapsolator.getSortedPartitionsSplitByReusedOrUnused(reusablePartitions);
+
       List<PartitionMetadata> reusablePartitionsList = eitherReusableOrUnused.get(true);
       List<PartitionMetadata> newPartitionsList = eitherReusableOrUnused.get(false);
       long currentPerPartitionThroughput;

@@ -18,11 +18,21 @@ public class DatasetPartitionMetadata {
   public final long startTimeEpochMs;
   public final long endTimeEpochMs;
   public final ImmutableList<String> partitions;
+  private final boolean useDedicatedPartition;
 
   public static final String MATCH_ALL_DATASET = "_all";
 
   public DatasetPartitionMetadata(
       long startTimeEpochMs, long endTimeEpochMs, List<String> partitions) {
+    this(startTimeEpochMs, endTimeEpochMs, partitions, false);
+  }
+
+  public DatasetPartitionMetadata(
+      long startTimeEpochMs,
+      long endTimeEpochMs,
+      List<String> partitions,
+      boolean useDedicatedPartition) {
+    this.useDedicatedPartition = useDedicatedPartition;
     checkArgument(startTimeEpochMs > 0, "startTimeEpochMs must be greater than 0");
     checkArgument(
         endTimeEpochMs > startTimeEpochMs,
@@ -44,6 +54,10 @@ public class DatasetPartitionMetadata {
 
   public ImmutableList<String> getPartitions() {
     return partitions;
+  }
+
+  public boolean isUseDedicatedPartition() {
+    return useDedicatedPartition;
   }
 
   @Override
