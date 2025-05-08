@@ -650,9 +650,6 @@ public class IndexingChunkImplTest {
     public void testExcessFieldsAreDroppedButSpanIsIndexed() throws IOException {
       int offset = 1;
 
-      Trace.Span.Builder emptySpanBuilder = SpanUtil.makeSpan(offset).toBuilder();
-      Trace.Span spanWithZeroFields = emptySpanBuilder.build();
-
       // Create a span with too many fields (> 2500)
       Trace.Span.Builder spanBuilder = SpanUtil.makeSpan(offset).toBuilder();
       for (int i = 0; i < 3000; i++) {
@@ -660,12 +657,6 @@ public class IndexingChunkImplTest {
             Trace.KeyValue.newBuilder().setKey("custom.field." + i).setVStr("value" + i).build());
       }
       Trace.Span spanWithTooManyFields = spanBuilder.build();
-
-      chunk.addMessage(spanWithZeroFields, TEST_KAFKA_PARTITION_ID, offset);
-
-      // span with zero fields creates an index with 13 fields
-      System.out.println(
-          "Schema (before): # fields: " + chunk.getSchema().size() + " \n" + chunk.getSchema());
 
       // Add and commit the message
       chunk.addMessage(spanWithTooManyFields, TEST_KAFKA_PARTITION_ID, offset);
@@ -682,19 +673,12 @@ public class IndexingChunkImplTest {
           .withFailMessage("Expected 1 commit recorded")
           .isEqualTo(1);
 
-      System.out.println(
-          "Schema (after): # fields: " + chunk.getSchema().size() + " \n" + chunk.getSchema());
-
       // Assert that the schema did not exceed 2500 fields
-      // currently failing with 3013 fields in the schema
       int totalFieldsInSchema = chunk.getSchema().size();
       assertThat(totalFieldsInSchema)
           .withFailMessage("Schema should not exceed 2500 fields but had %s", totalFieldsInSchema)
           .isLessThanOrEqualTo(2500);
     }
-
-    // todo add a test that ensures the schema.yaml file is adhered to (e.g. those fields are always
-    // included)
 
     @SuppressWarnings("OptionalGetWithoutIsPresent")
     @Test

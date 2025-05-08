@@ -101,6 +101,85 @@ public class ElasticsearchApiServiceTest {
   }
 
   @Test
+  public void testSchemaIsRetainedAndDynamicFieldsAreDroppedOverLimit() throws Exception {
+    // Load schema from test_schema.yaml
+    final File schemaFile =
+        new File(getClass().getClassLoader().getResource("schema/test_schema.yaml").getFile());
+    Schema.IngestSchema schema = SchemaUtil.parseSchema(schemaFile.toPath());
+
+    // Build a request with all schema fields (reusing test fixture) and extra dynamic fields
+    byte[] rawRequest = getIndexRequestBytes("index_all_schema_fields");
+    List<IndexRequest> indexRequests = BulkApiRequestParser.parseBulkRequest(rawRequest);
+    assertThat(indexRequests.size()).isEqualTo(2);
+
+    // Insert schema-based spans first
+    for (IndexRequest indexRequest : indexRequests) {
+      IngestDocument ingestDocument = convertRequestToDocument(indexRequest);
+      Trace.Span span = BulkApiRequestParser.fromIngestDocument(ingestDocument, schema);
+      ConsumerRecord<String, byte[]> spanRecord = consumerRecordWithValue(span.toByteArray());
+      LogMessageWriterImpl messageWriter = new LogMessageWriterImpl(chunkManagerUtil.chunkManager);
+      assertThat(messageWriter.insertRecord(spanRecord)).isTrue();
+    }
+
+    // Now add one large span with 3000 dynamic fields
+    Trace.Span.Builder spanBuilder = SpanUtil.makeSpan(100).toBuilder();
+    for (int i = 0; i < 3000; i++) {
+      spanBuilder.addTags(
+          Trace.KeyValue.newBuilder()
+              .setKey("dynamic.extra_field." + i)
+              .setVStr("value" + i)
+              .build());
+    }
+    Trace.Span spanWithExtras = spanBuilder.build();
+    ConsumerRecord<String, byte[]> extraSpanRecord =
+        consumerRecordWithValue(spanWithExtras.toByteArray());
+    LogMessageWriterImpl messageWriter = new LogMessageWriterImpl(chunkManagerUtil.chunkManager);
+    assertThat(messageWriter.insertRecord(extraSpanRecord)).isTrue();
+
+    // Validate counts
+    assertThat(getCount(MESSAGES_RECEIVED_COUNTER, metricsRegistry)).isEqualTo(3);
+    assertThat(getCount(MESSAGES_FAILED_COUNTER, metricsRegistry)).isEqualTo(0);
+    chunkManagerUtil.chunkManager.getActiveChunk().commit();
+
+    // Fetch and parse mapping
+    HttpResponse response =
+        elasticsearchApiService.mapping(
+            Optional.of("test"), Optional.of(0L), Optional.of(Long.MAX_VALUE));
+
+    AggregatedHttpResponse aggregatedRes = response.aggregate().join();
+    String body = aggregatedRes.content(StandardCharsets.UTF_8);
+    JsonNode jsonNode = new ObjectMapper().readTree(body);
+    assertThat(jsonNode).isNotNull();
+
+    ObjectMapper objectMapper = new ObjectMapper();
+    Map<String, Object> map =
+        objectMapper.convertValue(
+            jsonNode.get("test").get("mappings").get("properties"), Map.class);
+
+    // Verify all original schema fields are retained
+    assertThat(map.keySet())
+        .contains(
+            "host",
+            "message",
+            "ip",
+            "my_date",
+            "success",
+            "cost",
+            "amount",
+            "amount_half_float",
+            "value",
+            "count",
+            "count_scaled_long",
+            "count_short",
+            "bucket");
+
+    // Ensure total fields remain within limit
+    assertThat(map.size())
+        .withFailMessage("Expected mapping field count to not exceed limit but got %s", map.size())
+        .isLessThanOrEqualTo(2500);
+  }
+
+  @Test
   public void testSchemaFields() throws Exception {
     final File schemaFile =
         new File(getClass().getClassLoader().getResource("schema/test_schema.yaml").getFile());
