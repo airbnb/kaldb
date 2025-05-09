@@ -572,7 +572,6 @@ public class ManagerApiGrpcTest {
     assertThat(updateResponse.getAssignedPartitionIdsList()).isEqualTo(List.of("1", "2"));
     await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs));
 
-    // assert that there are >= 2 partitions assigned to the dataset
     assertThat(
             latestPartitionConfig(datasetMetadataStore.getSync(datasetName)).getPartitions().size())
         .isEqualTo(2);
@@ -609,7 +608,7 @@ public class ManagerApiGrpcTest {
             StatusRuntimeException.class,
             withGrpcStatusAndDescription(
                 Status.FAILED_PRECONDITION,
-                "not enough partitions with sufficient unprovisioned capacity"));
+                "Needed 2 partitions with enough capacity, found 1: [3]"));
   }
 
   @Test
@@ -628,11 +627,7 @@ public class ManagerApiGrpcTest {
             "whatever"));
     createDedicatedPartitions(usedExistingPartitions, existingDatasetThroughputBytes / 2);
     createPartitions("3", "4");
-    // action
-    // - create an empty dataset
-    // - update its partitions with some throughputs
-    // should have at least 2 partitions assigned to it
-    // the partition metadata should reflect the throughput
+
     String datasetName = "testDataset";
     long nowMs = Instant.now().toEpochMilli();
     createEmptyDatasetGRPC(datasetName, "testOwner");
@@ -640,7 +635,6 @@ public class ManagerApiGrpcTest {
 
     await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs));
 
-    // assert that there are >= 2 partitions assigned to the dataset
     assertThat(
             latestPartitionConfig(datasetMetadataStore.getSync(datasetName)).getPartitions().size())
         .isEqualTo(2);
@@ -679,8 +673,7 @@ public class ManagerApiGrpcTest {
             StatusRuntimeException.class,
             withGrpcStatusAndDescription(
                 Status.FAILED_PRECONDITION,
-                "not enough partitions with sufficient unprovisioned capacity")); // TODO error
-    // message?
+                "Needed 2 partitions with enough capacity, found 0: []"));
   }
 
   @Test
@@ -712,8 +705,7 @@ public class ManagerApiGrpcTest {
             StatusRuntimeException.class,
             withGrpcStatusAndDescription(
                 Status.FAILED_PRECONDITION,
-                "not enough partitions with sufficient unprovisioned capacity")); // todo better
-    // error message?
+                "Needed 2 partitions with enough capacity, found 1: [4]"));
   }
 
   // 7. 1 existing shared dataset, 3 partitions, 2 used, one free -> error (space doesn't matter
@@ -747,13 +739,12 @@ public class ManagerApiGrpcTest {
             StatusRuntimeException.class,
             withGrpcStatusAndDescription(
                 Status.FAILED_PRECONDITION,
-                "not enough partitions with sufficient unprovisioned capacity")); // todo better
-    // error message?
+                "Needed 2 partitions with enough capacity, found 1: [4]"));
   }
 
   @Test
   public void shouldAutoAssignAddDedicated7() {
-    // 2. 1 existing shared dataset, 3 partitions, 2 used, one free -> error (space doesn't matter)
+    // 7. 1 existing shared dataset, 3 partitions, 2 used, one free -> error (space doesn't matter)
 
     int existingDatasetThroughputBytes = 1_000;
     List<String> usedPartitions = List.of("1", "2");
@@ -779,7 +770,7 @@ public class ManagerApiGrpcTest {
             StatusRuntimeException.class,
             withGrpcStatusAndDescription(
                 Status.FAILED_PRECONDITION,
-                "not enough partitions with sufficient unprovisioned capacity"));
+                "Needed 2 partitions with enough capacity, found 1: [3]"));
   }
 
   @Test
@@ -793,10 +784,9 @@ public class ManagerApiGrpcTest {
     // should have at least 2 partitions assigned to it
     // the partition metadata should reflect the throughput
     String datasetName = "testDataset";
-    String datasetOwner = "testOwner";
 
-    createPartitions("1", "2", "3", "4", "5");
-    createEmptyDatasetGRPC(datasetName, datasetOwner);
+      createPartitions("1", "2", "3", "4", "5");
+    createEmptyDatasetGRPC(datasetName, "testOwner");
 
     long nowMs = Instant.now().toEpochMilli();
     long throughputBytes = 10;
@@ -805,23 +795,18 @@ public class ManagerApiGrpcTest {
     assertThat(updateResponse.getAssignedPartitionIdsList()).isEqualTo(List.of("1", "2"));
     await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs));
 
-    // assert that there are >= 2 partitions assigned to the dataset
     assertThat(
             latestPartitionConfig(datasetMetadataStore.getSync(datasetName)).getPartitions().size())
         .isEqualTo(2);
-    // assert that the partition metadata has the throughput for those partitions
+
     assertThat(getPartitionMetadata("1", "2"))
-        .have(sharedPartitionsWithCapacity(throughputBytes / 2));
-    // assert that the other partitions are not updated
+        .have(sharedPartitionsWithCapacity(Math.ceilDiv(throughputBytes,2)));
     assertThat(getPartitionMetadata("3", "4", "5")).have(sharedPartitionsWithCapacity(0));
   }
 
   @Test
   public void shouldAutoAssignAddShared2() {
     // 2. 1 existing shared dataset, 2 partitions, both used but with enough space
-    // setup
-    // - 2 partitions
-    // - 1 existing datasets
 
     int existingDatasetThroughputBytes = 1_000;
     List<String> existingPartitions = List.of("1", "2");
@@ -835,14 +820,9 @@ public class ManagerApiGrpcTest {
                     Instant.now().toEpochMilli(), MAX_TIME, existingPartitions)),
             "whatever"));
     createPartitions(existingPartitions, existingDatasetThroughputBytes / 2);
-    // action
-    // - create an empty dataset
-    // - update its partitions with some throughputs
-    // should have at least 2 partitions assigned to it
-    // the partition metadata should reflect the throughput
+
     String datasetName = "testDataset";
-    String datasetOwner = "testOwner";
-    createEmptyDatasetGRPC(datasetName, datasetOwner);
+      createEmptyDatasetGRPC(datasetName, "testOwner");
 
     long nowMs = Instant.now().toEpochMilli();
     long throughputBytes = 1_000;
@@ -851,11 +831,9 @@ public class ManagerApiGrpcTest {
     assertThat(updateResponse.getAssignedPartitionIdsList()).isEqualTo(List.of("1", "2"));
     await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs));
 
-    // assert that there are >= 2 partitions assigned to the dataset
     assertThat(
             latestPartitionConfig(datasetMetadataStore.getSync(datasetName)).getPartitions().size())
         .isEqualTo(2);
-    // assert that the partition metadata has the throughput for those partitions
     assertThat(getPartitionMetadata("1", "2"))
         .are(
             sharedPartitionsWithCapacity(throughputBytes / 2 + existingDatasetThroughputBytes / 2));
@@ -865,9 +843,6 @@ public class ManagerApiGrpcTest {
   public void shouldAutoAssignAddShared3() {
     // 3. 1 existing shared dataset, 3 partitions, 2 used, one free, but not enough space without
     // reassigning
-    // setup
-    // - 3 partitions, 2 used, one free
-    // - 1 existing datasets
 
     // existing using max capacity * 2 - 1 on two partitions
     // requesting max capacity * 1 - 1
@@ -885,14 +860,9 @@ public class ManagerApiGrpcTest {
             "whatever"));
     createPartitions(usedExistingPartitions, existingDatasetThroughputBytes / 2);
     createPartitions("3");
-    // action
-    // - create an empty dataset
-    // - update its partitions with some throughputs
-    // should have at least 2 partitions assigned to it
-    // the partition metadata should reflect the throughput
+
     String datasetName = "testDataset";
-    String datasetOwner = "testOwner";
-    createEmptyDatasetGRPC(datasetName, datasetOwner);
+      createEmptyDatasetGRPC(datasetName, "testOwner");
 
     long throughputBytes = DEFAULT_MAX_CAPACITY;
     assertThatThrownBy(() -> updatePartitionAssignmentGRPC(datasetName, throughputBytes))
@@ -900,16 +870,14 @@ public class ManagerApiGrpcTest {
             StatusRuntimeException.class,
             withGrpcStatusAndDescription(
                 Status.FAILED_PRECONDITION,
-                "not enough partitions with sufficient unprovisioned capacity"));
+                "Needed 2 partitions with enough capacity, found 1: [3]"));
   }
 
   @Test
   public void shouldAutoAssignAddShared4() {
     // 4. 1 existing shared dataset, 3 partitions, 3 used, enough space if assigned to 3 but not
     // enough if assigned to 2
-    // setup
-    // - 3 partitions, 3 used
-    // - 1 existing datasets
+
     int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY * 2 - 2;
     List<String> usedExistingPartitions = List.of("1", "2", "3");
     datasetMetadataStore.createAsync(
@@ -922,41 +890,33 @@ public class ManagerApiGrpcTest {
                     Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
             "whatever"));
     createPartitions(
-        usedExistingPartitions, existingDatasetThroughputBytes / usedExistingPartitions.size());
-    // action
-    // - create an empty dataset
-    // - update its partitions with some throughputs
-    // should have at least 2 partitions assigned to it
-    // the partition metadata should reflect the throughput
+        usedExistingPartitions,
+        Math.ceilDiv(existingDatasetThroughputBytes, usedExistingPartitions.size()));
+
     String datasetName = "testDataset";
-    String datasetOwner = "testOwner";
-    createEmptyDatasetGRPC(datasetName, datasetOwner);
+      createEmptyDatasetGRPC(datasetName, "testOwner");
 
     long nowMs = Instant.now().toEpochMilli();
-    long throughputBytes = DEFAULT_MAX_CAPACITY;
+    long throughputBytes = DEFAULT_MAX_CAPACITY - 1;
     ManagerApi.UpdatePartitionAssignmentResponse updateResponse =
         updatePartitionAssignmentGRPC(datasetName, throughputBytes);
     assertThat(updateResponse.getAssignedPartitionIdsList()).isEqualTo(List.of("1", "2", "3"));
     await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs));
 
-    // assert that there are >= 2 partitions assigned to the dataset
     assertThat(
             latestPartitionConfig(datasetMetadataStore.getSync(datasetName)).getPartitions().size())
         .isEqualTo(3);
-    // assert that the partition metadata has the throughput for those partitions
     assertThat(getPartitionMetadata("1", "2", "3"))
         .are(
-            sharedPartitionsWithCapacity(throughputBytes / 3 + existingDatasetThroughputBytes / 3));
+            sharedPartitionsWithCapacity(
+                Math.ceilDiv(throughputBytes, 3)
+                    + Math.ceilDiv(existingDatasetThroughputBytes, 3)));
   }
 
   @Test
   public void shouldAutoAssignAddShared5() {
     // 5. 1 existing dedicated dataset, 3 partitions, 2 used, one free -> error (space doesn't
-    // matter
-    // because can't have 2 partitions for both)
-    // setup
-    // - 3 partitions, 2 used, one free
-    // - 1 existing datasets
+    // matter because can't have 2 partitions for both)
 
     // existing using max capacity * 2 - 2 on three partitions, which should leave a third for the
     // new dataset
@@ -979,15 +939,14 @@ public class ManagerApiGrpcTest {
     // - create an empty dataset
     // - update its partitions with some throughputs
     String datasetName = "testDataset";
-    String datasetOwner = "testOwner";
-    createEmptyDatasetGRPC(datasetName, datasetOwner);
+      createEmptyDatasetGRPC(datasetName, "testOwner");
 
     assertThatThrownBy(() -> updatePartitionAssignmentGRPC(datasetName, DEFAULT_MAX_CAPACITY))
         .isInstanceOfSatisfying(
             StatusRuntimeException.class,
             withGrpcStatusAndDescription(
                 Status.FAILED_PRECONDITION,
-                "not enough partitions with sufficient unprovisioned capacity"));
+                "Needed 2 partitions with enough capacity, found 0: []"));
   }
 
   @Test
@@ -1009,15 +968,9 @@ public class ManagerApiGrpcTest {
     createDedicatedPartitions(
         usedExistingPartitions, existingDatasetThroughputBytes / usedExistingPartitions.size());
     createPartitions(unusedExistingPartitions.toArray(new String[0]));
-    // action
-    // - create an empty dataset
-    // - update its partitions with some throughputs
-    // should have at least 2 partitions assigned to it
-    // the partition metadata should reflect the throughput
-    String datasetName = "testDataset";
-    String datasetOwner = "testOwner";
-    createEmptyDatasetGRPC(datasetName, datasetOwner);
 
+    String datasetName = "testDataset";
+      createEmptyDatasetGRPC(datasetName, "testOwner");
     long nowMs = Instant.now().toEpochMilli();
     long throughputBytes = DEFAULT_MAX_CAPACITY;
     ManagerApi.UpdatePartitionAssignmentResponse updateResponse =
@@ -1025,14 +978,13 @@ public class ManagerApiGrpcTest {
     assertThat(updateResponse.getAssignedPartitionIdsList()).isEqualTo(unusedExistingPartitions);
     await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs));
 
-    // assert that there are >= 2 partitions assigned to the dataset
     assertThat(
             latestPartitionConfig(datasetMetadataStore.getSync(datasetName)).getPartitions().size())
         .isEqualTo(2);
-    // assert that the partition metadata has the throughput for those partitions
-    long expectedNewProvisionedCapacity = throughputBytes / 2;
+
+    long expectedNewProvisionedCapacity = Math.ceilDiv(throughputBytes, 2);
     assertThat(getPartitionMetadata("1", "2"))
-        .are(dedicatedPartitionsWithCapacity(existingDatasetThroughputBytes / 2));
+        .are(dedicatedPartitionsWithCapacity(Math.ceilDiv(existingDatasetThroughputBytes,2)));
     assertThat(getPartitionMetadata("3", "4"))
         .have(sharedPartitionsWithCapacity(expectedNewProvisionedCapacity));
   }
@@ -1074,31 +1026,17 @@ public class ManagerApiGrpcTest {
 
   @Test
   public void shouldAutoAssign2NoPartitions() {
-    // setup
-    // - no partitions
-    // - create empty dataset
-    // action
-    // - update dataset
-    // expect error of type what?
-    // error should say what to do or at least hint at it?
     createEmptyDatasetGRPC("testDataset", "testOwner");
     assertThatThrownBy(() -> updatePartitionAssignmentGRPC("testDataset", 10))
         .isInstanceOfSatisfying(
             io.grpc.StatusRuntimeException.class,
             withGrpcStatusAndDescription(
                 Status.FAILED_PRECONDITION,
-                "no partitions to assign to")); // TODO better error message
+                "no partitions to assign to"));
   }
 
   @Test
   public void shouldAutoAssign3NotEnoughPartitions() {
-    // setup
-    // - 1 partitions
-    // - create empty dataset
-    // action
-    // - update dataset
-    // expect error of type what?
-    // error should say what to do or at least hint at it?
     createEmptyDatasetGRPC("testDataset", "testOwner");
     createPartitions("1");
 
@@ -1107,7 +1045,7 @@ public class ManagerApiGrpcTest {
             io.grpc.StatusRuntimeException.class,
             withGrpcStatusAndDescription(
                 Status.FAILED_PRECONDITION,
-                "not enough partitions with sufficient unprovisioned capacity"));
+                "Needed 2 partitions with enough capacity, found 0: []"));
   }
 
   @Test
@@ -1539,7 +1477,7 @@ public class ManagerApiGrpcTest {
             StatusRuntimeException.class,
             withGrpcStatusAndDescription(
                 Status.FAILED_PRECONDITION,
-                "not enough partitions with sufficient unprovisioned capacity"));
+                "Needed 3 partitions with enough capacity, found 0: []"));
 
     assertThat(getDatasetMetadataGRPC(datasetName).getPartitionConfigsList()).isEmpty();
 

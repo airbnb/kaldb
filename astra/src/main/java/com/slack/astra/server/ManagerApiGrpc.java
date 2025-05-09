@@ -9,6 +9,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import com.slack.astra.chunk.ChunkInfo;
 import com.slack.astra.clusterManager.ReplicaRestoreService;
+import com.slack.astra.metadata.core.InternalMetadataStoreException;
 import com.slack.astra.metadata.dataset.DatasetMetadata;
 import com.slack.astra.metadata.dataset.DatasetMetadataSerializer;
 import com.slack.astra.metadata.dataset.DatasetMetadataStore;
@@ -268,14 +269,16 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       return partitionMetadataList.size();
     }
 
-    public Map<Boolean, List<PartitionMetadata>> getSortedPartitionsSplitByReusedOrUnused(
+    public List<PartitionMetadata> partitionsSortedByReusedCapacityAndId(
         List<String> reusablePartitions) {
       return partitionMetadataList.stream()
           .sorted(
-              Comparator.comparing(PartitionMetadata::getProvisionedCapacity)
+              Comparator.comparing(
+                      (PartitionMetadata p) -> reusablePartitions.contains(p.getPartitionID()))
+                  .thenComparing(PartitionMetadata::getProvisionedCapacity)
                   .reversed()
                   .thenComparing(PartitionMetadata::getPartitionID))
-          .collect(Collectors.partitioningBy(p -> reusablePartitions.contains(p.getPartitionID())));
+          .toList();
     }
 
     public List<String> unsharedPartitionsForDataset(String datasetName) {
@@ -607,8 +610,6 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       ManagerApi.CreatePartitionRequest request,
       StreamObserver<Metadata.PartitionMetadata> responseObserver) {
     try {
-      long maxCapacity = partitionMetadataStore.getMaxCapacityOrDefaultTo(request.getMaxCapacity());
-
       long requestedProvisionedCapacity = request.getProvisionedCapacity();
       try {
         PartitionMetadata partitionMetadata =
@@ -621,24 +622,23 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
             new PartitionMetadata(
                 partitionMetadata.partitionId,
                 provisionedCapacity,
-                maxCapacity,
+                partitionMetadataStore.getMaxCapacityOrDefaultTo(request.getMaxCapacity()),
                 request.getDedicatedPartition());
         partitionMetadataStore.updateSync(updatedPartitionMetadata);
         responseObserver.onNext(toPartitionMetadataProto(updatedPartitionMetadata));
         responseObserver.onCompleted();
-      } catch (Exception InternalMetadataStoreException) {
+      } catch (InternalMetadataStoreException e) {
         // create
         PartitionMetadata createPartitionMetadata =
             new PartitionMetadata(
                 request.getPartitionId(),
                 requestedProvisionedCapacity,
-                maxCapacity,
+                partitionMetadataStore.getMaxCapacityOrDefaultTo(request.getMaxCapacity()),
                 request.getDedicatedPartition());
         partitionMetadataStore.createSync(createPartitionMetadata);
         responseObserver.onNext(toPartitionMetadataProto(createPartitionMetadata));
         responseObserver.onCompleted();
       }
-
     } catch (Exception e) {
       LOG.error("Error creating new partition", e);
       responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
@@ -655,84 +655,13 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               .addAllPartitionMetadata(
                   partitionMetadataStore.listSync().stream()
                       .map(PartitionMetadataSerializer::toPartitionMetadataProto)
-                      .collect(Collectors.toList()))
+                      .toList())
               .build());
       responseObserver.onCompleted();
     } catch (Exception e) {
       LOG.error("Error fetching partition list", e);
       responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
     }
-  }
-
-  /**
-   * finds the available partitions based provisionedCapacity and updates the provisionedCapacity if
-   * partitions are considered.
-   *
-   * @param requiredThroughput - targeted throughput
-   * @param requireDedicatedPartition - if dedicated partitions are required
-   * @param existingPartitionIds - list of existing partitions already to be re-used
-   * @return list of string of partition ids
-   */
-  public List<String> findPartition(
-      long requiredThroughput,
-      boolean requireDedicatedPartition,
-      List<String> existingPartitionIds) {
-    List<String> partitionIdsList = new ArrayList<>();
-    int numberOfPartitions = partitionMetadataStore.partitionCountForThroughput(requiredThroughput);
-
-    long perPartitionCapacity = Math.ceilDiv(requiredThroughput, numberOfPartitions);
-    numberOfPartitions = numberOfPartitions - existingPartitionIds.size();
-
-    List<PartitionMetadata> partitionMetadataList = partitionMetadataStore.listSync();
-    partitionMetadataList.sort(
-        Comparator.comparing(partitionMetadata -> partitionMetadata.partitionId));
-
-    for (PartitionMetadata partitionMetadata : partitionMetadataList) {
-      if (existingPartitionIds.contains(partitionMetadata.getPartitionID())) {
-        continue;
-      }
-      if (requireDedicatedPartition) {
-        if (PartitionMetadataStore.isUnprovisioned(partitionMetadata)) {
-          partitionIdsList.add(partitionMetadata.getPartitionID());
-        }
-      } else {
-        // partition has capacity and (partition is shared or (partition not shared and
-        // provisionedCapacity = 0))
-        if (partitionMetadataStore.hasSpaceForAdditionalProvisioning(
-                partitionMetadata, perPartitionCapacity)
-            && (!partitionMetadata.dedicatedPartition
-                || PartitionMetadataStore.isUnprovisioned(partitionMetadata))) {
-          partitionIdsList.add(partitionMetadata.getPartitionID());
-        }
-      }
-      if (partitionIdsList.size() == numberOfPartitions) {
-        // we have found the required number of partitions, update provisionedCapacity and
-        // dedicatedPartition
-        for (String partitionId : partitionIdsList) {
-          PartitionMetadata newPartitionMetadata = partitionMetadataStore.getSync(partitionId);
-          long provisionedCapacity =
-              newPartitionMetadata.provisionedCapacity + perPartitionCapacity;
-          partitionMetadataStore.updateSync(
-              new PartitionMetadata(
-                  partitionId,
-                  provisionedCapacity,
-                  newPartitionMetadata.getMaxCapacity(),
-                  requireDedicatedPartition));
-          await()
-              .until(
-                  () -> {
-                    PartitionMetadata getPartitionMetadata =
-                        partitionMetadataStore.getSync(partitionId);
-                    return getPartitionMetadata.getProvisionedCapacity() == provisionedCapacity
-                        && getPartitionMetadata.getDedicatedPartition()
-                            == requireDedicatedPartition;
-                  });
-        }
-        return partitionIdsList;
-      }
-    }
-    // if we reached here means we did not find required number of partitions, returning empty list
-    return List.of();
   }
 
   /**
@@ -832,24 +761,20 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       DatasetMetadata datasetMetadata, long throughputBytes, boolean requireDedicatedPartition) {
     List<String> proposedPartitionIds =
         proposeNewPartitions(datasetMetadata, throughputBytes, requireDedicatedPartition);
-    // TODO return both new partition ids and ones to remove
     if (proposedPartitionIds.isEmpty()) {
-      // String msg = "Error auto assigning partition, could not find partitions to assign";
-      // LOG.error(msg);
-      // throw new RuntimeException(msg);
-      // TODO something?
-      return proposedPartitionIds;
+      throw Status.UNKNOWN.withDescription("Error auto assigning partition, could not find partitions to assign")
+        .asRuntimeException();
     }
 
-    long newPerPartitionThroughput = throughputBytes / proposedPartitionIds.size();
+    long newPerPartitionThroughput = Math.ceilDiv(throughputBytes, proposedPartitionIds.size());
     Optional<DatasetPartitionMetadata> previousPartitionMetadata =
         datasetMetadata.getPartitionConfigs().stream()
             .filter(p -> p.getEndTimeEpochMs() == MAX_TIME)
             .findFirst();
     long previousPerPartitionThroughput =
         previousPartitionMetadata
-            .map(p -> datasetMetadata.getThroughputBytes() / p.getPartitions().size())
-            .orElse((long) 0);
+            .map(p -> Math.ceilDiv(datasetMetadata.getThroughputBytes(), p.getPartitions().size()))
+            .orElse(0L);
     List<String> previousPartitions =
         previousPartitionMetadata
             .map(DatasetPartitionMetadata::getPartitions)
@@ -881,14 +806,14 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
   private void updatePartitionMetadata(
       String partitionId,
-      long newPerPartitionThroughput1,
-      long previousPerPartitionThroughput1,
+      long newPerPartitionThroughput,
+      long previousPerPartitionThroughput,
       boolean requireDedicatedPartition) {
     PartitionMetadata prevValue = partitionMetadataStore.getSync(partitionId);
     long newProvisionedCapacity =
         prevValue.getProvisionedCapacity()
-            + newPerPartitionThroughput1
-            - previousPerPartitionThroughput1;
+            + newPerPartitionThroughput
+            - previousPerPartitionThroughput;
 
     partitionMetadataStore.updateSync(
         new PartitionMetadata(
@@ -919,24 +844,21 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         currentlyActiveDatasetPartition
             .map(DatasetPartitionMetadata::getPartitions)
             .orElseGet(ImmutableList::of);
-
-    // numbers for calc:
-    // - current throughputBytes
-    // - available throughputBytes per partition
-    // - available throughputBytes (sum over partitions of p.max - p.provisioned)
-    // - min available throughputBytes for partition
-    // min number of partitions needed based on throughput:
-    // - min of (max per partition capacity / requested throughput, 2)
     long smallestMaxCapacityForPartition = partitionDataEncapsolator.maxCapacityForPartitions();
     long minNumNeededPartitions =
         Math.max(
             Math.ceilDiv(throughputBytes, smallestMaxCapacityForPartition),
             partitionDataEncapsolator.minRequiredPartitions());
     long maxNumNeededPartitions = partitionDataEncapsolator.maxPartitionsUsableByDataSet();
-    // - max number of partitions: largest ct of partitions where available throughput is greater
-    // than requested at that ct
-
     if (requireDedicatedPartition) {
+      // if we require dedicated partitions, we can only reuse partitions that are not shared
+      // approach:
+      // - collect the unshared partitions for the current dataset, sorted by id
+      // - collect the empty partitions, sorted by id
+      // - concat those two lists, then take the first n partitions where n is the minimum needed
+      //   to cover the requested throughput
+      //
+      // this ensures that we minimize partition churn and that we have enough partitions.
       List<String> reusablePartitions =
           partitionDataEncapsolator.unsharedPartitionsForDataset(datasetMetadata.getName());
       List<String> proposedPartitionIds =
@@ -945,41 +867,37 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
                   partitionDataEncapsolator.currentEmptyPartitions().stream().sorted())
               .limit(minNumNeededPartitions)
               .collect(Collectors.toList());
-      System.out.println("=======================================");
-      System.out.println(
-          "minneeded " + minNumNeededPartitions + " proposed " + proposedPartitionIds);
       // TODO consider log info about proposal
       // also, the error message could say more
       if (proposedPartitionIds.size() < minNumNeededPartitions) {
         throw Status.FAILED_PRECONDITION
-            .withDescription("not enough partitions with sufficient unprovisioned capacity")
+            .withDescription(
+                "Needed "
+                    + minNumNeededPartitions
+                    + " partitions with enough capacity, found "
+                    + +proposedPartitionIds.size()
+                    + ": "
+                    + proposedPartitionIds)
             .asRuntimeException();
       }
       return proposedPartitionIds;
     } else {
-      List<String> reusablePartitions = currentPartitions;
-      // how about this
-      // sort by
-      // - in current set vs not
-      // - provisioned capacity desc
-      // - id asc
-      // for min up to max partition ct
-      // - calc per-partition throughput at ct
-      // - drop partitions without enough space
-      // - take limit. Do we have ct? No? Continue.
-
-      // try to find a split that works, starting with the min and going to the max
-      // sort partitions by provisioned capacity desc and id asc
-      Map<Boolean, List<PartitionMetadata>> eitherReusableOrUnused =
-          partitionDataEncapsolator.getSortedPartitionsSplitByReusedOrUnused(reusablePartitions);
-
-      List<PartitionMetadata> reusablePartitionsList = eitherReusableOrUnused.get(true);
-      List<PartitionMetadata> newPartitionsList = eitherReusableOrUnused.get(false);
+      // for datasets that don't require dedicated partitions, we can use any partition
+      // that has enough capacity for the new per partition throughput.
+      // approach:
+      // - sort by
+      //   - in current set vs not -- reuse current set first
+      //   - provisioned capacity desc -- try to saturate the most provisioned partitions first
+      //   - id asc -- within those, sort by id to keep order stable-ish
+      // - starting with the min number of needed partitions, try to find a set of partitions with
+      // enough space
+      // - going up to the max number of available partitions
       List<PartitionMetadata> partitionsSorted =
-          Stream.concat(reusablePartitionsList.stream(), newPartitionsList.stream()).toList();
+          partitionDataEncapsolator.partitionsSortedByReusedCapacityAndId(currentPartitions);
       long currentPerPartitionThroughput;
       if (!currentPartitions.isEmpty()) {
-        currentPerPartitionThroughput = currentThroughputBytes / currentPartitions.size();
+        currentPerPartitionThroughput =
+            Math.ceilDiv(currentThroughputBytes, currentPartitions.size());
       } else {
         currentPerPartitionThroughput = 0;
       }
@@ -988,10 +906,11 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       // usable unused partitions
       // max allowed, min needed
       // throughput, current, new, per partition
+      List<String> lastProposal = Collections.emptyList();
       for (long proposedPartitionCt = minNumNeededPartitions;
           proposedPartitionCt <= maxNumNeededPartitions;
           proposedPartitionCt++) {
-        long nextPerPartitionThroughput = throughputBytes / proposedPartitionCt;
+        long nextPerPartitionThroughput = Math.ceilDiv(throughputBytes, proposedPartitionCt);
         List<PartitionMetadata> proposal =
             partitionsSorted.stream()
                 .filter(
@@ -1001,13 +920,19 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
                                 + nextPerPartitionThroughput)
                 .limit(proposedPartitionCt)
                 .toList();
-        //        // TODO log the proposal?
+        lastProposal = proposal.stream().map(PartitionMetadata::getPartitionID).toList();
         if (proposal.size() == proposedPartitionCt) {
-          return proposal.stream().map(PartitionMetadata::getPartitionID).toList();
+          return lastProposal;
         }
       }
       throw Status.FAILED_PRECONDITION
-          .withDescription("not enough partitions with sufficient unprovisioned capacity")
+          .withDescription(
+              "Needed "
+                  + minNumNeededPartitions
+                  + " partitions with enough capacity, found "
+                  + +lastProposal.size()
+                  + ": "
+                  + lastProposal)
           .asRuntimeException();
     }
   }
