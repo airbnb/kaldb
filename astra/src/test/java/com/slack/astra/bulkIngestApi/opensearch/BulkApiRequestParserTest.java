@@ -447,4 +447,48 @@ public class BulkApiRequestParserTest {
     assertThat(oneMinuteBefore <= timeInMicros).isTrue();
     assertThat(timeInMicros <= oneMinuteAfter).isTrue();
   }
+
+  @Test
+  public void testFieldLimitDropsExtraFields() throws Exception {
+    // Construct an IndexRequest with 3000 dynamic fields
+    StringBuilder json = new StringBuilder();
+    json.append("{");
+    for (int i = 0; i < 3000; i++) {
+      json.append(String.format("\"field_%d\": \"val%d\",", i, i));
+    }
+    json.setLength(json.length() - 1); // remove last comma
+    json.append("}");
+
+    IndexRequest request =
+        new IndexRequest("test")
+            .id("field-limit-test")
+            .source(json.toString(), org.opensearch.common.xcontent.XContentType.JSON);
+
+    List<IndexRequest> requests = List.of(request);
+
+    // Provide a schema that includes a few static fields
+    Schema.IngestSchema schema =
+        Schema.IngestSchema.newBuilder()
+            .putFields(
+                "field_0",
+                Schema.SchemaField.newBuilder().setType(Schema.SchemaFieldType.KEYWORD).build())
+            .putFields(
+                "field_1",
+                Schema.SchemaField.newBuilder().setType(Schema.SchemaFieldType.TEXT).build())
+            .build();
+
+    // Convert the request
+    Map<String, List<Trace.Span>> spanMap =
+        BulkApiRequestParser.convertIndexRequestToTraceFormat(requests, schema);
+
+    assertThat(spanMap).containsKey("test");
+    Trace.Span span = spanMap.get("test").get(0);
+
+    // Schema-defined fields should be preserved
+    assertThat(span.getTagsList().stream().map(Trace.KeyValue::getKey))
+        .contains("field_0", "field_1");
+
+    // We should never exceed the internal field limit (2500 in practice)
+    assertThat(span.getTagsList().size()).isLessThanOrEqualTo(2500);
+  }
 }

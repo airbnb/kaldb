@@ -245,15 +245,15 @@ public class SpanFormatterWithSchemaTest {
 
   @Test
   public void testSimpleSchema() {
-    Trace.KeyValue kv = SpanFormatter.convertKVtoProto("host", "host1", schema).get(0);
+    Trace.KeyValue kv = SpanFormatter.convertKVtoProto("host", "host1", schema).tags().get(0);
     assertThat(kv.getVStr()).isEqualTo("host1");
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.KEYWORD);
 
-    kv = SpanFormatter.convertKVtoProto("message", "my message", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("message", "my message", schema).tags().get(0);
     assertThat(kv.getVStr()).isEqualTo("my message");
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.TEXT);
 
-    kv = SpanFormatter.convertKVtoProto("ip", "8.8.8.8", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("ip", "8.8.8.8", schema).tags().get(0);
     assertThat(kv.getVStr()).isEqualTo("8.8.8.8");
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.IP);
 
@@ -264,7 +264,7 @@ public class SpanFormatterWithSchemaTest {
             .setSeconds(myDateInstant.getEpochSecond())
             .setNanos(myDateInstant.getNano())
             .build();
-    kv = SpanFormatter.convertKVtoProto("myTimestamp", myTimestamp, schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("myTimestamp", myTimestamp, schema).tags().get(0);
     assertThat(kv.getVDate()).isEqualTo(myDateTimestamp);
 
     myTimestamp = "2021-01-01T00:00:00Z";
@@ -274,117 +274,124 @@ public class SpanFormatterWithSchemaTest {
             .setSeconds(myDateInstant.getEpochSecond())
             .setNanos(myDateInstant.getNano())
             .build();
-    kv = SpanFormatter.convertKVtoProto("myTimestamp", myTimestamp, schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("myTimestamp", myTimestamp, schema).tags().get(0);
     assertThat(kv.getVDate()).isEqualTo(myDateTimestamp);
 
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.DATE);
 
-    kv = SpanFormatter.convertKVtoProto("success", "true", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("success", "true", schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.BOOLEAN);
     assertThat(kv.getVBool()).isEqualTo(true);
 
-    kv = SpanFormatter.convertKVtoProto("success", true, schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("success", true, schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.BOOLEAN);
     assertThat(kv.getVBool()).isEqualTo(true);
 
-    kv = SpanFormatter.convertKVtoProto("cost", "10.0", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("cost", "10.0", schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.DOUBLE);
     assertThat(kv.getVFloat64()).isEqualTo(10.0);
 
-    kv = SpanFormatter.convertKVtoProto("cost", 10.0, schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("cost", 10.0, schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.DOUBLE);
     assertThat(kv.getVFloat64()).isEqualTo(10.0);
 
-    kv = SpanFormatter.convertKVtoProto("amount", "10.0", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("amount", "10.0", schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.FLOAT);
     assertThat(kv.getVFloat32()).isEqualTo(10.0f);
 
-    kv = SpanFormatter.convertKVtoProto("amount", 10.0, schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("amount", 10.0, schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.FLOAT);
     assertThat(kv.getVFloat32()).isEqualTo(10.0f);
 
-    kv = SpanFormatter.convertKVtoProto("amount_half_float", "10.0", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("amount_half_float", "10.0", schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.HALF_FLOAT);
     assertThat(kv.getVFloat32()).isEqualTo(10.0f);
 
-    kv = SpanFormatter.convertKVtoProto("amount_half_float", 10.0, schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("amount_half_float", 10.0, schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.HALF_FLOAT);
     assertThat(kv.getVFloat32()).isEqualTo(10.0f);
 
-    kv = SpanFormatter.convertKVtoProto("value", "10", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("value", "10", schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.INTEGER);
     assertThat(kv.getVInt32()).isEqualTo(10);
 
-    kv = SpanFormatter.convertKVtoProto("value", 10, schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("value", 10, schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.INTEGER);
     assertThat(kv.getVInt32()).isEqualTo(10);
 
-    kv = SpanFormatter.convertKVtoProto("count", "10", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("count", "10", schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.LONG);
     assertThat(kv.getVInt64()).isEqualTo(10L);
 
-    kv = SpanFormatter.convertKVtoProto("count", 10, schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("count", 10, schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.LONG);
     assertThat(kv.getVInt64()).isEqualTo(10L);
 
-    kv = SpanFormatter.convertKVtoProto("count_scaled_long", "10", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("count_scaled_long", "10", schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.SCALED_LONG);
     assertThat(kv.getVInt64()).isEqualTo(10);
 
-    kv = SpanFormatter.convertKVtoProto("count_scaled_long", 10, schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("count_scaled_long", 10, schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.SCALED_LONG);
     assertThat(kv.getVInt64()).isEqualTo(10L);
 
-    kv = SpanFormatter.convertKVtoProto("count_short", "10", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("count_short", "10", schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.SHORT);
     assertThat(kv.getVInt32()).isEqualTo(10L);
 
-    kv = SpanFormatter.convertKVtoProto("count_short", 10, schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("count_short", 10, schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.SHORT);
     assertThat(kv.getVInt32()).isEqualTo(10);
 
-    kv = SpanFormatter.convertKVtoProto("bucket", "e30=", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("bucket", "e30=", schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.BINARY);
     assertThat(kv.getVBinary().toStringUtf8()).isEqualTo("e30=");
   }
 
   @Test
   public void testKeyValueWithWrongValues() {
-    Trace.KeyValue kv = SpanFormatter.convertKVtoProto("success", "notBoolean", schema).get(0);
+    Trace.KeyValue kv =
+        SpanFormatter.convertKVtoProto("success", "notBoolean", schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.BOOLEAN);
     assertThat(kv.getVBool()).isEqualTo(false);
 
-    kv = SpanFormatter.convertKVtoProto("cost", "hello", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("cost", "hello", schema).tags().get(0);
     assertThat(kv.getKey()).isEqualTo("failed_cost");
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.KEYWORD);
     assertThat(kv.getVStr()).isEqualTo("hello");
 
-    kv = SpanFormatter.convertKVtoProto("amount", "hello", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("amount", "hello", schema).tags().get(0);
     assertThat(kv.getKey()).isEqualTo("failed_amount");
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.KEYWORD);
     assertThat(kv.getVStr()).isEqualTo("hello");
 
-    kv = SpanFormatter.convertKVtoProto("amount_half_float", "half_float_value", schema).get(0);
+    kv =
+        SpanFormatter.convertKVtoProto("amount_half_float", "half_float_value", schema)
+            .tags()
+            .get(0);
     assertThat(kv.getKey()).isEqualTo("failed_amount_half_float");
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.KEYWORD);
     assertThat(kv.getVStr()).isEqualTo("half_float_value");
 
-    kv = SpanFormatter.convertKVtoProto("value", "int_value", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("value", "int_value", schema).tags().get(0);
     assertThat(kv.getKey()).isEqualTo("failed_value");
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.KEYWORD);
     assertThat(kv.getVStr()).isEqualTo("int_value");
 
-    kv = SpanFormatter.convertKVtoProto("count", "long_value", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("count", "long_value", schema).tags().get(0);
     assertThat(kv.getKey()).isEqualTo("failed_count");
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.KEYWORD);
     assertThat(kv.getVStr()).isEqualTo("long_value");
 
-    kv = SpanFormatter.convertKVtoProto("count_scaled_long", "scaled_long_val", schema).get(0);
+    kv =
+        SpanFormatter.convertKVtoProto("count_scaled_long", "scaled_long_val", schema)
+            .tags()
+            .get(0);
     assertThat(kv.getKey()).isEqualTo("failed_count_scaled_long");
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.KEYWORD);
     assertThat(kv.getVStr()).isEqualTo("scaled_long_val");
 
-    kv = SpanFormatter.convertKVtoProto("count_short", "my_short-Val", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("count_short", "my_short-Val", schema).tags().get(0);
     assertThat(kv.getKey()).isEqualTo("failed_count_short");
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.KEYWORD);
     assertThat(kv.getVStr()).isEqualTo("my_short-Val");
@@ -394,46 +401,47 @@ public class SpanFormatterWithSchemaTest {
   public void testSimpleWithoutSchema() {
 
     Schema.IngestSchema schema = Schema.IngestSchema.getDefaultInstance();
-    Trace.KeyValue kv = SpanFormatter.convertKVtoProto("host", "host1", schema).get(0);
+    Trace.KeyValue kv = SpanFormatter.convertKVtoProto("host", "host1", schema).tags().get(0);
     assertThat(kv.getVStr()).isEqualTo("host1");
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.KEYWORD);
 
-    kv = SpanFormatter.convertKVtoProto("ip", "8.8.8.8", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("ip", "8.8.8.8", schema).tags().get(0);
     assertThat(kv.getVStr()).isEqualTo("8.8.8.8");
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.KEYWORD);
 
-    kv = SpanFormatter.convertKVtoProto("myTimestamp", "2021-01-01T00:00:00Z", schema).get(0);
+    kv =
+        SpanFormatter.convertKVtoProto("myTimestamp", "2021-01-01T00:00:00Z", schema).tags().get(0);
     assertThat(kv.getVStr()).isEqualTo("2021-01-01T00:00:00Z");
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.KEYWORD);
 
-    kv = SpanFormatter.convertKVtoProto("success", "true", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("success", "true", schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.KEYWORD);
     assertThat(kv.getVStr()).isEqualTo("true");
 
-    kv = SpanFormatter.convertKVtoProto("success", true, schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("success", true, schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.BOOLEAN);
     assertThat(kv.getVBool()).isEqualTo(true);
 
-    kv = SpanFormatter.convertKVtoProto("cost", "10.0", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("cost", "10.0", schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.KEYWORD);
     assertThat(kv.getVStr()).isEqualTo("10.0");
 
-    kv = SpanFormatter.convertKVtoProto("amount", 10.0f, schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("amount", 10.0f, schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.FLOAT);
     assertThat(kv.getVFloat32()).isEqualTo(10.0f);
 
-    kv = SpanFormatter.convertKVtoProto("cost", 10.0, schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("cost", 10.0, schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.DOUBLE);
     assertThat(kv.getVFloat64()).isEqualTo(10.0);
 
-    kv = SpanFormatter.convertKVtoProto("value", 10, schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("value", 10, schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.INTEGER);
 
-    kv = SpanFormatter.convertKVtoProto("count", 10L, schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("count", 10L, schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.LONG);
     assertThat(kv.getVInt64()).isEqualTo(10L);
 
-    kv = SpanFormatter.convertKVtoProto("bucket", "e30=", schema).get(0);
+    kv = SpanFormatter.convertKVtoProto("bucket", "e30=", schema).tags().get(0);
     assertThat(kv.getFieldType()).isEqualTo(Schema.SchemaFieldType.KEYWORD);
     assertThat(kv.getVStr()).isEqualTo("e30=");
   }

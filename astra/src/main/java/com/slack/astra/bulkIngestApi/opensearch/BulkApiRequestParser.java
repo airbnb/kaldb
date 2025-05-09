@@ -3,6 +3,7 @@ package com.slack.astra.bulkIngestApi.opensearch;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.protobuf.ByteString;
 import com.slack.astra.logstore.LogMessage;
+import com.slack.astra.logstore.opensearch.AstraIndexSettings;
 import com.slack.astra.logstore.schema.ReservedFields;
 import com.slack.astra.proto.schema.Schema;
 import com.slack.astra.writer.SpanFormatter;
@@ -15,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.opensearch.action.DocWriteRequest;
 import org.opensearch.action.bulk.BulkRequest;
 import org.opensearch.action.index.IndexRequest;
@@ -34,6 +36,9 @@ public class BulkApiRequestParser {
   private static final Logger LOG = LoggerFactory.getLogger(BulkApiRequestParser.class);
 
   private static final String SERVICE_NAME_KEY = "service_name";
+
+  private static final long MAX_FIELDS =
+      AstraIndexSettings.getInstance().getMappingTotalFieldsLimit();
 
   public static Map<String, List<Trace.Span>> parseRequest(
       byte[] postBody, Schema.IngestSchema schema) throws IOException {
@@ -141,16 +146,38 @@ public class BulkApiRequestParser {
     sourceAndMetadata.remove(IngestDocument.Metadata.INDEX.getFieldName());
 
     boolean tagsContainServiceName = false;
+
+    long MAX_DYNAMIC = MAX_FIELDS - schema.getFieldsCount() - 1; // -1 for service name added later
+    long dynamicCount = 0;
     for (Map.Entry<String, Object> kv : sourceAndMetadata.entrySet()) {
       if (!tagsContainServiceName && kv.getKey().equals(SERVICE_NAME_KEY)) {
         tagsContainServiceName = true;
       }
-      List<Trace.KeyValue> tags =
+      SpanFormatter.KeyValueResult result =
           SpanFormatter.convertKVtoProto(kv.getKey(), kv.getValue(), schema);
-      if (tags != null) {
-        spanBuilder.addAllTags(tags);
+      if (result.tags() != null) {
+        if (result.inSchema()) {
+          spanBuilder.addAllTags(result.tags());
+        } else if (dynamicCount + result.tags().size() <= MAX_DYNAMIC) {
+          spanBuilder.addAllTags(result.tags());
+          dynamicCount += result.tags().size();
+        } else {
+          List<String> tagKeys =
+              result.tags().stream().map(Trace.KeyValue::getKey).collect(Collectors.toList());
+          LOG.info(
+              "Skipping adding {} tags (keys: {}) to span={} because it exceeds the max dynamic tags of {}",
+              result.tags().size(),
+              tagKeys,
+              id,
+              MAX_DYNAMIC);
+        }
       }
     }
+
+    // hmmm maybe we need to prioritize the schema tags. (make sure included and limit to maxtags -
+    // schema.tags)
+    // need buffer with index pod to allow for fields that are metadata and sort of out of our
+    // control
     if (!tagsContainServiceName) {
       spanBuilder.addTags(
           Trace.KeyValue.newBuilder()
