@@ -113,12 +113,10 @@ public class SpanFormatter {
     }
   }
 
-  public record KeyValueResult(List<Trace.KeyValue> tags, boolean inSchema) {}
-
-  public static KeyValueResult convertKVtoProto(
+  public static List<Trace.KeyValue> convertKVtoProto(
       String key, Object value, Schema.IngestSchema schema) {
     if (value == null || value.toString().isEmpty()) {
-      return new KeyValueResult(null, false);
+      return null;
     }
 
     if (schema.containsFields(key)) {
@@ -140,10 +138,10 @@ public class SpanFormatter {
                 additionalField.getValue().getType());
         tags.add(additionalKV);
       }
-      return new KeyValueResult(tags, true);
+      return tags;
     } else {
       // do default without setting a default behavior
-      return new KeyValueResult(SpanFormatter.convertKVtoProtoDefault(key, value, schema), false);
+      return SpanFormatter.convertKVtoProtoDefault(key, value, schema);
     }
   }
 
