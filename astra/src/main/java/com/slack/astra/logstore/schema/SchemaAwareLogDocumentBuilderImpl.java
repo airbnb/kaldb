@@ -9,7 +9,6 @@ import com.slack.astra.logstore.DocumentBuilder;
 import com.slack.astra.logstore.FieldDefMismatchException;
 import com.slack.astra.logstore.LogMessage;
 import com.slack.astra.logstore.LogWireMessage;
-import com.slack.astra.logstore.opensearch.AstraIndexSettings;
 import com.slack.astra.metadata.schema.FieldType;
 import com.slack.astra.metadata.schema.LuceneFieldDef;
 import com.slack.astra.proto.schema.Schema;
@@ -49,9 +48,8 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
   // TODO: In future, make this value configurable.
   private static final int MAX_NESTING_DEPTH = 3;
 
-  // TODO: Introduce a config variable for max dynamic fields
-  private static final long MAX_DYNAMIC_FIELDS =
-      Math.max(0L, AstraIndexSettings.getInstance().getMappingTotalFieldsLimit() - 1000);
+  private static final int MAX_DYNAMIC_FIELDS =
+      Integer.parseInt(System.getProperty("astra.mapping.dynamicFieldsLimit", "1500"));
 
   /**
    * This enum tracks the field conflict policy for a chunk.
