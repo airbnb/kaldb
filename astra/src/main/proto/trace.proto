@@ -13,9 +13,10 @@ import "google/protobuf/timestamp.proto";
 import "schema.proto";
 
 enum IndexStrategy {
-  IN_SCHEMA_INDEX  = 0;
-  DYNAMIC_INDEX    = 1;
-  DO_NOT_INDEX     = 2;
+  UNKNOWN =0;
+  IN_SCHEMA_INDEX  = 1;
+  DYNAMIC_INDEX    = 2;
+  DO_NOT_INDEX     = 3;
 };
 
 message KeyValue {
