@@ -196,7 +196,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
       fieldDefMap.put(key, newFieldDef);
       indexTypedField(doc, key, value, newFieldDef);
     } else if (indexStrategy.equals(Trace.IndexStrategy.DYNAMIC_INDEX)) {
-      if (dynamicFields.incrementAndGet() <= MAX_DYNAMIC_FIELDS) {
+      if (dynamicFields.getAndIncrement() <= MAX_DYNAMIC_FIELDS) {
         fieldDefMap.put(key, newFieldDef);
         indexTypedField(doc, key, value, newFieldDef);
       } else {
@@ -611,7 +611,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
         msgString,
         Schema.SchemaFieldType.TEXT,
         "",
-        Trace.IndexStrategy.DO_NOT_INDEX,
+        Trace.IndexStrategy.IN_SCHEMA_INDEX,
         0);
     if (enableFullTextSearch) {
       addField(
