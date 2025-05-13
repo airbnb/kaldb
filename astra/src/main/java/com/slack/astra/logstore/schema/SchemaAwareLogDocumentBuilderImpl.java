@@ -199,7 +199,8 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
         indexTypedField(doc, key, value, newFieldDef);
       } else {
         droppedFieldsCounter.increment();
-        LOG.debug(
+        // TODO make debug log after testing logic
+        LOG.info(
             "Dropped field {} due to field limit of {} fields. The field is not indexed.",
             key,
             MAX_DYNAMIC_FIELDS);
