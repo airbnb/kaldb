@@ -194,12 +194,18 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
       fieldDefMap.put(key, newFieldDef);
       indexTypedField(doc, key, value, newFieldDef);
     } else if (indexStrategy.equals(Trace.IndexStrategy.DYNAMIC_INDEX)) {
-      if (dynamicFields.getAndIncrement() <= MAX_DYNAMIC_FIELDS) {
+      int numDynamicFields = dynamicFields.getAndIncrement();
+      if (numDynamicFields <= MAX_DYNAMIC_FIELDS) {
         fieldDefMap.put(key, newFieldDef);
         indexTypedField(doc, key, value, newFieldDef);
+        LOG.debug(
+            "Added new field {} of type {} due to dynamic index strategy, {}/{} dynamic fields added",
+            key,
+            schemaFieldType,
+            numDynamicFields,
+            MAX_DYNAMIC_FIELDS);
       } else {
         droppedFieldsCounter.increment();
-        // TODO make debug log after testing logic
         LOG.info(
             "Dropped field {} due to field limit of {} fields. The field is not indexed.",
             key,
