@@ -646,6 +646,44 @@ public class IndexingChunkImplTest {
       assertThat(afterSearchNodes.get(0).url).contains(String.valueOf(TEST_PORT));
     }
 
+    @Test
+    public void testExcessFieldsAreDroppedButSpanIsIndexed() throws IOException {
+      int offset = 1;
+
+      // Create a span with too many fields (> 2500)
+      Trace.Span.Builder spanBuilder = SpanUtil.makeSpan(offset).toBuilder();
+      for (int i = 0; i < 3000; i++) {
+        spanBuilder.addTags(
+            Trace.KeyValue.newBuilder()
+                .setKey("custom.field." + i)
+                .setVStr("value" + i)
+                .setIndexStrategy(Trace.IndexStrategy.DYNAMIC_INDEX)
+                .build());
+      }
+      Trace.Span spanWithTooManyFields = spanBuilder.build();
+
+      // Add and commit the message
+      chunk.addMessage(spanWithTooManyFields, TEST_KAFKA_PARTITION_ID, offset);
+      chunk.commit();
+
+      // The message should be accepted, though some fields may be dropped
+      assertThat(getCount(MESSAGES_RECEIVED_COUNTER, registry))
+          .withFailMessage("Expected 1 message received")
+          .isEqualTo(1);
+      assertThat(getCount(MESSAGES_FAILED_COUNTER, registry))
+          .withFailMessage("Expected 0 messages failed")
+          .isEqualTo(0);
+      assertThat(getTimerCount(COMMITS_TIMER, registry))
+          .withFailMessage("Expected 1 commit recorded")
+          .isEqualTo(1);
+
+      // todo adjust when the dynamic flag exists
+      int totalFieldsInSchema = chunk.getSchema().size();
+      assertThat(totalFieldsInSchema)
+          .withFailMessage("Schema should not exceed 1600 fields but had %s", totalFieldsInSchema)
+          .isLessThanOrEqualTo(1600);
+    }
+
     @SuppressWarnings("OptionalGetWithoutIsPresent")
     @Test
     public void testSnapshotToS3UsingChunkApi() throws Exception {
