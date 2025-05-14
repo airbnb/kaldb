@@ -168,6 +168,7 @@ public class ElasticsearchApiServiceTest {
             "cost",
             "amount",
             "amount_half_float",
+            "message.keyword",
             "value",
             "count",
             "count_scaled_long",
@@ -191,19 +192,15 @@ public class ElasticsearchApiServiceTest {
             "floatproperty",
             "intproperty",
             "longproperty",
-            "message.keyword",
             "name",
             "parent_id",
             "service_name",
             "stringproperty",
-            "trace_id",
-            "username");
+            "trace_id");
 
     // Verify all required keys are retained
     assertThat(map.keySet()).containsAll(requiredKeys);
 
-    // Ensure total fields remain within limit. TODO Update when dynamic field config exists
-    // 1500 is the dynamic limit. This should check that.
     int dynamicFieldsCount = map.keySet().size() - schemaKeys.size() - requiredKeys.size();
     assertThat(dynamicFieldsCount)
         .withFailMessage(

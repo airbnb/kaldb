@@ -677,11 +677,12 @@ public class IndexingChunkImplTest {
           .withFailMessage("Expected 1 commit recorded")
           .isEqualTo(1);
 
-      // todo adjust when the dynamic flag exists
-      int totalFieldsInSchema = chunk.getSchema().size();
-      assertThat(totalFieldsInSchema)
-          .withFailMessage("Schema should not exceed 1600 fields but had %s", totalFieldsInSchema)
-          .isLessThanOrEqualTo(1600);
+      long dynamicFieldsInSchema =
+          chunk.getSchema().keySet().stream().filter(key -> key.startsWith("custom.field")).count();
+
+      assertThat(dynamicFieldsInSchema)
+          .withFailMessage("Schema should not exceed 1500 fields but had %s", dynamicFieldsInSchema)
+          .isLessThanOrEqualTo(1500);
     }
 
     @SuppressWarnings("OptionalGetWithoutIsPresent")

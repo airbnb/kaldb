@@ -189,7 +189,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
       fieldDefMap.put(key, newFieldDef);
       indexTypedField(doc, key, value, newFieldDef);
     } else if (indexSignal.equals(Trace.IndexSignal.DYNAMIC_INDEX)) {
-      int numDynamicFields = dynamicFields.getAndIncrement();
+      int numDynamicFields = dynamicFields.incrementAndGet();
       if (numDynamicFields <= MAX_DYNAMIC_FIELDS) {
         fieldDefMap.put(key, newFieldDef);
         indexTypedField(doc, key, value, newFieldDef);
