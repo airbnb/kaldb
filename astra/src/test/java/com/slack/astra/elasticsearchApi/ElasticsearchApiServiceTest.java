@@ -129,7 +129,7 @@ public class ElasticsearchApiServiceTest {
           Trace.KeyValue.newBuilder()
               .setKey("dynamic.extra_field." + i)
               .setVStr("value" + i)
-              .setIndexStrategy(Trace.IndexStrategy.DYNAMIC_INDEX)
+              .setIndexSignal(Trace.IndexSignal.DYNAMIC_INDEX)
               .build());
     }
     Trace.Span spanWithExtras = spanBuilder.build();
@@ -312,7 +312,7 @@ public class ElasticsearchApiServiceTest {
     assertThat(map.keySet()).containsAll(requiredKeys);
 
     // No dynamic fields are dropped with the "old" logic when preprocessor does not have
-    // indexStrategy set.
+    // indexSignal set.
     int dynamicFieldsCount = map.keySet().size() - schemaKeys.size() - requiredKeys.size();
     assertThat(dynamicFieldsCount)
         .withFailMessage(

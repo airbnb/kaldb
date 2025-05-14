@@ -76,7 +76,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
       final Object value,
       final Schema.SchemaFieldType schemaFieldType,
       final String keyPrefix,
-      final Trace.IndexStrategy indexStrategy,
+      final Trace.IndexSignal indexSignal,
       int nestingDepth) {
     // If value is a list, convert the value to a String and index the field.
     if (value instanceof List) {
@@ -86,7 +86,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
           Strings.join((List) value, ','),
           schemaFieldType,
           keyPrefix,
-          indexStrategy,
+          indexSignal,
           nestingDepth);
       return;
     }
@@ -97,13 +97,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
       if (nestingDepth >= MAX_NESTING_DEPTH) {
         // Once max nesting depth is reached, index the field as a string.
         addField(
-            doc,
-            key,
-            value.toString(),
-            schemaFieldType,
-            keyPrefix,
-            indexStrategy,
-            nestingDepth + 1);
+            doc, key, value.toString(), schemaFieldType, keyPrefix, indexSignal, nestingDepth + 1);
       } else {
         Map<Object, Object> mapValue = (Map<Object, Object>) value;
         for (Object k : mapValue.keySet()) {
@@ -114,7 +108,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
                 mapValue.get(k),
                 schemaFieldType,
                 fieldName,
-                indexStrategy,
+                indexSignal,
                 nestingDepth + 1);
           } else {
             throw new FieldDefMismatchException(
@@ -128,7 +122,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
 
     FieldType valueType = FieldType.valueOf(schemaFieldType.name());
     if (!fieldDefMap.containsKey(fieldName)) {
-      indexNewField(doc, fieldName, value, schemaFieldType, indexStrategy);
+      indexNewField(doc, fieldName, value, schemaFieldType, indexSignal);
     } else {
       LuceneFieldDef registeredField = fieldDefMap.get(fieldName);
       // If the field types are same or the fields are type aliases
@@ -162,7 +156,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
                 registeredField.fieldType);
             // Add new field with new type
             String newFieldName = makeNewFieldOfType(fieldName, valueType);
-            indexNewField(doc, newFieldName, value, schemaFieldType, indexStrategy);
+            indexNewField(doc, newFieldName, value, schemaFieldType, indexSignal);
             LOG.debug(
                 "Added new field {} of type {} due to type conflict", newFieldName, valueType);
             convertAndDuplicateFieldCounter.increment();
@@ -182,23 +176,24 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
       String key,
       Object value,
       Schema.SchemaFieldType schemaFieldType,
-      Trace.IndexStrategy indexStrategy) {
+      Trace.IndexSignal indexSignal) {
     totalFieldsCounter.increment();
-    final LuceneFieldDef newFieldDef = getLuceneFieldDef(key, schemaFieldType, indexStrategy);
-    // UNKNOWN - old behavior - this is when the preprocessor is on an "older version" without this
-    // proto set
-    if (indexStrategy.equals(Trace.IndexStrategy.UNKNOWN)) {
+    final LuceneFieldDef newFieldDef = getLuceneFieldDef(key, schemaFieldType, indexSignal);
+    // UNKNOWN type defaults to original behavior before dynamic field limit. This allows for any
+    // order of deployment from an older version to a newer version (preprocessor before or after
+    // the indexer). UNKNOWN type is not explicitly set in the preprocessors
+    if (indexSignal.equals(Trace.IndexSignal.UNKNOWN)) {
       fieldDefMap.put(key, newFieldDef);
       indexTypedField(doc, key, value, newFieldDef);
-    } else if (indexStrategy.equals(Trace.IndexStrategy.IN_SCHEMA_INDEX)) {
+    } else if (indexSignal.equals(Trace.IndexSignal.IN_SCHEMA_INDEX)) {
       fieldDefMap.put(key, newFieldDef);
       indexTypedField(doc, key, value, newFieldDef);
-    } else if (indexStrategy.equals(Trace.IndexStrategy.DYNAMIC_INDEX)) {
+    } else if (indexSignal.equals(Trace.IndexSignal.DYNAMIC_INDEX)) {
       int numDynamicFields = dynamicFields.getAndIncrement();
       if (numDynamicFields <= MAX_DYNAMIC_FIELDS) {
         fieldDefMap.put(key, newFieldDef);
         indexTypedField(doc, key, value, newFieldDef);
-        LOG.info(
+        LOG.debug(
             "Added new field {} of type {} due to dynamic index strategy, {}/{} dynamic fields added",
             key,
             schemaFieldType,
@@ -230,16 +225,17 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
 
   // In the future, we need this to take SchemaField instead of FieldType
   // that way we can make isIndexed/isStored etc. configurable
-  // we don't put it in th proto today but when we move to ZK we'll change the KeyValue to take
-  // SchemaField info in the future
+  // KeyValue stores indexSignal which is an indication from the preprocessor that this field should
+  // or should not be indexed and if it is explicitly defined in the schema to be indexed vs should
+  // be dynamically indexed.
   private LuceneFieldDef getLuceneFieldDef(
-      String key, Schema.SchemaFieldType schemaFieldType, Trace.IndexStrategy indexStrategy) {
-    boolean indexSignal = !indexStrategy.equals(Trace.IndexStrategy.DO_NOT_INDEX);
+      String key, Schema.SchemaFieldType schemaFieldType, Trace.IndexSignal indexSignal) {
+    boolean shouldIndex = !indexSignal.equals(Trace.IndexSignal.DO_NOT_INDEX);
     return new LuceneFieldDef(
         key,
         schemaFieldType.name(),
         isStored(key),
-        isIndexed(schemaFieldType, key) && indexSignal,
+        isIndexed(schemaFieldType, key) && shouldIndex,
         isDocValueField(schemaFieldType, key));
   }
 
@@ -333,7 +329,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
           message.getParentId().toStringUtf8(),
           Schema.SchemaFieldType.KEYWORD,
           "",
-          Trace.IndexStrategy.IN_SCHEMA_INDEX,
+          Trace.IndexSignal.IN_SCHEMA_INDEX,
           0);
     }
     if (!message.getTraceId().isEmpty()) {
@@ -344,7 +340,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
           message.getTraceId().toStringUtf8(),
           Schema.SchemaFieldType.KEYWORD,
           "",
-          Trace.IndexStrategy.IN_SCHEMA_INDEX,
+          Trace.IndexSignal.IN_SCHEMA_INDEX,
           0);
     }
     if (!message.getName().isEmpty()) {
@@ -355,7 +351,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
           message.getName(),
           Schema.SchemaFieldType.KEYWORD,
           "",
-          Trace.IndexStrategy.IN_SCHEMA_INDEX,
+          Trace.IndexSignal.IN_SCHEMA_INDEX,
           0);
     }
     if (message.getDuration() != 0) {
@@ -366,7 +362,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
           message.getDuration(),
           Schema.SchemaFieldType.LONG,
           "",
-          Trace.IndexStrategy.IN_SCHEMA_INDEX,
+          Trace.IndexSignal.IN_SCHEMA_INDEX,
           0);
     }
     if (!message.getId().isEmpty()) {
@@ -376,7 +372,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
           message.getId().toStringUtf8(),
           Schema.SchemaFieldType.ID,
           "",
-          Trace.IndexStrategy.IN_SCHEMA_INDEX,
+          Trace.IndexSignal.IN_SCHEMA_INDEX,
           0);
     } else {
       throw new IllegalArgumentException("Span id is empty");
@@ -393,7 +389,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
           message.getTimestamp(),
           Schema.SchemaFieldType.LONG,
           "",
-          Trace.IndexStrategy.IN_SCHEMA_INDEX,
+          Trace.IndexSignal.IN_SCHEMA_INDEX,
           0);
       jsonMap.put(
           LogMessage.ReservedField.ASTRA_INVALID_TIMESTAMP.fieldName, message.getTimestamp());
@@ -405,7 +401,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
         timestamp.toEpochMilli(),
         Schema.SchemaFieldType.LONG,
         "",
-        Trace.IndexStrategy.IN_SCHEMA_INDEX,
+        Trace.IndexSignal.IN_SCHEMA_INDEX,
         0);
     // todo - this should be removed once we simplify the time handling
     // this will be overridden below if a user provided value exists
@@ -434,7 +430,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
         indexName,
         Schema.SchemaFieldType.KEYWORD,
         "",
-        Trace.IndexStrategy.IN_SCHEMA_INDEX,
+        Trace.IndexSignal.IN_SCHEMA_INDEX,
         0);
     addField(
         doc,
@@ -442,7 +438,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
         indexName,
         Schema.SchemaFieldType.KEYWORD,
         "",
-        Trace.IndexStrategy.IN_SCHEMA_INDEX,
+        Trace.IndexSignal.IN_SCHEMA_INDEX,
         0);
 
     tags.remove(LogMessage.ReservedField.SERVICE_NAME.fieldName);
@@ -456,7 +452,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
 
     for (Trace.KeyValue keyValue : tags.values()) {
       Schema.SchemaFieldType schemaFieldType = keyValue.getFieldType();
-      Trace.IndexStrategy indexStrategy = keyValue.getIndexStrategy();
+      Trace.IndexSignal indexSignal = keyValue.getIndexSignal();
       // move to switch statements
       if (schemaFieldType == Schema.SchemaFieldType.STRING
           || schemaFieldType == Schema.SchemaFieldType.KEYWORD) {
@@ -466,7 +462,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
             keyValue.getVStr(),
             Schema.SchemaFieldType.KEYWORD,
             "",
-            indexStrategy,
+            indexSignal,
             0);
         jsonMap.put(keyValue.getKey(), keyValue.getVStr());
       } else if (schemaFieldType == Schema.SchemaFieldType.TEXT) {
@@ -476,7 +472,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
             keyValue.getVStr(),
             Schema.SchemaFieldType.TEXT,
             "",
-            indexStrategy,
+            indexSignal,
             0);
         jsonMap.put(keyValue.getKey(), keyValue.getVStr());
       } else if (schemaFieldType == Schema.SchemaFieldType.IP) {
@@ -486,14 +482,13 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
             keyValue.getVStr(),
             Schema.SchemaFieldType.IP,
             "",
-            indexStrategy,
+            indexSignal,
             0);
         jsonMap.put(keyValue.getKey(), keyValue.getVStr());
       } else if (schemaFieldType == Schema.SchemaFieldType.DATE) {
         Instant instant =
             Instant.ofEpochSecond(keyValue.getVDate().getSeconds(), keyValue.getVDate().getNanos());
-        addField(
-            doc, keyValue.getKey(), instant, Schema.SchemaFieldType.DATE, "", indexStrategy, 0);
+        addField(doc, keyValue.getKey(), instant, Schema.SchemaFieldType.DATE, "", indexSignal, 0);
         jsonMap.put(keyValue.getKey(), instant.toString());
       } else if (schemaFieldType == Schema.SchemaFieldType.BOOLEAN) {
         addField(
@@ -502,7 +497,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
             keyValue.getVBool(),
             Schema.SchemaFieldType.BOOLEAN,
             "",
-            indexStrategy,
+            indexSignal,
             0);
         jsonMap.put(keyValue.getKey(), keyValue.getVBool());
       } else if (schemaFieldType == Schema.SchemaFieldType.DOUBLE) {
@@ -512,7 +507,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
             keyValue.getVFloat64(),
             Schema.SchemaFieldType.DOUBLE,
             "",
-            indexStrategy,
+            indexSignal,
             0);
         jsonMap.put(keyValue.getKey(), keyValue.getVFloat64());
       } else if (schemaFieldType == Schema.SchemaFieldType.FLOAT) {
@@ -522,7 +517,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
             keyValue.getVFloat32(),
             Schema.SchemaFieldType.FLOAT,
             "",
-            indexStrategy,
+            indexSignal,
             0);
         jsonMap.put(keyValue.getKey(), keyValue.getVFloat32());
       } else if (schemaFieldType == Schema.SchemaFieldType.HALF_FLOAT) {
@@ -532,7 +527,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
             keyValue.getVFloat32(),
             Schema.SchemaFieldType.HALF_FLOAT,
             "",
-            indexStrategy,
+            indexSignal,
             0);
         jsonMap.put(keyValue.getKey(), keyValue.getVFloat32());
       } else if (schemaFieldType == Schema.SchemaFieldType.INTEGER) {
@@ -542,7 +537,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
             keyValue.getVInt32(),
             Schema.SchemaFieldType.INTEGER,
             "",
-            indexStrategy,
+            indexSignal,
             0);
         jsonMap.put(keyValue.getKey(), keyValue.getVInt32());
       } else if (schemaFieldType == Schema.SchemaFieldType.LONG) {
@@ -552,7 +547,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
             keyValue.getVInt64(),
             Schema.SchemaFieldType.LONG,
             "",
-            indexStrategy,
+            indexSignal,
             0);
         jsonMap.put(keyValue.getKey(), keyValue.getVInt64());
       } else if (schemaFieldType == Schema.SchemaFieldType.SCALED_LONG) {
@@ -562,7 +557,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
             keyValue.getVInt64(),
             Schema.SchemaFieldType.LONG,
             "",
-            indexStrategy,
+            indexSignal,
             0);
         jsonMap.put(keyValue.getKey(), keyValue.getVInt64());
       } else if (schemaFieldType == Schema.SchemaFieldType.SHORT) {
@@ -572,7 +567,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
             keyValue.getVInt32(),
             Schema.SchemaFieldType.SHORT,
             "",
-            indexStrategy,
+            indexSignal,
             0);
         jsonMap.put(keyValue.getKey(), keyValue.getVInt32());
       } else if (schemaFieldType == Schema.SchemaFieldType.BYTE) {
@@ -582,7 +577,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
             keyValue.getVInt32(),
             Schema.SchemaFieldType.BYTE,
             "",
-            indexStrategy,
+            indexSignal,
             0);
         jsonMap.put(keyValue.getKey(), keyValue.getVInt32());
       } else if (schemaFieldType == Schema.SchemaFieldType.BINARY) {
@@ -592,7 +587,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
             keyValue.getVBinary(),
             Schema.SchemaFieldType.BINARY,
             "",
-            indexStrategy,
+            indexSignal,
             0);
         jsonMap.put(keyValue.getKey(), keyValue.getVBinary().toStringUtf8());
       } else {
@@ -616,7 +611,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
         msgString,
         Schema.SchemaFieldType.TEXT,
         "",
-        Trace.IndexStrategy.IN_SCHEMA_INDEX,
+        Trace.IndexSignal.IN_SCHEMA_INDEX,
         0);
     if (enableFullTextSearch) {
       addField(
@@ -625,7 +620,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
           msgString,
           Schema.SchemaFieldType.TEXT,
           "",
-          Trace.IndexStrategy.IN_SCHEMA_INDEX,
+          Trace.IndexSignal.IN_SCHEMA_INDEX,
           0);
     }
 

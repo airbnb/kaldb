@@ -42,7 +42,7 @@ public class SpanFormatter {
   public static Trace.KeyValue makeTraceKV(
       String key, Object value, Schema.SchemaFieldType type, Boolean isDynamic) {
     Trace.KeyValue.Builder tagBuilder = Trace.KeyValue.newBuilder();
-    Trace.IndexStrategy indexStrategy = indexStrategy(type, isDynamic);
+    Trace.IndexSignal indexSignal = indexSignal(type, isDynamic);
     tagBuilder.setKey(key);
     try {
       switch (type) {
@@ -106,35 +106,35 @@ public class SpanFormatter {
           tagBuilder.setVBinary(ByteString.copyFrom(value.toString().getBytes()));
         }
       }
-      tagBuilder.setIndexStrategy(indexStrategy);
+      tagBuilder.setIndexSignal(indexSignal);
       return tagBuilder.build();
     } catch (Exception e) {
       tagBuilder.setKey(String.format("failed_%s", key));
       tagBuilder.setFieldType(Schema.SchemaFieldType.KEYWORD);
       tagBuilder.setVStr(value.toString());
-      tagBuilder.setIndexStrategy(Trace.IndexStrategy.DO_NOT_INDEX);
+      tagBuilder.setIndexSignal(Trace.IndexSignal.DO_NOT_INDEX);
       return tagBuilder.build();
     }
   }
 
-  private static Trace.IndexStrategy indexStrategy(Schema.SchemaFieldType type, Boolean isDynamic) {
+  private static Trace.IndexSignal indexSignal(Schema.SchemaFieldType type, Boolean isDynamic) {
     if (isDynamic) {
-      return dynamicIndexStrategy(type);
+      return dynamicIndexSignal(type);
     } else {
-      return inSchemaIndexStrategy(type);
+      return inSchemaIndexSignal(type);
     }
   }
 
-  private static Trace.IndexStrategy inSchemaIndexStrategy(Schema.SchemaFieldType type) {
+  private static Trace.IndexSignal inSchemaIndexSignal(Schema.SchemaFieldType type) {
     return type == Schema.SchemaFieldType.BINARY
-        ? Trace.IndexStrategy.DO_NOT_INDEX
-        : Trace.IndexStrategy.IN_SCHEMA_INDEX;
+        ? Trace.IndexSignal.DO_NOT_INDEX
+        : Trace.IndexSignal.IN_SCHEMA_INDEX;
   }
 
-  private static Trace.IndexStrategy dynamicIndexStrategy(Schema.SchemaFieldType type) {
+  private static Trace.IndexSignal dynamicIndexSignal(Schema.SchemaFieldType type) {
     return type == Schema.SchemaFieldType.BINARY
-        ? Trace.IndexStrategy.DO_NOT_INDEX
-        : Trace.IndexStrategy.DYNAMIC_INDEX;
+        ? Trace.IndexSignal.DO_NOT_INDEX
+        : Trace.IndexSignal.DYNAMIC_INDEX;
   }
 
   public static List<Trace.KeyValue> convertKVtoProto(

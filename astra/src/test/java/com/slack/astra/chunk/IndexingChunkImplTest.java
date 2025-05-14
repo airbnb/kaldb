@@ -657,7 +657,7 @@ public class IndexingChunkImplTest {
             Trace.KeyValue.newBuilder()
                 .setKey("custom.field." + i)
                 .setVStr("value" + i)
-                .setIndexStrategy(Trace.IndexStrategy.DYNAMIC_INDEX)
+                .setIndexSignal(Trace.IndexSignal.DYNAMIC_INDEX)
                 .build());
       }
       Trace.Span spanWithTooManyFields = spanBuilder.build();
