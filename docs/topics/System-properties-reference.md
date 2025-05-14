@@ -86,7 +86,9 @@ defaultValue
 
 ## astra.mapping.dynamicFieldsLimit
 <tldr>experimental</tldr>
-Maximum amount of dynamic fields used indexer service when building a schema.
+Maximum amount of dynamic fields indexed in indexer when building a schema.
+
+Should be lower than astra.mapping.totalFieldsLimit to account for required fields and schema fields.
 
 {style="narrow"}
 defaultValue
