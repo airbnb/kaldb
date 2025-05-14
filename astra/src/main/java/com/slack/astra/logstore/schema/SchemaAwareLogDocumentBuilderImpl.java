@@ -198,7 +198,7 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
       if (numDynamicFields <= MAX_DYNAMIC_FIELDS) {
         fieldDefMap.put(key, newFieldDef);
         indexTypedField(doc, key, value, newFieldDef);
-        LOG.debug(
+        LOG.info(
             "Added new field {} of type {} due to dynamic index strategy, {}/{} dynamic fields added",
             key,
             schemaFieldType,
