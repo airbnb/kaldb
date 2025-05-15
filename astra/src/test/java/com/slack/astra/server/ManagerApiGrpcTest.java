@@ -639,7 +639,7 @@ public class ManagerApiGrpcTest {
     DatasetPartitionMetadata datasetPartitionMetadata =
         latestPartitionConfig(datasetMetadataStore.getSync(datasetName));
     assertThat(datasetPartitionMetadata.getPartitions().size()).isEqualTo(2);
-    assertThat(datasetPartitionMetadata.isUseDedicatedPartition()).isEqualTo(true);
+    assertThat(datasetPartitionMetadata.usesDedicatedPartition()).isEqualTo(true);
     assertThat(getPartitionMetadata("1", "2"))
         .have(dedicatedPartitionsWithCapacity(DEFAULT_MAX_CAPACITY));
     assertThat(getPartitionMetadata("3", "4"))

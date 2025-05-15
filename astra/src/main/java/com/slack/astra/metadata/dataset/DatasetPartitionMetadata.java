@@ -56,7 +56,7 @@ public class DatasetPartitionMetadata {
     return partitions;
   }
 
-  public boolean isUseDedicatedPartition() {
+  public boolean usesDedicatedPartition() {
     return useDedicatedPartition;
   }
 

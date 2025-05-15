@@ -229,7 +229,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
                 .orElse(0L);
 
         boolean useDedicatedPartition =
-            latest.map(DatasetPartitionMetadata::isUseDedicatedPartition).orElse(false);
+            latest.map(DatasetPartitionMetadata::usesDedicatedPartition).orElse(false);
         for (String partitionId :
             latest.map(DatasetPartitionMetadata::getPartitions).orElse(ImmutableList.of())) {
           this.partitionProvisioning.put(
@@ -601,7 +601,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
     if (previousActiveDatasetPartition.isPresent()
         && previousActiveDatasetPartition.get().getPartitions().equals(newPartitionIdsList)
-        && previousActiveDatasetPartition.get().isUseDedicatedPartition()
+        && previousActiveDatasetPartition.get().usesDedicatedPartition()
             == requireDedicatedPartition) {
       return ImmutableList.copyOf(existingPartitions);
     }
@@ -630,7 +630,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               previousActiveDatasetPartition.get().getStartTimeEpochMs(),
               partitionCutoverTime,
               previousActiveDatasetPartition.get().getPartitions(),
-              previousActiveDatasetPartition.get().isUseDedicatedPartition());
+              previousActiveDatasetPartition.get().usesDedicatedPartition());
       builder.add(updatedPreviousActivePartition);
     }
 
