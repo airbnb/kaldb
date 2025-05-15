@@ -51,7 +51,9 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
   public static final long MAX_TIME = Long.MAX_VALUE;
   private final ReplicaRestoreService replicaRestoreService;
-  private final PartitionServiceTypeThing partitionServiceTypeThing; // TODO rename
+  private final PartitionMetadataStore partitionMetadataStore;
+  private final long maxPartitionCapacity;
+  private final int minNumberOfPartitions;
 
   public ManagerApiGrpc(
       DatasetMetadataStore datasetMetadataStore,
@@ -63,12 +65,10 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     this.datasetMetadataStore = datasetMetadataStore;
     this.snapshotMetadataStore = snapshotMetadataStore;
     this.replicaRestoreService = replicaRestoreService;
-    this.partitionServiceTypeThing =
-        new PartitionServiceTypeThing(
-            partitionMetadataStore,
-            datasetMetadataStore,
-            minNumberOfPartitions,
-            maxPartitionCapacity);
+    this.partitionMetadataStore = partitionMetadataStore;
+
+    this.minNumberOfPartitions = minNumberOfPartitions;
+    this.maxPartitionCapacity = maxPartitionCapacity;
   }
 
   /** Initializes a new dataset in the metadata store with no initial allocated capacity */
@@ -177,36 +177,13 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     }
   }
 
-  // instead of updating PMDs, they are things that can be produced and are used but can't be
-  // updated.
-  private static class PartitionServiceTypeThing {
-    private final PartitionMetadataStore partitionMetadataStore;
-    private final DatasetMetadataStore datasetMetadataStore;
-    private final int minNumberOfPartitions;
-    private final long maxPartitionCapacity;
+  public List<PartitionMetadata> getPMDs() {
+    return createPDE().getLivePMDs();
+  }
 
-    public PartitionServiceTypeThing(
-        PartitionMetadataStore partitionMetadataStore,
-        DatasetMetadataStore datasetMetadataStore,
-        int minNumberOfPartitions,
-        long maxPartitionCapacity) {
-      this.partitionMetadataStore = partitionMetadataStore;
-      this.datasetMetadataStore = datasetMetadataStore;
-      this.minNumberOfPartitions = minNumberOfPartitions;
-      this.maxPartitionCapacity = maxPartitionCapacity;
-    }
-
-    public List<PartitionMetadata> getPMDs() {
-      return createPDE().getLivePMDs();
-    }
-
-    public PartitionDataEncapsolator createPDE() {
-      return PartitionDataEncapsolator.make(
-          datasetMetadataStore,
-          partitionMetadataStore,
-          minNumberOfPartitions,
-          maxPartitionCapacity);
-    }
+  public PartitionDataEncapsolator createPDE() {
+    return PartitionDataEncapsolator.make(
+        datasetMetadataStore, partitionMetadataStore, minNumberOfPartitions, maxPartitionCapacity);
   }
 
   // need to know
@@ -215,13 +192,13 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   // - how many datasets are using it
   // - how much throughput is assigned to it and how much is left
   private static class PartitionDataEncapsolator {
-    private final List<PartitionMetadata> partitionMetadataList;
     private final long maxPartitionCapacity;
+    private final long minNumberOfPartitions;
+    private final List<PartitionMetadata> partitionMetadataList;
     private final List<String> partitionIds = new ArrayList<>();
     private final Map<String, Long> partitionProvisioning = new HashMap<>();
     private final Map<String, List<String>> partitionDatasets = new HashMap<>();
     private final Map<String, List<String>> partitionDedication = new HashMap<>();
-    private final long minNumberOfPartitions;
 
     public PartitionDataEncapsolator(
         List<DatasetMetadata> datasetMetadataList,
@@ -709,7 +686,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       responseObserver.onNext(
           Metadata.ListPartitionMetadataResponse.newBuilder()
               .addAllPartitionMetadata(
-                  partitionServiceTypeThing.getPMDs().stream()
+                  getPMDs().stream()
                       .map(PartitionMetadataSerializer::toPartitionMetadataProto)
                       .toList())
               .build());
@@ -730,7 +707,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
    */
   public List<String> autoAssignPartition(
       DatasetMetadata datasetMetadata, long throughputBytes, boolean requireDedicatedPartition) {
-    PartitionDataEncapsolator partitionDataEncapsolator = partitionServiceTypeThing.createPDE();
+    PartitionDataEncapsolator partitionDataEncapsolator = createPDE();
     List<String> proposedPartitionIds =
         proposeNewPartitions(
             datasetMetadata, throughputBytes, requireDedicatedPartition, partitionDataEncapsolator);
