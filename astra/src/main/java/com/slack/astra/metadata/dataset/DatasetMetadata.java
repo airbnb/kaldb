@@ -1,12 +1,14 @@
 package com.slack.astra.metadata.dataset;
 
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.slack.astra.server.ManagerApiGrpc.MAX_TIME;
 
 import com.google.common.collect.ImmutableList;
 import com.slack.astra.metadata.core.AstraMetadata;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -128,5 +130,18 @@ public class DatasetMetadata extends AstraMetadata {
             errorMessage);
       }
     }
+  }
+
+  public Optional<DatasetPartitionMetadata> getLatestPartitionMetadata() {
+    return getPartitionConfigs().stream()
+        .filter(
+            datasetPartitionMetadata -> datasetPartitionMetadata.getEndTimeEpochMs() == MAX_TIME)
+        .findFirst();
+  }
+
+  public long latestPerPartitionThroughput() {
+    return getLatestPartitionMetadata()
+        .map(p -> Math.ceilDiv(getThroughputBytes(), p.getPartitions().size()))
+        .orElse(0L);
   }
 }

@@ -67,12 +67,13 @@ public class DatasetPartitionMetadata {
     DatasetPartitionMetadata that = (DatasetPartitionMetadata) o;
     return startTimeEpochMs == that.startTimeEpochMs
         && endTimeEpochMs == that.endTimeEpochMs
-        && partitions.equals(that.partitions);
+        && partitions.equals(that.partitions)
+        && useDedicatedPartition == that.useDedicatedPartition;
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(startTimeEpochMs, endTimeEpochMs, partitions);
+    return Objects.hash(startTimeEpochMs, endTimeEpochMs, partitions, useDedicatedPartition);
   }
 
   @Override
@@ -84,6 +85,8 @@ public class DatasetPartitionMetadata {
         + endTimeEpochMs
         + ", partitions="
         + partitions
+        + ", useDedicatedPartition="
+        + useDedicatedPartition
         + '}';
   }
 
@@ -92,7 +95,8 @@ public class DatasetPartitionMetadata {
     return new DatasetPartitionMetadata(
         datasetPartitionMetadata.getStartTimeEpochMs(),
         datasetPartitionMetadata.getEndTimeEpochMs(),
-        datasetPartitionMetadata.getPartitionsList());
+        datasetPartitionMetadata.getPartitionsList(),
+        datasetPartitionMetadata.getUsingDedicatedPartition());
   }
 
   public static Metadata.DatasetPartitionMetadata toDatasetPartitionMetadataProto(
@@ -100,6 +104,7 @@ public class DatasetPartitionMetadata {
     return Metadata.DatasetPartitionMetadata.newBuilder()
         .setStartTimeEpochMs(metadata.startTimeEpochMs)
         .setEndTimeEpochMs(metadata.endTimeEpochMs)
+        .setUsingDedicatedPartition(metadata.useDedicatedPartition)
         .addAllPartitions(metadata.partitions)
         .build();
   }

@@ -29,10 +29,8 @@ service ManagerApiService {
   // Resets the partition offset data to allow using a newer offset for a partition ID
   rpc ResetPartitionData(ResetPartitionDataRequest) returns (ResetPartitionDataResponse) {}
 
-  // Create Partition in partition map
-  rpc CreatePartition(CreatePartitionRequest) returns (PartitionMetadata) {}
-
-  // List of partitions in partition_map
+  // List of partitions used by astra along with usage metadata
+  // TODO maybe include time in the request so you could get a snapshot of the partitions at a given time
   rpc ListPartition(ListPartitionRequest) returns (ListPartitionMetadataResponse) {}
 }
 
@@ -118,12 +116,7 @@ message ResetPartitionDataResponse {
 
 message CreatePartitionRequest {
   string partition_id = 1;
-
-  int64 provisioned_capacity = 2;
-
-  int64 max_capacity = 3;
-
-  bool dedicated_partition = 4;
+//  int64 max_capacity = 3;
 }
 
 message ListPartitionRequest {}
