@@ -660,6 +660,16 @@ public class IndexingChunkImplTest {
                 .setIndexSignal(Trace.IndexSignal.DYNAMIC_INDEX)
                 .build());
       }
+
+      for (int i = 0; i < 100; i++) {
+        spanBuilder.addTags(
+            Trace.KeyValue.newBuilder()
+                .setKey("schema.field." + i)
+                .setVStr("value" + i)
+                .setIndexSignal(Trace.IndexSignal.IN_SCHEMA_INDEX)
+                .build());
+      }
+
       Trace.Span spanWithTooManyFields = spanBuilder.build();
 
       // Add and commit the message
@@ -683,6 +693,13 @@ public class IndexingChunkImplTest {
       assertThat(dynamicFieldsInSchema)
           .withFailMessage("Schema should not exceed 1500 fields but had %s", dynamicFieldsInSchema)
           .isLessThanOrEqualTo(1500);
+
+      long schemaFieldsInSchema =
+          chunk.getSchema().keySet().stream().filter(key -> key.startsWith("schema.field")).count();
+
+      assertThat(schemaFieldsInSchema)
+          .withFailMessage("Schema should not exceed 1500 fields but had %s", dynamicFieldsInSchema)
+          .isLessThanOrEqualTo(100);
     }
 
     @SuppressWarnings("OptionalGetWithoutIsPresent")

@@ -218,9 +218,12 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
         && !schemaFieldType.equals(Schema.SchemaFieldType.TEXT);
   }
 
-  private boolean isIndexed(Schema.SchemaFieldType schemaFieldType, String fieldName) {
+  private boolean isIndexed(
+      Schema.SchemaFieldType schemaFieldType, String fieldName, Trace.IndexSignal indexSignal) {
+    boolean shouldIndex = !indexSignal.equals(Trace.IndexSignal.DO_NOT_INDEX);
     return !fieldName.equals(LogMessage.SystemField.SOURCE.fieldName)
-        && !schemaFieldType.equals(Schema.SchemaFieldType.BINARY);
+        && !schemaFieldType.equals(Schema.SchemaFieldType.BINARY)
+        && shouldIndex;
   }
 
   // In the future, we need this to take SchemaField instead of FieldType
@@ -230,12 +233,11 @@ public class SchemaAwareLogDocumentBuilderImpl implements DocumentBuilder {
   // be dynamically indexed.
   private LuceneFieldDef getLuceneFieldDef(
       String key, Schema.SchemaFieldType schemaFieldType, Trace.IndexSignal indexSignal) {
-    boolean shouldIndex = !indexSignal.equals(Trace.IndexSignal.DO_NOT_INDEX);
     return new LuceneFieldDef(
         key,
         schemaFieldType.name(),
         isStored(key),
-        isIndexed(schemaFieldType, key) && shouldIndex,
+        isIndexed(schemaFieldType, key, indexSignal),
         isDocValueField(schemaFieldType, key));
   }
 
