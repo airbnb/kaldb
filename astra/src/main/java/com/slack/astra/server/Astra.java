@@ -283,12 +283,11 @@ public class Astra {
       DatasetMetadataStore datasetMetadataStore = new DatasetMetadataStore(curatorFramework, true);
 
       long maxPartitionCapacity =
-          astraConfig.getManagerConfig().getManagerApiConfig().getMaxPartitionCapacity();
+          astraConfig.getManagerConfig().getPartitionAssignmentConfig().getMaxPartitionCapacity();
       int minNumberOfPartitions =
-          astraConfig.getManagerConfig().getManagerApiConfig().getMinNumberOfPartitions();
+          astraConfig.getManagerConfig().getPartitionAssignmentConfig().getMinNumberOfPartitions();
       PartitionMetadataStore partitionMetadataStore =
-          new PartitionMetadataStore(
-              curatorFramework, true, maxPartitionCapacity, minNumberOfPartitions);
+          new PartitionMetadataStore(curatorFramework, true);
 
       HpaMetricMetadataStore hpaMetricMetadataStore =
           new HpaMetricMetadataStore(curatorFramework, true);
@@ -308,7 +307,9 @@ public class Astra {
                       datasetMetadataStore,
                       partitionMetadataStore,
                       snapshotMetadataStore,
-                      replicaRestoreService))
+                      replicaRestoreService,
+                      minNumberOfPartitions,
+                      maxPartitionCapacity))
               .build();
       services.add(armeriaService);
 

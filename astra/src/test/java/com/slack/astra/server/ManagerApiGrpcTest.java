@@ -86,8 +86,7 @@ public class ManagerApiGrpcTest {
 
     curatorFramework = CuratorBuilder.build(meterRegistry, zkConfig);
     datasetMetadataStore = spy(new DatasetMetadataStore(curatorFramework, true));
-    partitionMetadataStore =
-        spy(new PartitionMetadataStore(curatorFramework, true, DEFAULT_MAX_CAPACITY, 2));
+    partitionMetadataStore = spy(new PartitionMetadataStore(curatorFramework, true));
     snapshotMetadataStore = spy(new SnapshotMetadataStore(curatorFramework));
     replicaMetadataStore = spy(new ReplicaMetadataStore(curatorFramework));
 
@@ -115,7 +114,9 @@ public class ManagerApiGrpcTest {
                     datasetMetadataStore,
                     partitionMetadataStore,
                     snapshotMetadataStore,
-                    replicaRestoreService))
+                    replicaRestoreService,
+                    2,
+                    DEFAULT_MAX_CAPACITY))
             .build()
             .start());
     ManagedChannel channel =

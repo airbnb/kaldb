@@ -57,12 +57,18 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       DatasetMetadataStore datasetMetadataStore,
       PartitionMetadataStore partitionMetadataStore,
       SnapshotMetadataStore snapshotMetadataStore,
-      ReplicaRestoreService replicaRestoreService) {
+      ReplicaRestoreService replicaRestoreService,
+      int minNumberOfPartitions,
+      long maxPartitionCapacity) {
     this.datasetMetadataStore = datasetMetadataStore;
     this.snapshotMetadataStore = snapshotMetadataStore;
     this.replicaRestoreService = replicaRestoreService;
     this.partitionServiceTypeThing =
-        new PartitionServiceTypeThing(partitionMetadataStore, datasetMetadataStore);
+        new PartitionServiceTypeThing(
+            partitionMetadataStore,
+            datasetMetadataStore,
+            minNumberOfPartitions,
+            maxPartitionCapacity);
   }
 
   /** Initializes a new dataset in the metadata store with no initial allocated capacity */
@@ -174,14 +180,20 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   // instead of updating PMDs, they are things that can be produced and are used but can't be
   // updated.
   private static class PartitionServiceTypeThing {
-
     private final PartitionMetadataStore partitionMetadataStore;
     private final DatasetMetadataStore datasetMetadataStore;
+    private final int minNumberOfPartitions;
+    private final long maxPartitionCapacity;
 
     public PartitionServiceTypeThing(
-        PartitionMetadataStore partitionMetadataStore, DatasetMetadataStore datasetMetadataStore) {
+        PartitionMetadataStore partitionMetadataStore,
+        DatasetMetadataStore datasetMetadataStore,
+        int minNumberOfPartitions,
+        long maxPartitionCapacity) {
       this.partitionMetadataStore = partitionMetadataStore;
       this.datasetMetadataStore = datasetMetadataStore;
+      this.minNumberOfPartitions = minNumberOfPartitions;
+      this.maxPartitionCapacity = maxPartitionCapacity;
     }
 
     public List<PartitionMetadata> getPMDs() {
@@ -189,7 +201,11 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     }
 
     public PartitionDataEncapsolator createPDE() {
-      return PartitionDataEncapsolator.make(datasetMetadataStore, partitionMetadataStore);
+      return PartitionDataEncapsolator.make(
+          datasetMetadataStore,
+          partitionMetadataStore,
+          minNumberOfPartitions,
+          maxPartitionCapacity);
     }
   }
 
@@ -200,6 +216,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   // - how much throughput is assigned to it and how much is left
   private static class PartitionDataEncapsolator {
     private final List<PartitionMetadata> partitionMetadataList;
+    private final long maxPartitionCapacity;
     private final List<String> partitionIds = new ArrayList<>();
     private final Map<String, Long> partitionProvisioning = new HashMap<>();
     private final Map<String, List<String>> partitionDatasets = new HashMap<>();
@@ -209,9 +226,11 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     public PartitionDataEncapsolator(
         List<DatasetMetadata> datasetMetadataList,
         List<PartitionMetadata> partitionMetadataList,
-        long minNumberOfPartitions) {
+        long minNumberOfPartitions,
+        long maxPartitionCapacity) {
       this.minNumberOfPartitions = minNumberOfPartitions;
       this.partitionMetadataList = partitionMetadataList;
+      this.maxPartitionCapacity = maxPartitionCapacity;
       for (PartitionMetadata partitionMetadata : partitionMetadataList) {
         this.partitionIds.add(partitionMetadata.getPartitionID());
         this.partitionProvisioning.put(partitionMetadata.getPartitionID(), 0L);
@@ -244,11 +263,15 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     }
 
     private static PartitionDataEncapsolator make(
-        DatasetMetadataStore datasetMetadataStore, PartitionMetadataStore partitionMetadataStore) {
+        DatasetMetadataStore datasetMetadataStore,
+        PartitionMetadataStore partitionMetadataStore,
+        int minNumberOfPartitions,
+        long maxPartitionCapacity) {
       return new PartitionDataEncapsolator(
           datasetMetadataStore.listSync(),
           partitionMetadataStore.listSync(),
-          partitionMetadataStore.minNumberOfPartitions);
+          minNumberOfPartitions,
+          maxPartitionCapacity);
     }
 
     public boolean hasNoPartitionsDeclared() {
@@ -259,7 +282,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       return partitionMetadataList.stream()
           .mapToLong(PartitionMetadata::getMaxCapacity)
           .min()
-          .orElseThrow();
+          .orElse(maxPartitionCapacity);
     }
 
     public List<String> currentEmptyPartitions() {
