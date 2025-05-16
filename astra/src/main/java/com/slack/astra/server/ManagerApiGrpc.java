@@ -180,10 +180,10 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   }
 
   private List<PartitionMetadata> getCurrentPartitionMetadata() {
-    return createPDE().getLivePMDs();
+    return createPartitionMetadataFromDatasetConfigs().getLivePMDs();
   }
 
-  private PartitionMetadataFromDatasetConfigs createPDE() {
+  private PartitionMetadataFromDatasetConfigs createPartitionMetadataFromDatasetConfigs() {
     return new PartitionMetadataFromDatasetConfigs(
         datasetMetadataStore.listSync(),
         partitionMetadataStore.listSync(),
@@ -568,7 +568,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
    */
   public List<String> autoAssignPartition(
       DatasetMetadata datasetMetadata, long throughputBytes, boolean requireDedicatedPartition) {
-    PartitionMetadataFromDatasetConfigs partitionMetadataFromDatasetConfigs = createPDE();
+    PartitionMetadataFromDatasetConfigs partitionMetadataFromDatasetConfigs = createPartitionMetadataFromDatasetConfigs();
 
     long currentThroughputBytes = datasetMetadata.getThroughputBytes();
 
