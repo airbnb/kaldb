@@ -6,8 +6,6 @@ import org.apache.zookeeper.CreateMode;
 
 public class PartitionMetadataStore extends AstraMetadataStore<PartitionMetadata> {
   public static final String PARTITION_MAP_METADATA_STORE_ZK_PATH = "/partition_map";
-  // TODO: add to config
-  public static final long PARTITION_START_TIME_OFFSET = 15 * 60 * 1000; // 15 minutes
 
   public PartitionMetadataStore(AsyncCuratorFramework curator, boolean shouldCache) {
     super(
