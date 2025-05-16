@@ -664,7 +664,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
                 .limit(proposedPartitionCt)
                 .map(PartitionMetadata::getPartitionID)
                 .toList();
-        if (lastProposal.size() > minNumNeededPartitions
+        if (lastProposal.size() >= minNumNeededPartitions
             && lastProposal.size() == proposedPartitionCt) {
           return lastProposal;
         }

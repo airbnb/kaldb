@@ -1761,119 +1761,118 @@ public class ManagerApiGrpcTest {
   }
 
   private static Consumer<StatusRuntimeException> withGrpcStatusAndDescription(
-    Status expectedStatus, String expectedDescription) {
+      Status expectedStatus, String expectedDescription) {
     return e -> {
       assertThat(e.getStatus())
-        .has(
-          new Condition<>(
-            s -> s.getCode() == expectedStatus.getCode(),
-            "expected code %s",
-            expectedStatus.getCode()))
-        .has(
-          new Condition<>(
-            s -> s.getDescription().equals(expectedDescription),
-            "expected description %s",
-            expectedDescription));
+          .has(
+              new Condition<>(
+                  s -> s.getCode() == expectedStatus.getCode(),
+                  "expected code %s",
+                  expectedStatus.getCode()))
+          .has(
+              new Condition<>(
+                  s -> s.getDescription().equals(expectedDescription),
+                  "expected description %s",
+                  expectedDescription));
     };
   }
 
   private ManagerApi.UpdatePartitionAssignmentResponse updatePartitionAssignmentGRPC(
-    String datasetName, long throughputBytes) {
+      String datasetName, long throughputBytes) {
     return updatePartitionAssignmentGRPC(datasetName, throughputBytes, false);
   }
 
   private ManagerApi.UpdatePartitionAssignmentResponse updatePartitionAssignmentGRPC(
-    String datasetName, long throughputBytes, boolean requireDedicatedPartition) {
+      String datasetName, long throughputBytes, boolean requireDedicatedPartition) {
     return managerApiStub.updatePartitionAssignment(
-      ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
-        .setName(datasetName)
-        .setThroughputBytes(throughputBytes)
-        .setRequireDedicatedPartition(requireDedicatedPartition)
-        .build());
+        ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
+            .setName(datasetName)
+            .setThroughputBytes(throughputBytes)
+            .setRequireDedicatedPartition(requireDedicatedPartition)
+            .build());
   }
 
   private DatasetPartitionMetadata latestPartitionConfig(DatasetMetadata datasetMetadata) {
     return datasetMetadata.getPartitionConfigs().stream()
-      .filter(p -> p.getEndTimeEpochMs() == MAX_TIME)
-      .findFirst()
-      .orElseThrow(() -> new RuntimeException("No partition configs found"));
+        .filter(p -> p.getEndTimeEpochMs() == MAX_TIME)
+        .findFirst()
+        .orElseThrow(() -> new RuntimeException("No partition configs found"));
   }
 
   private boolean datasetHasPartitionConfigAfterTime(String datasetName, long nowMs) {
     return datasetMetadataStore.listSync().stream()
-      .anyMatch(
-        d ->
-          d.getName().equals(datasetName)
-            && d.getPartitionConfigs().stream()
-            .anyMatch(p -> p.getStartTimeEpochMs() >= nowMs));
+        .anyMatch(
+            d ->
+                d.getName().equals(datasetName)
+                    && d.getPartitionConfigs().stream()
+                        .anyMatch(p -> p.getStartTimeEpochMs() >= nowMs));
   }
 
   private Metadata.DatasetMetadata getDatasetMetadataGRPC(String datasetName) {
     return managerApiStub.getDatasetMetadata(
-      ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName).build());
+        ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName).build());
   }
 
   private Metadata.DatasetMetadata createEmptyDatasetGRPC(String datasetName, String datasetOwner) {
     return managerApiStub.createDatasetMetadata(
-      ManagerApi.CreateDatasetMetadataRequest.newBuilder()
-        .setName(datasetName)
-        .setOwner(datasetOwner)
-        .build());
+        ManagerApi.CreateDatasetMetadataRequest.newBuilder()
+            .setName(datasetName)
+            .setOwner(datasetOwner)
+            .build());
   }
 
-
   private static Condition<Metadata.DatasetMetadata> latestPartitionConfigWithIndexOf(
-    int partitionConfigIndex, long nowMs) {
+      int partitionConfigIndex, long nowMs) {
     return new Condition<>(
-      d ->
-        d.getPartitionConfigsList().get(partitionConfigIndex).getEndTimeEpochMs() == MAX_TIME
-          && d.getPartitionConfigsList().get(partitionConfigIndex).getStartTimeEpochMs()
-          >= nowMs,
-      "partition config at index %s is latest (endtime is max and start is after now)");
+        d ->
+            d.getPartitionConfigsList().get(partitionConfigIndex).getEndTimeEpochMs() == MAX_TIME
+                && d.getPartitionConfigsList().get(partitionConfigIndex).getStartTimeEpochMs()
+                    >= nowMs,
+        "partition config at index %s is latest (endtime is max and start is after now)");
   }
 
   private static Condition<Metadata.DatasetMetadata> oldPartitionConfigWithIndexOf(
-    int partitionConfigIndex) {
+      int partitionConfigIndex) {
     return new Condition<>(
-      d -> d.getPartitionConfigsList().get(partitionConfigIndex).getEndTimeEpochMs() < MAX_TIME,
-      "partition config at index %s is not latest (endtime is less than max)");
+        d -> d.getPartitionConfigsList().get(partitionConfigIndex).getEndTimeEpochMs() < MAX_TIME,
+        "partition config at index %s is not latest (endtime is less than max)");
   }
 
   private static Condition<Metadata.DatasetMetadata> partitionsForIndexOf(
-    int partitionConfigIndex, List<String> expectedPartitions) {
+      int partitionConfigIndex, List<String> expectedPartitions) {
     return new Condition<>(
-      d ->
-        d.getPartitionConfigsList()
-          .get(partitionConfigIndex)
-          .getPartitionsList()
-          .equals(expectedPartitions),
-      "partitionConfigsList %s of %s",
-      partitionConfigIndex,
-      expectedPartitions);
+        d ->
+            d.getPartitionConfigsList()
+                .get(partitionConfigIndex)
+                .getPartitionsList()
+                .equals(expectedPartitions),
+        "partitionConfigsList %s of %s",
+        partitionConfigIndex,
+        expectedPartitions);
   }
 
   private static Condition<Metadata.DatasetMetadata> partitionConfigsSizeOf(
-    int expectedPartitionConfigSize) {
+      int expectedPartitionConfigSize) {
     return new Condition<>(
-      d -> d.getPartitionConfigsList().size() == expectedPartitionConfigSize,
-      "partitionConfigsList size of %s",
-      expectedPartitionConfigSize);
+        d -> d.getPartitionConfigsList().size() == expectedPartitionConfigSize,
+        "partitionConfigsList size of %s",
+        expectedPartitionConfigSize);
   }
 
   private static Condition<Metadata.DatasetMetadata> throughputBytesOf(long expectedThroughput) {
     return new Condition<>(
-      d -> d.getThroughputBytes() == expectedThroughput,
-      "throughputBytes should be %s",
-      expectedThroughput);
+        d -> d.getThroughputBytes() == expectedThroughput,
+        "throughputBytes should be %s",
+        expectedThroughput);
   }
 
   private static PartitionMetadata createDedicatedPartitionMetadata(
-    String partitionNumber, long provisionedCapacity) {
+      String partitionNumber, long provisionedCapacity) {
     return new PartitionMetadata(partitionNumber, provisionedCapacity, DEFAULT_MAX_CAPACITY, true);
   }
 
   private static PartitionMetadata createSharedPartitionMetadata(
-    String partitionNumber, long provisionedCapacity) {
+      String partitionNumber, long provisionedCapacity) {
     return new PartitionMetadata(partitionNumber, provisionedCapacity, DEFAULT_MAX_CAPACITY, false);
   }
 
