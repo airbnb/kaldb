@@ -992,59 +992,14 @@ public class ManagerApiGrpcTest {
         .have(sharedPartitionsWithCapacity(expectedNewProvisionedCapacity));
   }
 
-  private Condition<? super PartitionMetadata> dedicatedPartitionsWithCapacity(
-      long provisionedCapacity) {
-    return partitionsWithCapacityAndDedicated(provisionedCapacity, true);
-  }
-
-  private Condition<? super PartitionMetadata> sharedPartitionsWithCapacity(
-      long provisionedCapacity) {
-    return partitionsWithCapacityAndDedicated(provisionedCapacity, false);
-  }
-
-  private Condition<? super PartitionMetadata> partitionsWithCapacityAndDedicated(
-      long provisionedCapacity, boolean dedicated) {
-    return new Condition<>(
-        p -> p.getProvisionedCapacity() == provisionedCapacity && p.dedicatedPartition == dedicated,
-        (dedicated ? "dedicated" : "shared") + " partition with capacity " + provisionedCapacity);
-  }
-
-  private List<PartitionMetadata> getPartitionMetadata(String... partitionIds) {
-    //
-    Metadata.ListPartitionMetadataResponse listPartitionMetadataResponse =
-        managerApiStub.listPartition(ManagerApi.ListPartitionRequest.newBuilder().build());
-    List<PartitionMetadata> partitionMetadataList =
-        listPartitionMetadataResponse.getPartitionMetadataList().stream()
-            .map(PartitionMetadataSerializer::fromPartitionMetadataProto)
-            .toList();
-    return partitionMetadataList.stream()
-        .filter(p -> Arrays.asList(partitionIds).contains(p.getPartitionID()))
-        .toList();
-    // PartitionMetadataSerializer.fromPartitionMetadataProto
-    // return Arrays.stream(partitionIds).map(partitionMetadataStore::getSync).toList();
-  }
-
-  private void createPartitions(List<String> usedExistingPartitions, int provisionedCapacity) {
-    for (String number : usedExistingPartitions) {
-      partitionMetadataStore.createSync(createSharedPartitionMetadata(number, provisionedCapacity));
-    }
-  }
-
-  private void createDedicatedPartitions(
-      List<String> usedExistingPartitions, int provisionedCapacity) {
-    for (String number : usedExistingPartitions) {
-      partitionMetadataStore.createSync(
-          createDedicatedPartitionMetadata(number, provisionedCapacity));
-    }
-  }
-
   @Test
   public void shouldAutoAssign2NoPartitions() {
     createEmptyDatasetGRPC("testDataset", "testOwner");
     assertThatThrownBy(() -> updatePartitionAssignmentGRPC("testDataset", 10))
         .isInstanceOfSatisfying(
             io.grpc.StatusRuntimeException.class,
-            withGrpcStatusAndDescription(Status.FAILED_PRECONDITION, "no partitions to assign to"));
+            withGrpcStatusAndDescription(
+                Status.FAILED_PRECONDITION, "Needed 2 partitions with enough capacity, found 0"));
   }
 
   @Test
@@ -1057,7 +1012,7 @@ public class ManagerApiGrpcTest {
             io.grpc.StatusRuntimeException.class,
             withGrpcStatusAndDescription(
                 Status.FAILED_PRECONDITION,
-                "Needed 2 partitions with enough capacity, found 0: []"));
+                "Needed 2 partitions with enough capacity, found 1: [1]"));
   }
 
   @Test
@@ -1821,63 +1776,52 @@ public class ManagerApiGrpcTest {
     replicaRestoreService.stopAsync();
   }
 
-  //  @Test
-  //  public void shouldCreateAndGetNewPartitionOnlyPartitionId() {
-  //    // a newly created partition should be returned from the API and be in the metadata store
-  //    String partitionId = "1";
-  //
-  //    Metadata.PartitionMetadata createdPartition =
-  //        managerApiStub.createPartition(
-  //            ManagerApi.CreatePartitionRequest.newBuilder().setPartitionId(partitionId).build());
-  //
-  //    assertThat(createdPartition.getPartitionId()).isEqualTo(partitionId);
-  //    assertThat(createdPartition.getProvisionedCapacity()).isEqualTo(0);
-  //    assertThat(createdPartition.getMaxCapacity()).isEqualTo(5000000);
-  //    assertThat(createdPartition.getDedicatedPartition()).isEqualTo(false);
-  //
-  //    assertThat(partitionMetadataStore.getSync(partitionId))
-  //        .isEqualTo(createSharedPartitionMetadata(partitionId));
-  //  }
-  //
-  //  @Test
-  //  public void shouldCreateAndGetNewPartition() {
-  //    String partitionId = "1";
-  //    long provisionedCapacity = 1000000;
-  //    boolean dedicatedPartition = false;
-  //
-  //    Metadata.PartitionMetadata createdPartition =
-  //        managerApiStub.createPartition(
-  //            ManagerApi.CreatePartitionRequest.newBuilder()
-  //                .setPartitionId(partitionId)
-  //                .setProvisionedCapacity(provisionedCapacity)
-  //                .setDedicatedPartition(dedicatedPartition)
-  //                .build());
-  //
-  //    assertThat(createdPartition.getPartitionId()).isEqualTo(partitionId);
-  //    assertThat(createdPartition.getProvisionedCapacity()).isEqualTo(provisionedCapacity);
-  //    assertThat(createdPartition.getMaxCapacity()).isEqualTo(DEFAULT_MAX_CAPACITY);
-  //    assertThat(createdPartition.getDedicatedPartition()).isEqualTo(dedicatedPartition);
-  //
-  //    PartitionMetadata partitionMetadata = partitionMetadataStore.getSync(partitionId);
-  //    assertThat(partitionMetadata)
-  //        .isEqualTo(createSharedPartitionMetadata(partitionId, provisionedCapacity));
-  //  }
+  @Test
+  public void shouldCreateAndGetNewPartitionOnlyPartitionId() {
+    // a newly created partition should be returned from the API and be in the metadata store
+    String partitionId = "1";
 
-  //  @Test
-  //  public void shouldUpdateExistingPartition() {
-  //    partitionMetadataStore.createSync(createSharedPartitionMetadata("1", 1000000));
-  //
-  //    Metadata.PartitionMetadata partitionMetadata =
-  //        managerApiStub.createPartition(
-  //            ManagerApi.CreatePartitionRequest.newBuilder()
-  //                .setPartitionId("1")
-  //                .setDedicatedPartition(true)
-  //                .build());
-  //
-  //    assertThat(partitionMetadata.getPartitionId()).isEqualTo("1");
-  //    assertThat(partitionMetadata.getProvisionedCapacity()).isEqualTo(1000000);
-  //    assertThat(partitionMetadata.getDedicatedPartition()).isEqualTo(true);
-  //  }
+    Metadata.PartitionMetadata createdPartition =
+        managerApiStub.createPartition(
+            ManagerApi.CreatePartitionRequest.newBuilder().setPartitionId(partitionId).build());
+
+    assertThat(createdPartition.getPartitionId()).isEqualTo(partitionId);
+    assertThat(createdPartition.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(createdPartition.getMaxCapacity()).isEqualTo(0);
+    assertThat(createdPartition.getDedicatedPartition()).isEqualTo(false);
+
+    assertThat(partitionMetadataStore.getSync(partitionId))
+        .isEqualTo(createSharedPartitionMetadata(partitionId));
+  }
+
+  @Test
+  public void shouldCreateAndGetNewPartition() {
+    String partitionId = "1";
+
+    Metadata.PartitionMetadata createdPartition =
+        managerApiStub.createPartition(
+            ManagerApi.CreatePartitionRequest.newBuilder().setPartitionId(partitionId).build());
+
+    assertThat(createdPartition.getPartitionId()).isEqualTo(partitionId);
+
+    PartitionMetadata partitionMetadata = partitionMetadataStore.getSync(partitionId);
+    assertThat(partitionMetadata).isEqualTo(createSharedPartitionMetadata(partitionId, 0));
+  }
+
+  @Test
+  public void shouldNotCreateNewPartitionWhenExistingPartition() {
+    partitionMetadataStore.createSync(createSharedPartitionMetadata("1", 1000000));
+
+    Metadata.PartitionMetadata partitionMetadata =
+        managerApiStub.createPartition(
+            ManagerApi.CreatePartitionRequest.newBuilder().setPartitionId("1").build());
+
+    assertThat(partitionMetadata.getPartitionId()).isEqualTo("1");
+
+    Metadata.ListPartitionMetadataResponse listPartitionMetadataResponse =
+        managerApiStub.listPartition(ManagerApi.ListPartitionRequest.newBuilder().build());
+    assertThat(listPartitionMetadataResponse.getPartitionMetadataList().size()).isEqualTo(1);
+  }
 
   @Test
   public void shouldListPartition() {
@@ -1986,5 +1930,45 @@ public class ManagerApiGrpcTest {
     PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
     assertThat(partitionMetadata2.getProvisionedCapacity()).isEqualTo(4000000);
     assertThat(partitionMetadata2.getDedicatedPartition()).isEqualTo(true);
+  }
+
+  private Condition<? super PartitionMetadata> dedicatedPartitionsWithCapacity(
+      long provisionedCapacity) {
+    return partitionsWithCapacityAndDedicated(provisionedCapacity, true);
+  }
+
+  private Condition<? super PartitionMetadata> sharedPartitionsWithCapacity(
+      long provisionedCapacity) {
+    return partitionsWithCapacityAndDedicated(provisionedCapacity, false);
+  }
+
+  private Condition<? super PartitionMetadata> partitionsWithCapacityAndDedicated(
+      long provisionedCapacity, boolean dedicated) {
+    return new Condition<>(
+        p -> p.getProvisionedCapacity() == provisionedCapacity && p.dedicatedPartition == dedicated,
+        (dedicated ? "dedicated" : "shared") + " partition with capacity " + provisionedCapacity);
+  }
+
+  private List<PartitionMetadata> getPartitionMetadata(String... partitionIds) {
+    Metadata.ListPartitionMetadataResponse listPartitionMetadataResponse =
+        managerApiStub.listPartition(ManagerApi.ListPartitionRequest.newBuilder().build());
+    return listPartitionMetadataResponse.getPartitionMetadataList().stream()
+        .map(PartitionMetadataSerializer::fromPartitionMetadataProto)
+        .filter(p -> Arrays.asList(partitionIds).contains(p.getPartitionID()))
+        .toList();
+  }
+
+  private void createPartitions(List<String> usedExistingPartitions, int provisionedCapacity) {
+    for (String number : usedExistingPartitions) {
+      partitionMetadataStore.createSync(createSharedPartitionMetadata(number, provisionedCapacity));
+    }
+  }
+
+  private void createDedicatedPartitions(
+      List<String> usedExistingPartitions, int provisionedCapacity) {
+    for (String number : usedExistingPartitions) {
+      partitionMetadataStore.createSync(
+          createDedicatedPartitionMetadata(number, provisionedCapacity));
+    }
   }
 }
