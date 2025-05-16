@@ -518,14 +518,14 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         PartitionMetadata partitionMetadata =
             partitionMetadataStore.getSync(request.getPartitionId());
         PartitionMetadata updatedPartitionMetadata =
-            new PartitionMetadata(partitionMetadata.partitionId, 0, 0, false);
+            new PartitionMetadata(partitionMetadata.partitionId, 0, maxPartitionCapacity, false);
         partitionMetadataStore.updateSync(updatedPartitionMetadata);
         responseObserver.onNext(toPartitionMetadataProto(updatedPartitionMetadata));
         responseObserver.onCompleted();
       } catch (InternalMetadataStoreException e) {
         // create
         PartitionMetadata createPartitionMetadata =
-            new PartitionMetadata(request.getPartitionId(), 0, 0, false);
+            new PartitionMetadata(request.getPartitionId(), 0, maxPartitionCapacity, false);
         partitionMetadataStore.createSync(createPartitionMetadata);
         responseObserver.onNext(toPartitionMetadataProto(createPartitionMetadata));
         responseObserver.onCompleted();
@@ -607,14 +607,16 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
                   reusablePartitions.stream().sorted(),
                   partitionMetadataFromDatasetConfigs.currentEmptyPartitions().stream().sorted())
               .limit(minNumNeededPartitions)
-              .collect(Collectors.toList());
+              .toList();
+      System.out.println(
+          "current empty " + partitionMetadataFromDatasetConfigs.currentEmptyPartitions());
       if (proposedPartitionIds.size() < minNumNeededPartitions) {
         throw Status.FAILED_PRECONDITION
             .withDescription(
                 "Needed "
                     + minNumNeededPartitions
                     + " partitions with enough capacity, found "
-                    + +proposedPartitionIds.size()
+                    + proposedPartitionIds.size()
                     + ": "
                     + proposedPartitionIds)
             .asRuntimeException();
@@ -646,11 +648,13 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       }
 
       List<String> lastProposal = Collections.emptyList();
-      for (long proposedPartitionCt = minNumNeededPartitions;
+      // NB: starting at 1 so that if there is only one partition available,
+      // the error message will communicate that.
+      for (long proposedPartitionCt = 1;
           proposedPartitionCt <= maxNumNeededPartitions;
           proposedPartitionCt++) {
         long nextPerPartitionThroughput = Math.ceilDiv(throughputBytes, proposedPartitionCt);
-        List<PartitionMetadata> proposal =
+        lastProposal =
             partitionsSorted.stream()
                 .filter(
                     p ->
@@ -658,9 +662,10 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
                             >= (p.getProvisionedCapacity() - currentPerPartitionThroughput)
                                 + nextPerPartitionThroughput)
                 .limit(proposedPartitionCt)
+                .map(PartitionMetadata::getPartitionID)
                 .toList();
-        lastProposal = proposal.stream().map(PartitionMetadata::getPartitionID).toList();
-        if (proposal.size() == proposedPartitionCt) {
+        if (lastProposal.size() > minNumNeededPartitions
+            && lastProposal.size() == proposedPartitionCt) {
           return lastProposal;
         }
       }

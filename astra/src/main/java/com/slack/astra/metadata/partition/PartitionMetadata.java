@@ -68,6 +68,8 @@ public class PartitionMetadata extends AstraMetadata {
         + partitionId
         + ", provisionedCapacity="
         + provisionedCapacity
+        + ", maxCapacity="
+        + maxCapacity
         + ", dedicated partition="
         + dedicatedPartition
         + '}';

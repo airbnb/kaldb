@@ -1787,7 +1787,7 @@ public class ManagerApiGrpcTest {
 
     assertThat(createdPartition.getPartitionId()).isEqualTo(partitionId);
     assertThat(createdPartition.getProvisionedCapacity()).isEqualTo(0);
-    assertThat(createdPartition.getMaxCapacity()).isEqualTo(0);
+    assertThat(createdPartition.getMaxCapacity()).isEqualTo(DEFAULT_MAX_CAPACITY);
     assertThat(createdPartition.getDedicatedPartition()).isEqualTo(false);
 
     assertThat(partitionMetadataStore.getSync(partitionId))
