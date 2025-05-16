@@ -452,8 +452,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     //   cut-over already scheduled
     // todo - if introducing an optional padding this should be added as a method parameter
     //   see https://github.com/slackhq/astra/pull/244#discussion_r835424863
-    long partitionCutoverTime =
-        Instant.now().toEpochMilli() + PARTITION_START_TIME_OFFSET;
+    long partitionCutoverTime = Instant.now().toEpochMilli() + PARTITION_START_TIME_OFFSET;
 
     ImmutableList.Builder<DatasetPartitionMetadata> builder =
         ImmutableList.<DatasetPartitionMetadata>builder().addAll(remainingDatasetPartitions);

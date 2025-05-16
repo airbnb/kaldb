@@ -87,23 +87,28 @@ public class DatasetPartitionMetadataTest {
     final DatasetPartitionMetadata datasetPartitionMetadata4 =
         new DatasetPartitionMetadata(
             start.toEpochMilli(), end.toEpochMilli(), Collections.emptyList());
+    final DatasetPartitionMetadata datasetPartitionMetadata5 =
+        new DatasetPartitionMetadata(start.toEpochMilli(), end.toEpochMilli(), list, true);
 
     assertThat(datasetPartitionMetadata1).isNotEqualTo(datasetPartitionMetadata2);
     assertThat(datasetPartitionMetadata1).isNotEqualTo(datasetPartitionMetadata3);
     assertThat(datasetPartitionMetadata1).isNotEqualTo(datasetPartitionMetadata4);
+    assertThat(datasetPartitionMetadata1).isNotEqualTo(datasetPartitionMetadata5);
 
     Set<DatasetPartitionMetadata> set = new HashSet<>();
     set.add(datasetPartitionMetadata1);
     set.add(datasetPartitionMetadata2);
     set.add(datasetPartitionMetadata3);
     set.add(datasetPartitionMetadata4);
-    assertThat(set.size()).isEqualTo(4);
+    set.add(datasetPartitionMetadata5);
+    assertThat(set.size()).isEqualTo(5);
     assertThat(set)
         .containsOnly(
             datasetPartitionMetadata1,
             datasetPartitionMetadata2,
             datasetPartitionMetadata3,
-            datasetPartitionMetadata4);
+            datasetPartitionMetadata4,
+            datasetPartitionMetadata5);
   }
 
   @Test
