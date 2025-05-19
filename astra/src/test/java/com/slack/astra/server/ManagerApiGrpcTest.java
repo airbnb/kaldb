@@ -499,7 +499,7 @@ public class ManagerApiGrpcTest {
 
     int existingDatasetThroughputBytes = 1_000;
     List<String> usedPartitions = List.of("1", "2");
-    datasetMetadataStore.createAsync(
+    datasetMetadataStore.createSync(
         new DatasetMetadata(
             "existingDataset1",
             "existingDatasetOwner",
@@ -528,7 +528,7 @@ public class ManagerApiGrpcTest {
     // 3. 1 existing dedicated dataset, 4 partitions, 2 used, 2 free
     int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY * 2;
     List<String> usedExistingPartitions = List.of("1", "2");
-    datasetMetadataStore.createAsync(
+    datasetMetadataStore.createSync(
         new DatasetMetadata(
             "existingDataset1",
             "existingDatasetOwner",
@@ -564,7 +564,7 @@ public class ManagerApiGrpcTest {
 
     int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY;
     List<String> usedExistingPartitions = List.of("1", "2", "3", "4");
-    datasetMetadataStore.createAsync(
+    datasetMetadataStore.createSync(
         new DatasetMetadata(
             "existingDataset1",
             "existingDatasetOwner",
@@ -600,7 +600,7 @@ public class ManagerApiGrpcTest {
         usedExistingPartitions, existingDatasetThroughputBytes / usedExistingPartitions.size());
     createPartitions("4");
 
-    datasetMetadataStore.createAsync(
+    datasetMetadataStore.createSync(
         new DatasetMetadata(
             "existingDataset1",
             "existingDatasetOwner",
@@ -634,7 +634,7 @@ public class ManagerApiGrpcTest {
         usedExistingPartitions, existingDatasetThroughputBytes / usedExistingPartitions.size());
     createPartitions("4");
 
-    datasetMetadataStore.createAsync(
+    datasetMetadataStore.createSync(
         new DatasetMetadata(
             "existingDataset1",
             "existingDatasetOwner",
@@ -661,7 +661,7 @@ public class ManagerApiGrpcTest {
 
     int existingDatasetThroughputBytes = 1_000;
     List<String> usedPartitions = List.of("1", "2");
-    datasetMetadataStore.createAsync(
+    datasetMetadataStore.createSync(
         new DatasetMetadata(
             "existingDataset1",
             "existingDatasetOwner",
@@ -722,17 +722,16 @@ public class ManagerApiGrpcTest {
     // 2. 1 existing shared dataset, 2 partitions, both used but with enough space
 
     int existingDatasetThroughputBytes = 1_000;
-    List<String> existingPartitions = List.of("1", "2");
-    datasetMetadataStore.createAsync(
+    datasetMetadataStore.createSync(
         new DatasetMetadata(
             "existingDataset1",
             "existingDatasetOwner",
             existingDatasetThroughputBytes,
             List.of(
                 new DatasetPartitionMetadata(
-                    Instant.now().toEpochMilli(), MAX_TIME, existingPartitions)),
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"))),
             "whatever"));
-    createPartitions(existingPartitions, existingDatasetThroughputBytes / 2);
+    createPartitions("1", "2");
 
     String datasetName = "testDataset";
     createEmptyDatasetGRPC(datasetName, "testOwner");
@@ -747,14 +746,12 @@ public class ManagerApiGrpcTest {
     assertThat(
             latestPartitionConfig(datasetMetadataStore.getSync(datasetName)).getPartitions().size())
         .isEqualTo(2);
-    assertThat(getPartitionMetadata("1", "2"))
-        .are(
-            sharedPartitionsWithCapacity(throughputBytes / 2 + existingDatasetThroughputBytes / 2));
+    assertThat(getPartitionMetadata("1", "2")).are(sharedPartitionsWithCapacity(1_000));
   }
 
   @Test
   public void shouldAutoAssignAddShared3() {
-    // 3. 1 existing shared dataset, 3 partitions, 2 used, one free, but not enough space without
+    // 3. 1 existing shared dataset, 3 partitions, 2 full, one free, but not enough space without
     // reassigning
 
     // existing using max capacity * 2 - 1 on two partitions
@@ -762,7 +759,7 @@ public class ManagerApiGrpcTest {
     // would require the existing dataset to be reassigned to all three partitions
     int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY * 2 - 2;
     List<String> usedExistingPartitions = List.of("1", "2");
-    datasetMetadataStore.createAsync(
+    datasetMetadataStore.createSync(
         new DatasetMetadata(
             "existingDataset1",
             "existingDatasetOwner",
@@ -771,8 +768,7 @@ public class ManagerApiGrpcTest {
                 new DatasetPartitionMetadata(
                     Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
             "whatever"));
-    createPartitions(usedExistingPartitions, existingDatasetThroughputBytes / 2);
-    createPartitions("3");
+    createPartitions("1", "2", "3");
 
     String datasetName = "testDataset";
     createEmptyDatasetGRPC(datasetName, "testOwner");
@@ -793,7 +789,7 @@ public class ManagerApiGrpcTest {
 
     int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY * 2 - 2;
     List<String> usedExistingPartitions = List.of("1", "2", "3");
-    datasetMetadataStore.createAsync(
+    datasetMetadataStore.createSync(
         new DatasetMetadata(
             "existingDataset1",
             "existingDatasetOwner",
@@ -837,7 +833,7 @@ public class ManagerApiGrpcTest {
     // would require the existing dataset to be reassigned to all three partitions
     int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY * 2 - 2;
     List<String> usedExistingPartitions = List.of("1", "2");
-    datasetMetadataStore.createAsync(
+    datasetMetadataStore.createSync(
         new DatasetMetadata(
             "existingDataset1",
             "existingDatasetOwner",
@@ -869,7 +865,7 @@ public class ManagerApiGrpcTest {
     int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY * 2 - 2;
     List<String> usedExistingPartitions = List.of("1", "2");
     List<String> unusedExistingPartitions = List.of("3", "4");
-    datasetMetadataStore.createAsync(
+    datasetMetadataStore.createSync(
         new DatasetMetadata(
             "existingDataset1",
             "existingDatasetOwner",
@@ -1651,7 +1647,7 @@ public class ManagerApiGrpcTest {
     createPartitions("1", "2");
     int existingDatasetThroughputBytes = 2000000;
     List<String> usedExistingPartitions = List.of("1", "2");
-    datasetMetadataStore.createAsync(
+    datasetMetadataStore.createSync(
         new DatasetMetadata(
             "existingDataset1",
             "existingDatasetOwner",

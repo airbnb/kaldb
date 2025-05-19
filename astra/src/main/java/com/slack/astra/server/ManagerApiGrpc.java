@@ -691,11 +691,11 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   private static class PartitionMetadataFromDatasetConfigs {
     private final long maxPartitionCapacity;
     private final long minNumberOfPartitions;
-    private final List<PartitionMetadata> partitionMetadataList;
     private final List<String> partitionIds = new ArrayList<>();
     private final Map<String, Long> partitionProvisioning = new HashMap<>();
     private final Map<String, List<String>> partitionDatasets = new HashMap<>();
     private final Map<String, List<String>> partitionDedication = new HashMap<>();
+    private final List<PartitionMetadata> livePMDs;
 
     public PartitionMetadataFromDatasetConfigs(
         List<DatasetMetadata> datasetMetadataList,
@@ -703,7 +703,6 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         long minNumberOfPartitions,
         long maxPartitionCapacity) {
       this.minNumberOfPartitions = minNumberOfPartitions;
-      this.partitionMetadataList = partitionMetadataList;
       this.maxPartitionCapacity = maxPartitionCapacity;
       for (PartitionMetadata partitionMetadata : partitionMetadataList) {
         this.partitionIds.add(partitionMetadata.getPartitionID());
@@ -734,6 +733,19 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
           }
         }
       }
+      livePMDs =
+          partitionIds.stream()
+              .map(
+                  id ->
+                      new PartitionMetadata(
+                          id,
+                          partitionProvisioning.get(id),
+                          partitionMetadataList.stream()
+                              .mapToLong(PartitionMetadata::getMaxCapacity)
+                              .min()
+                              .orElse(maxPartitionCapacity),
+                          !partitionDedication.get(id).isEmpty()))
+              .toList();
     }
 
     public boolean hasNoPartitionsDeclared() {
@@ -741,7 +753,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     }
 
     public long maxCapacityForPartitions() {
-      return partitionMetadataList.stream()
+      return getLivePMDs().stream()
           .mapToLong(PartitionMetadata::getMaxCapacity)
           .min()
           .orElse(maxPartitionCapacity);
@@ -755,12 +767,12 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     }
 
     public long maxPartitionsUsableByDataSet() {
-      return partitionMetadataList.size();
+      return getLivePMDs().size();
     }
 
     public List<PartitionMetadata> partitionsSortedByReusedCapacityAndId(
         List<String> reusablePartitions) {
-      return partitionMetadataList.stream()
+      return getLivePMDs().stream()
           .sorted(
               Comparator.comparing(
                       (PartitionMetadata p) -> reusablePartitions.contains(p.getPartitionID()))
@@ -784,15 +796,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     }
 
     public List<PartitionMetadata> getLivePMDs() {
-      return partitionIds.stream()
-          .map(
-              id ->
-                  new PartitionMetadata(
-                      id,
-                      partitionProvisioning.get(id),
-                      maxCapacityForPartitions(),
-                      !partitionDedication.get(id).isEmpty()))
-          .toList();
+      return livePMDs;
     }
   }
 }
