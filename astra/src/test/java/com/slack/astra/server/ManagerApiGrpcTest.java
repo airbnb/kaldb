@@ -1255,7 +1255,8 @@ public class ManagerApiGrpcTest {
         .isInstanceOfSatisfying(
             StatusRuntimeException.class,
             withGrpcStatusAndDescription(
-                Status.NOT_FOUND, "Dataset with name, '" + datasetName + "', does not exist"));
+                Status.NOT_FOUND,
+                "No dataset named, '" + datasetName + "'. Please create it first."));
 
     assertThat(AstraMetadataTestUtils.listSyncUncached(datasetMetadataStore).size()).isEqualTo(0);
   }

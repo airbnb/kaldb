@@ -215,7 +215,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       try {
         datasetMetadata = datasetMetadataStore.getSync(request.getName());
       } catch (Exception e) {
-        String msg = "Dataset with name, '" + request.getName() + "', does not exist";
+        String msg = "No dataset named, '" + request.getName() + "'. Please create it first.";
         LOG.error(msg);
         responseObserver.onError(Status.NOT_FOUND.withDescription(msg).asException());
         return;
