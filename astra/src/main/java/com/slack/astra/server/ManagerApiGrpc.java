@@ -116,7 +116,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               existingDatasetMetadata.getThroughputBytes(),
               existingDatasetMetadata.getPartitionConfigs(),
               request.getServiceNamePattern(),
-              false);
+              existingDatasetMetadata.isUsingDedicatedPartitions());
       datasetMetadataStore.updateSync(updatedDatasetMetadata);
       responseObserver.onNext(toDatasetMetadataProto(updatedDatasetMetadata));
       responseObserver.onCompleted();
