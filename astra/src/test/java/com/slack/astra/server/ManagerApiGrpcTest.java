@@ -484,11 +484,12 @@ public class ManagerApiGrpcTest {
     assertThat(updateResponse.getAssignedPartitionIdsList()).isEqualTo(List.of("1", "2"));
     await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs));
 
-    DatasetPartitionMetadata datasetPartitionMetadata =
-        latestPartitionConfig(datasetMetadataStore.getSync(datasetName));
+    DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(datasetName);
+    DatasetPartitionMetadata datasetPartitionMetadata = latestPartitionConfig(datasetMetadata);
     assertThat(datasetPartitionMetadata.getPartitions().size()).isEqualTo(2);
-    assertThat(getPartitionMetadata("1", "2"))
-        .have(dedicatedPartitionsWithCapacity(throughputBytes / 2));
+    assertThat(datasetMetadata.isUsingDedicatedPartitions()).isTrue();
+
+    assertThat(getPartitionMetadata("1", "2")).have(dedicatedPartitionsWithCapacity(5));
     assertThat(getPartitionMetadata("3", "4", "5")).have(sharedPartitionsWithCapacity(0));
   }
 
@@ -535,8 +536,9 @@ public class ManagerApiGrpcTest {
             existingDatasetThroughputBytes,
             List.of(
                 new DatasetPartitionMetadata(
-                    Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions, true)),
-            "whatever"));
+                    Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
+            "whatever",
+            true));
     createDedicatedPartitions(usedExistingPartitions, existingDatasetThroughputBytes / 2);
     createPartitions("3", "4");
 
@@ -547,10 +549,10 @@ public class ManagerApiGrpcTest {
 
     await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs));
 
-    DatasetPartitionMetadata datasetPartitionMetadata =
-        latestPartitionConfig(datasetMetadataStore.getSync(datasetName));
+    DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(datasetName);
+    DatasetPartitionMetadata datasetPartitionMetadata = latestPartitionConfig(datasetMetadata);
     assertThat(datasetPartitionMetadata.getPartitions().size()).isEqualTo(2);
-    assertThat(datasetPartitionMetadata.usesDedicatedPartition()).isEqualTo(true);
+    assertThat(datasetMetadata.isUsingDedicatedPartitions()).isEqualTo(true);
     assertThat(getPartitionMetadata("1", "2"))
         .have(dedicatedPartitionsWithCapacity(DEFAULT_MAX_CAPACITY));
     assertThat(getPartitionMetadata("3", "4"))
@@ -872,8 +874,9 @@ public class ManagerApiGrpcTest {
             existingDatasetThroughputBytes,
             List.of(
                 new DatasetPartitionMetadata(
-                    Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions, true)),
-            "whatever"));
+                    Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
+            "whatever",
+            true));
     createDedicatedPartitions(
         usedExistingPartitions, existingDatasetThroughputBytes / usedExistingPartitions.size());
     createPartitions(unusedExistingPartitions.toArray(new String[0]));
@@ -1630,8 +1633,9 @@ public class ManagerApiGrpcTest {
             1000000,
             List.of(
                 new DatasetPartitionMetadata(
-                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), true)),
-            datasetServicePattern));
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"))),
+            datasetServicePattern,
+            true));
     managerApiStub.deleteDatasetMetadata(
         ManagerApi.DeleteDatasetMetadataRequest.newBuilder().setName(datasetName).build());
 
@@ -1654,8 +1658,9 @@ public class ManagerApiGrpcTest {
             existingDatasetThroughputBytes,
             List.of(
                 new DatasetPartitionMetadata(
-                    Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions, false)),
-            "whatever"));
+                    Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
+            "whatever",
+            false));
 
     datasetMetadataStore.createSync(
         new DatasetMetadata(
@@ -1664,8 +1669,9 @@ public class ManagerApiGrpcTest {
             6000000,
             List.of(
                 new DatasetPartitionMetadata(
-                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"), false)),
-            datasetServicePattern));
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"))),
+            datasetServicePattern,
+            false));
 
     managerApiStub.deleteDatasetMetadata(
         ManagerApi.DeleteDatasetMetadataRequest.newBuilder().setName(datasetName).build());

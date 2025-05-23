@@ -89,7 +89,8 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               request.getOwner(),
               0L,
               Collections.emptyList(),
-              request.getServiceNamePattern()));
+              request.getServiceNamePattern(),
+              false));
       responseObserver.onNext(
           toDatasetMetadataProto(datasetMetadataStore.getSync(request.getName())));
       responseObserver.onCompleted();
@@ -114,7 +115,8 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               request.getOwner(),
               existingDatasetMetadata.getThroughputBytes(),
               existingDatasetMetadata.getPartitionConfigs(),
-              request.getServiceNamePattern());
+              request.getServiceNamePattern(),
+              false);
       datasetMetadataStore.updateSync(updatedDatasetMetadata);
       responseObserver.onNext(toDatasetMetadataProto(updatedDatasetMetadata));
       responseObserver.onCompleted();
@@ -253,10 +255,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         return;
       }
       ImmutableList<DatasetPartitionMetadata> updatedDatasetPartitionMetadata =
-          addNewPartition(
-              datasetMetadata.getPartitionConfigs(),
-              partitionIdList,
-              request.getRequireDedicatedPartition());
+          addNewPartition(datasetMetadata, partitionIdList, request.getRequireDedicatedPartition());
 
       DatasetMetadata updatedDatasetMetadata =
           new DatasetMetadata(
@@ -264,7 +263,8 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               datasetMetadata.getOwner(),
               updatedThroughputBytes,
               updatedDatasetPartitionMetadata,
-              datasetMetadata.getServiceNamePattern());
+              datasetMetadata.getServiceNamePattern(),
+              request.getRequireDedicatedPartition());
       datasetMetadataStore.updateSync(updatedDatasetMetadata);
 
       responseObserver.onNext(
@@ -419,24 +419,21 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
    * current time + 1 to max long.
    */
   private static ImmutableList<DatasetPartitionMetadata> addNewPartition(
-      List<DatasetPartitionMetadata> existingPartitions,
+      DatasetMetadata datasetMetadata,
       List<String> newPartitionIdsList,
       boolean requireDedicatedPartition) {
+    ImmutableList<DatasetPartitionMetadata> existingPartitions =
+        datasetMetadata.getPartitionConfigs();
     if (newPartitionIdsList.isEmpty()) {
       return ImmutableList.copyOf(existingPartitions);
     }
 
     Optional<DatasetPartitionMetadata> previousActiveDatasetPartition =
-        existingPartitions.stream()
-            .filter(
-                datasetPartitionMetadata ->
-                    datasetPartitionMetadata.getEndTimeEpochMs() == MAX_TIME)
-            .findFirst();
+        datasetMetadata.getLatestPartitionMetadata();
 
     if (previousActiveDatasetPartition.isPresent()
         && previousActiveDatasetPartition.get().getPartitions().equals(newPartitionIdsList)
-        && previousActiveDatasetPartition.get().usesDedicatedPartition()
-            == requireDedicatedPartition) {
+        && datasetMetadata.isUsingDedicatedPartitions() == requireDedicatedPartition) {
       return ImmutableList.copyOf(existingPartitions);
     }
 
@@ -445,7 +442,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
             .filter(
                 datasetPartitionMetadata ->
                     datasetPartitionMetadata.getEndTimeEpochMs() != MAX_TIME)
-            .collect(Collectors.toList());
+            .toList();
 
     // todo - consider adding some padding to this value; this may complicate
     //   validation as you would need to consider what happens when there's a future
@@ -462,14 +459,12 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
           new DatasetPartitionMetadata(
               previousActiveDatasetPartition.get().getStartTimeEpochMs(),
               partitionCutoverTime,
-              previousActiveDatasetPartition.get().getPartitions(),
-              previousActiveDatasetPartition.get().usesDedicatedPartition());
+              previousActiveDatasetPartition.get().getPartitions());
       builder.add(updatedPreviousActivePartition);
     }
 
     DatasetPartitionMetadata newPartitionMetadata =
-        new DatasetPartitionMetadata(
-            partitionCutoverTime + 1, MAX_TIME, newPartitionIdsList, requireDedicatedPartition);
+        new DatasetPartitionMetadata(partitionCutoverTime + 1, MAX_TIME, newPartitionIdsList);
     return builder.add(newPartitionMetadata).build();
   }
 
@@ -720,8 +715,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
                             datasetMetadata.getThroughputBytes(), p.getPartitions().size()))
                 .orElse(0L);
 
-        boolean useDedicatedPartition =
-            latest.map(DatasetPartitionMetadata::usesDedicatedPartition).orElse(false);
+        boolean useDedicatedPartition = datasetMetadata.isUsingDedicatedPartitions();
         for (String partitionId :
             latest.map(DatasetPartitionMetadata::getPartitions).orElse(ImmutableList.of())) {
           this.partitionProvisioning.put(
