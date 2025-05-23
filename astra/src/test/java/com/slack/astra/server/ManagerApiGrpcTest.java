@@ -471,6 +471,26 @@ public class ManagerApiGrpcTest {
   }
 
   @Test
+  public void shouldFailToUpdatePartitionManualAssignmentsWhenIncludesInvalidIds() {
+    createPartitions("1", "2");
+    createEmptyDatasetGRPC("testDataset", "testOwner");
+
+    assertThatThrownBy(
+            () ->
+                managerApiStub.updatePartitionAssignment(
+                    ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
+                        .setName("testDataset")
+                        .setThroughputBytes(10)
+                        .addAllPartitionIds(List.of("1", "2", "notAValidPartitionId"))
+                        .build()))
+        .isInstanceOfSatisfying(
+            StatusRuntimeException.class,
+            withGrpcStatusAndDescription(
+                Status.INVALID_ARGUMENT,
+                "Requested partition IDs do not exist: [notAValidPartitionId]"));
+  }
+
+  @Test
   public void shouldAutoAssignAddDedicated1() {
     String datasetName = "testDataset";
 

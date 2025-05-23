@@ -227,12 +227,18 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               ? datasetMetadata.getThroughputBytes()
               : request.getThroughputBytes();
 
+      PartitionMetadataFromDatasetConfigs partitionData =
+          createPartitionMetadataFromDatasetConfigs();
+
       List<String> partitionIdList;
       if (request.getPartitionIdsList().isEmpty()) {
         try {
           partitionIdList =
               autoAssignPartition(
-                  datasetMetadata, updatedThroughputBytes, request.getRequireDedicatedPartition());
+                  datasetMetadata,
+                  updatedThroughputBytes,
+                  request.getRequireDedicatedPartition(),
+                  partitionData);
         } catch (StatusRuntimeException e) {
           LOG.error("Error autoassigning partitions", e);
           responseObserver.onError(e);
@@ -240,12 +246,24 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         }
       } else {
         partitionIdList = request.getPartitionIdsList();
-        // TODO perhaps we should still check the partition capacity and warn? Or complain when
-        // writing to a dedicated partition owned by another dataset?
-        // manualAssignPartition
+        LOG.info(
+            "Manually assigning partitions for %s to : %s"
+                .formatted(request.getName(), partitionIdList));
+        List<String> nonExistentRequestedPartitionIds =
+            partitionIdList.stream()
+                .filter(id -> !partitionData.getPartitionIds().contains(id))
+                .sorted()
+                .toList();
+        Preconditions.checkArgument(
+            nonExistentRequestedPartitionIds.isEmpty(),
+            "Requested partition IDs do not exist: %s"
+                .formatted(nonExistentRequestedPartitionIds));
+        // TODO perhaps we could log warnings if the user is trying to assign to partitions that
+        // - are not empty, when requesting dedicated partitions
+        // - don't have enough capacity for the requested throughput
       }
       partitionIdList = partitionIdList.stream().sorted().toList();
-      if (partitionIdList.isEmpty()) { // TODO not this way
+      if (partitionIdList.isEmpty()) {
         String msg = "Error updating partition assignment, could not find partitions to assign";
         LOG.error(msg);
         responseObserver.onError(Status.UNKNOWN.withDescription(msg).asException());
@@ -558,10 +576,10 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
    * @return List of partition Ids to be assigned in the new DatasetPartitionMetadata
    */
   public List<String> autoAssignPartition(
-      DatasetMetadata datasetMetadata, long throughputBytes, boolean requireDedicatedPartition) {
-    PartitionMetadataFromDatasetConfigs partitionMetadataFromDatasetConfigs =
-        createPartitionMetadataFromDatasetConfigs();
-
+      DatasetMetadata datasetMetadata,
+      long throughputBytes,
+      boolean requireDedicatedPartition,
+      PartitionMetadataFromDatasetConfigs partitionMetadataFromDatasetConfigs) {
     long currentThroughputBytes = datasetMetadata.getThroughputBytes();
 
     if (partitionMetadataFromDatasetConfigs.hasNoPartitionsDeclared()) {
@@ -785,6 +803,10 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
     public List<PartitionMetadata> getLivePMDs() {
       return livePMDs;
+    }
+
+    public List<String> getPartitionIds() {
+      return partitionIds;
     }
   }
 }
