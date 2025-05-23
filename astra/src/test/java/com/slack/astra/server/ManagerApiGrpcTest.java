@@ -581,9 +581,7 @@ public class ManagerApiGrpcTest {
     String datasetName = "testDataset";
     createEmptyDatasetGRPC(datasetName, "testOwner");
 
-    long throughputBytes = DEFAULT_MAX_CAPACITY;
-
-    assertThatThrownBy(() -> updatePartitionAssignmentGRPC(datasetName, throughputBytes, true))
+    assertThatThrownBy(() -> updatePartitionAssignmentGRPC(datasetName, DEFAULT_MAX_CAPACITY, true))
         .isInstanceOfSatisfying(
             StatusRuntimeException.class,
             withGrpcStatusAndDescription(

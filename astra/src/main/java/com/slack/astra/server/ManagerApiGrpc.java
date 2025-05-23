@@ -24,6 +24,7 @@ import com.slack.astra.proto.metadata.Metadata;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -53,7 +54,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
   public static final long MAX_TIME = Long.MAX_VALUE;
   // TODO: add to config
-  public static final long PARTITION_START_TIME_OFFSET = 15 * 60 * 1000; // 15 minutes
+  public static final long PARTITION_START_TIME_PADDING_MS = Duration.ofMinutes(15).toMillis();
 
   private final ReplicaRestoreService replicaRestoreService;
   private final PartitionMetadataStore partitionMetadataStore;
@@ -184,10 +185,6 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     }
   }
 
-  private List<PartitionMetadata> getCurrentPartitionMetadata() {
-    return createPartitionMetadataFromDatasetConfigs().getLivePMDs();
-  }
-
   private PartitionMetadataFromDatasetConfigs createPartitionMetadataFromDatasetConfigs() {
     return new PartitionMetadataFromDatasetConfigs(
         datasetMetadataStore.listSync(),
@@ -255,7 +252,11 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         return;
       }
       ImmutableList<DatasetPartitionMetadata> updatedDatasetPartitionMetadata =
-          addNewPartition(datasetMetadata, partitionIdList, request.getRequireDedicatedPartition());
+          addNewPartition(
+              datasetMetadata,
+              partitionIdList,
+              request.getRequireDedicatedPartition(),
+              PARTITION_START_TIME_PADDING_MS);
 
       DatasetMetadata updatedDatasetMetadata =
           new DatasetMetadata(
@@ -416,12 +417,13 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
    * Returns a new list of dataset partition metadata, with the provided partition IDs as the
    * current active assignment. This finds the current active assignment (end time of max long),
    * sets it to the current time, and then appends a new dataset partition assignment starting from
-   * current time + 1 to max long.
+   * current time + padding + 1 to max long.
    */
   private static ImmutableList<DatasetPartitionMetadata> addNewPartition(
       DatasetMetadata datasetMetadata,
       List<String> newPartitionIdsList,
-      boolean requireDedicatedPartition) {
+      boolean requireDedicatedPartition,
+      long padding) {
     ImmutableList<DatasetPartitionMetadata> existingPartitions =
         datasetMetadata.getPartitionConfigs();
     if (newPartitionIdsList.isEmpty()) {
@@ -430,6 +432,8 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
     Optional<DatasetPartitionMetadata> previousActiveDatasetPartition =
         datasetMetadata.getLatestPartitionMetadata();
+    List<DatasetPartitionMetadata> remainingDatasetPartitions =
+        datasetMetadata.getAllButLatestDatasetPartitions();
 
     if (previousActiveDatasetPartition.isPresent()
         && previousActiveDatasetPartition.get().getPartitions().equals(newPartitionIdsList)
@@ -437,19 +441,9 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       return ImmutableList.copyOf(existingPartitions);
     }
 
-    List<DatasetPartitionMetadata> remainingDatasetPartitions =
-        existingPartitions.stream()
-            .filter(
-                datasetPartitionMetadata ->
-                    datasetPartitionMetadata.getEndTimeEpochMs() != MAX_TIME)
-            .toList();
-
-    // todo - consider adding some padding to this value; this may complicate
-    //   validation as you would need to consider what happens when there's a future
+    // todo - consider what happens when there's a future
     //   cut-over already scheduled
-    // todo - if introducing an optional padding this should be added as a method parameter
-    //   see https://github.com/slackhq/astra/pull/244#discussion_r835424863
-    long partitionCutoverTime = Instant.now().toEpochMilli() + PARTITION_START_TIME_OFFSET;
+    long partitionCutoverTime = Instant.now().toEpochMilli() + padding;
 
     ImmutableList.Builder<DatasetPartitionMetadata> builder =
         ImmutableList.<DatasetPartitionMetadata>builder().addAll(remainingDatasetPartitions);
@@ -544,7 +538,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       responseObserver.onNext(
           Metadata.ListPartitionMetadataResponse.newBuilder()
               .addAllPartitionMetadata(
-                  getCurrentPartitionMetadata().stream()
+                  createPartitionMetadataFromDatasetConfigs().getLivePMDs().stream()
                       .map(PartitionMetadataSerializer::toPartitionMetadataProto)
                       .toList())
               .build());

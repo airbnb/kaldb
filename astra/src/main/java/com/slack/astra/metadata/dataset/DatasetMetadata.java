@@ -169,4 +169,11 @@ public class DatasetMetadata extends AstraMetadata {
             datasetPartitionMetadata -> datasetPartitionMetadata.getEndTimeEpochMs() == MAX_TIME)
         .findFirst();
   }
+
+  public List<DatasetPartitionMetadata> getAllButLatestDatasetPartitions() {
+    return getPartitionConfigs().stream()
+        .filter(
+            datasetPartitionMetadata -> datasetPartitionMetadata.getEndTimeEpochMs() != MAX_TIME)
+        .toList();
+  }
 }
