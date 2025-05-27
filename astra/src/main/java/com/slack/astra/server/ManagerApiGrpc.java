@@ -256,8 +256,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
                 .toList();
         Preconditions.checkArgument(
             nonExistentRequestedPartitionIds.isEmpty(),
-            "Requested partition IDs do not exist: %s"
-                .formatted(nonExistentRequestedPartitionIds));
+            "Requested partition IDs do not exist: %s".formatted(nonExistentRequestedPartitionIds));
         // TODO perhaps we could log warnings if the user is trying to assign to partitions that
         // - are not empty, when requesting dedicated partitions
         // - don't have enough capacity for the requested throughput
