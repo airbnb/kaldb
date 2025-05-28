@@ -215,7 +215,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       try {
         datasetMetadata = datasetMetadataStore.getSync(request.getName());
       } catch (Exception e) {
-        String msg = "No dataset named, '" + request.getName() + "'. Please create it first.";
+        String msg = "No dataset named, '%s'. Please create it first.".formatted(request.getName());
         LOG.error(msg);
         responseObserver.onError(Status.NOT_FOUND.withDescription(msg).asException());
         return;
@@ -244,11 +244,11 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
           responseObserver.onError(e);
           return;
         }
+        LOG.info("Auto-assigning partitions for {} to : {}", request.getName(), partitionIdList);
       } else {
         partitionIdList = request.getPartitionIdsList();
         LOG.info(
-            "Manually assigning partitions for %s to : %s"
-                .formatted(request.getName(), partitionIdList));
+            "Manually assigning partitions for {} to : {}", request.getName(), partitionIdList);
         List<String> nonExistentRequestedPartitionIds =
             partitionIdList.stream()
                 .filter(id -> !partitionData.getPartitionIds().contains(id))
@@ -290,6 +290,13 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               .addAllAssignedPartitionIds(partitionIdList)
               .build());
       responseObserver.onCompleted();
+      LOG.info(
+          "Updated partition assignment for dataset: {}, throughput: {} -> {} partitions: {} -> {}",
+          request.getName(),
+          datasetMetadata.getThroughputBytes(),
+          updatedThroughputBytes,
+          datasetMetadata.getLatestPartitionMetadata(),
+          partitionIdList);
     } catch (IllegalArgumentException e) {
       LOG.error("Error updating partition assignment", e);
       responseObserver.onError(
@@ -574,7 +581,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
    * @param requireDedicatedPartition flag to indicate if we need dedicated partitions
    * @return List of partition Ids to be assigned in the new DatasetPartitionMetadata
    */
-  public List<String> autoAssignPartition(
+  private List<String> autoAssignPartition(
       DatasetMetadata datasetMetadata,
       long throughputBytes,
       boolean requireDedicatedPartition,
@@ -584,7 +591,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     if (partitionMetadataFromDatasetConfigs.hasNoPartitionsDeclared()) {
       throw Status.FAILED_PRECONDITION
           .withDescription(
-              "Needed " + minNumberOfPartitions + " partitions with enough capacity, found 0")
+              "Needed %d partitions with enough capacity, found 0".formatted(minNumberOfPartitions))
           .asRuntimeException();
     }
     List<String> currentPartitions =
@@ -617,17 +624,15 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
                   partitionMetadataFromDatasetConfigs.currentEmptyPartitions().stream().sorted())
               .limit(minNumNeededPartitions)
               .toList();
-      System.out.println(
-          "current empty " + partitionMetadataFromDatasetConfigs.currentEmptyPartitions());
+      LOG.debug(
+          "current empty paritions: {}",
+          partitionMetadataFromDatasetConfigs.currentEmptyPartitions());
       if (proposedPartitionIds.size() < minNumNeededPartitions) {
         throw Status.FAILED_PRECONDITION
             .withDescription(
-                "Needed "
-                    + minNumNeededPartitions
-                    + " partitions with enough capacity, found "
-                    + proposedPartitionIds.size()
-                    + ": "
-                    + proposedPartitionIds)
+                "Needed %d partitions with enough capacity, found %d: %s"
+                    .formatted(
+                        minNumNeededPartitions, proposedPartitionIds.size(), proposedPartitionIds))
             .asRuntimeException();
       }
       return proposedPartitionIds;
@@ -680,12 +685,8 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       }
       throw Status.FAILED_PRECONDITION
           .withDescription(
-              "Needed "
-                  + minNumNeededPartitions
-                  + " partitions with enough capacity, found "
-                  + +lastProposal.size()
-                  + ": "
-                  + lastProposal)
+              "Needed %d partitions with enough capacity, found %d: %s"
+                  .formatted(minNumNeededPartitions, +lastProposal.size(), lastProposal))
           .asRuntimeException();
     }
   }
