@@ -973,10 +973,7 @@ public class ManagerApiGrpcTest {
             .build();
     managerApiStub.updatePartitionAssignment(request);
     await()
-        .until(
-            () ->
-                datasetMetadataStore.listSync().size() == 1
-                    && datasetMetadataStore.listSync().get(0).getPartitionConfigs().size() == 1);
+        .until(() -> datasetMetadataStore.getSync(datasetName).getPartitionConfigs().size() == 1);
 
     assertThat(getDatasetMetadataGRPC(datasetName))
         .has(throughputBytesOf(throughputBytes))
@@ -996,19 +993,14 @@ public class ManagerApiGrpcTest {
             .setThroughputBytes(throughputBytes)
             .setRequireDedicatedPartition(true)
             .build());
-    await()
-        .until(
-            () ->
-                datasetMetadataStore.listSync().size() == 1
-                    && datasetMetadataStore.listSync().get(0).getPartitionConfigs().size() == 2);
+    long secondAssignmentNowMs = nowMs;
+    await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, secondAssignmentNowMs));
 
     assertThat(getDatasetMetadataGRPC(datasetName))
         .has(throughputBytesOf(10))
-        .has(partitionConfigsSizeOf(2))
+        .has(partitionConfigsSizeOf(1))
         .has(partitionsForIndexOf(0, List.of("1", "2")))
-        .has(partitionsForIndexOf(1, List.of("1", "2")))
-        .has(oldPartitionConfigWithIndexOf(0))
-        .has(latestPartitionConfigWithIndexOf(1, nowMs));
+        .has(latestPartitionConfigWithIndexOf(0, nowMs));
 
     assertThat(getPartitionMetadata("1", "2")).have(dedicatedPartitionsWithCapacity(5));
 
@@ -1026,13 +1018,11 @@ public class ManagerApiGrpcTest {
 
     assertThat(getDatasetMetadataGRPC(datasetName))
         .has(throughputBytesOf(12))
-        .has(partitionConfigsSizeOf(3))
+        .has(partitionConfigsSizeOf(2))
         .has(partitionsForIndexOf(0, List.of("1", "2")))
-        .has(partitionsForIndexOf(1, List.of("1", "2")))
-        .has(partitionsForIndexOf(2, List.of("3", "4", "5")))
+        .has(partitionsForIndexOf(1, List.of("3", "4", "5")))
         .has(oldPartitionConfigWithIndexOf(0))
-        .has(oldPartitionConfigWithIndexOf(1))
-        .has(latestPartitionConfigWithIndexOf(2, nowMs));
+        .has(latestPartitionConfigWithIndexOf(1, nowMs));
 
     assertThat(getPartitionMetadata("1", "2")).have(sharedPartitionsWithCapacity(0));
     assertThat(getPartitionMetadata("3", "4", "5")).have(sharedPartitionsWithCapacity(4));
@@ -1046,22 +1036,17 @@ public class ManagerApiGrpcTest {
             .setThroughputBytes(throughputBytes)
             .build());
     await()
-        .until(
-            () ->
-                datasetMetadataStore.listSync().size() == 1
-                    && datasetMetadataStore.listSync().get(0).getPartitionConfigs().size() == 4);
+        .until(() -> datasetMetadataStore.getSync(datasetName).getPartitionConfigs().size() == 3);
 
     assertThat(getDatasetMetadataGRPC(datasetName))
         .has(throughputBytesOf(12))
-        .has(partitionConfigsSizeOf(4))
+        .has(partitionConfigsSizeOf(3))
         .has(partitionsForIndexOf(0, List.of("1", "2")))
-        .has(partitionsForIndexOf(1, List.of("1", "2")))
-        .has(partitionsForIndexOf(2, List.of("3", "4", "5")))
-        .has(partitionsForIndexOf(3, List.of("3", "4")))
+        .has(partitionsForIndexOf(1, List.of("3", "4", "5")))
+        .has(partitionsForIndexOf(2, List.of("3", "4")))
         .has(oldPartitionConfigWithIndexOf(0))
         .has(oldPartitionConfigWithIndexOf(1))
-        .has(oldPartitionConfigWithIndexOf(2))
-        .has(latestPartitionConfigWithIndexOf(3, nowMs));
+        .has(latestPartitionConfigWithIndexOf(2, nowMs));
 
     assertThat(getPartitionMetadata("1", "2")).have(sharedPartitionsWithCapacity(0));
     assertThat(getPartitionMetadata("3", "4")).have(sharedPartitionsWithCapacity(6));

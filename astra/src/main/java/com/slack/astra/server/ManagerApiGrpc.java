@@ -269,11 +269,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         return;
       }
       ImmutableList<DatasetPartitionMetadata> updatedDatasetPartitionMetadata =
-          addNewPartition(
-              datasetMetadata,
-              partitionIdList,
-              request.getRequireDedicatedPartition(),
-              PARTITION_START_TIME_PADDING_MS);
+          addNewPartition(datasetMetadata, partitionIdList, PARTITION_START_TIME_PADDING_MS);
 
       DatasetMetadata updatedDatasetMetadata =
           new DatasetMetadata(
@@ -444,12 +440,10 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
    * current time + padding + 1 to max long.
    */
   private static ImmutableList<DatasetPartitionMetadata> addNewPartition(
-      DatasetMetadata datasetMetadata,
-      List<String> newPartitionIdsList,
-      boolean requireDedicatedPartition,
-      long padding) {
+      DatasetMetadata datasetMetadata, List<String> newPartitionIdsList, long padding) {
     ImmutableList<DatasetPartitionMetadata> existingPartitions =
         datasetMetadata.getPartitionConfigs();
+    // if there are no new partitions, just return the existing ones
     if (newPartitionIdsList.isEmpty()) {
       return ImmutableList.copyOf(existingPartitions);
     }
@@ -458,10 +452,9 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         datasetMetadata.getLatestPartitionMetadata();
     List<DatasetPartitionMetadata> remainingDatasetPartitions =
         datasetMetadata.getAllButLatestDatasetPartitions();
-
+    // if the new partition configuration is the same as the current one, reuse it.
     if (previousActiveDatasetPartition.isPresent()
-        && previousActiveDatasetPartition.get().getPartitions().equals(newPartitionIdsList)
-        && datasetMetadata.isUsingDedicatedPartitions() == requireDedicatedPartition) {
+        && previousActiveDatasetPartition.get().getPartitions().equals(newPartitionIdsList)) {
       return ImmutableList.copyOf(existingPartitions);
     }
 
