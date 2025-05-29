@@ -1567,10 +1567,7 @@ public class ManagerApiGrpcTest {
             ManagerApi.CreatePartitionRequest.newBuilder().setPartitionId(partitionId).build());
 
     assertThat(createdPartition.getPartitionId()).isEqualTo(partitionId);
-    assertThat(createdPartition.getMaxCapacity()).isEqualTo(DEFAULT_MAX_CAPACITY);
-
-    assertThat(getPartitionForId(partitionId))
-        .isEqualTo(createEmptySharedCalculatedPartitionMetadata(partitionId));
+    assertThat(createdPartition.getMaxCapacity()).isEqualTo(0);
   }
 
   @Test
@@ -1579,12 +1576,15 @@ public class ManagerApiGrpcTest {
 
     Metadata.PartitionMetadata createdPartition =
         managerApiStub.createPartition(
-            ManagerApi.CreatePartitionRequest.newBuilder().setPartitionId(partitionId).build());
+            ManagerApi.CreatePartitionRequest.newBuilder()
+                .setPartitionId(partitionId)
+                .setMaxCapacity(100)
+                .build());
 
     assertThat(createdPartition.getPartitionId()).isEqualTo(partitionId);
 
     assertThat(getPartitionForId(partitionId))
-        .isEqualTo(createEmptySharedCalculatedPartitionMetadata(partitionId));
+        .isEqualTo(new CalculatedPartitionMetadata(partitionId, 0, 100, false));
   }
 
   private CalculatedPartitionMetadata getPartitionForId(String partitionId) {

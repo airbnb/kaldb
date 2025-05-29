@@ -526,47 +526,26 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     try {
       existingPartitionMetadata = partitionMetadataStore.getSync(request.getPartitionId());
     } catch (Exception e) {
-      // TODO exceptions
       existingPartitionMetadata = null;
     }
     PartitionMetadata newPartitionMetadata =
-        new PartitionMetadata(request.getPartitionId(), maxPartitionCapacity);
-    if (existingPartitionMetadata != null) {
-      PartitionMetadata updatedPartitionMetadata =
-          new PartitionMetadata(existingPartitionMetadata.partitionId, maxPartitionCapacity);
-      partitionMetadataStore.updateSync(updatedPartitionMetadata);
-      responseObserver.onNext(toPartitionMetadataProto(updatedPartitionMetadata));
-      responseObserver.onCompleted();
-    } else {
-      partitionMetadataStore.createSync(newPartitionMetadata);
+        new PartitionMetadata(request.getPartitionId(), request.getMaxCapacity());
+
+    try {
+      if (existingPartitionMetadata != null) {
+        partitionMetadataStore.updateSync(newPartitionMetadata);
+      } else {
+        partitionMetadataStore.createSync(newPartitionMetadata);
+      }
       responseObserver.onNext(toPartitionMetadataProto(newPartitionMetadata));
       responseObserver.onCompleted();
-      return;
-    }
-    /*
-    try {
-      try {
-        PartitionMetadata partitionMetadata =
-            partitionMetadataStore.getSync(request.getPartitionId());
-        PartitionMetadata updatedPartitionMetadata =
-            new PartitionMetadata(partitionMetadata.partitionId, maxPartitionCapacity);
-        partitionMetadataStore.updateSync(updatedPartitionMetadata);
-        responseObserver.onNext(toPartitionMetadataProto(updatedPartitionMetadata));
-        responseObserver.onCompleted();
-      } catch (InternalMetadataStoreException e) {
-        // create
-        PartitionMetadata createPartitionMetadata = newPartitionMetadata;
-        partitionMetadataStore.createSync(createPartitionMetadata);
-        responseObserver.onNext(toPartitionMetadataProto(createPartitionMetadata));
-        responseObserver.onCompleted();
-      }
     } catch (StatusRuntimeException e) {
       LOG.error("Error creating new partition", e);
       responseObserver.onError(e);
     } catch (Exception e) {
       LOG.error("Error creating new partition", e);
       responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
-    }*/
+    }
   }
 
   @Override
