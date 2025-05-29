@@ -58,7 +58,6 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
   private final ReplicaRestoreService replicaRestoreService;
   private final PartitionMetadataStore partitionMetadataStore;
-  private final long maxPartitionCapacity;
   private final int minNumberOfPartitions;
 
   public ManagerApiGrpc(
@@ -66,15 +65,13 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       PartitionMetadataStore partitionMetadataStore,
       SnapshotMetadataStore snapshotMetadataStore,
       ReplicaRestoreService replicaRestoreService,
-      int minNumberOfPartitions,
-      long maxPartitionCapacity) {
+      int minNumberOfPartitions) {
     this.datasetMetadataStore = datasetMetadataStore;
     this.snapshotMetadataStore = snapshotMetadataStore;
     this.replicaRestoreService = replicaRestoreService;
     this.partitionMetadataStore = partitionMetadataStore;
 
     this.minNumberOfPartitions = minNumberOfPartitions;
-    this.maxPartitionCapacity = maxPartitionCapacity;
   }
 
   /** Initializes a new dataset in the metadata store with no initial allocated capacity */
@@ -187,10 +184,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
   private PartitionMetadataFromDatasetConfigs createPartitionMetadataFromDatasetConfigs() {
     return new PartitionMetadataFromDatasetConfigs(
-        datasetMetadataStore.listSync(),
-        partitionMetadataStore.listSync(),
-        minNumberOfPartitions,
-        maxPartitionCapacity);
+        datasetMetadataStore.listSync(), partitionMetadataStore.listSync(), minNumberOfPartitions);
   }
 
   /**
@@ -690,7 +684,6 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
    * assigment and listing partition metadata.
    */
   private static class PartitionMetadataFromDatasetConfigs {
-    private final long maxPartitionCapacity;
     private final long minNumberOfPartitions;
     private final List<String> partitionIds = new ArrayList<>();
     private final Map<String, Long> partitionProvisioning = new HashMap<>();
@@ -701,10 +694,8 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     public PartitionMetadataFromDatasetConfigs(
         List<DatasetMetadata> datasetMetadataList,
         List<PartitionMetadata> partitionMetadataList,
-        long minNumberOfPartitions,
-        long maxPartitionCapacity) {
+        long minNumberOfPartitions) {
       this.minNumberOfPartitions = minNumberOfPartitions;
-      this.maxPartitionCapacity = maxPartitionCapacity;
       for (PartitionMetadata partitionMetadata : partitionMetadataList) {
         this.partitionIds.add(partitionMetadata.getPartitionID());
         this.partitionProvisioning.put(partitionMetadata.getPartitionID(), 0L);
@@ -743,7 +734,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
                           partitionMetadataList.stream()
                               .mapToLong(PartitionMetadata::getMaxCapacity)
                               .min()
-                              .orElse(maxPartitionCapacity),
+                              .orElse(0),
                           !partitionDedication.get(id).isEmpty()))
               .toList();
     }
@@ -756,7 +747,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       return getLivePMDs().stream()
           .mapToLong(CalculatedPartitionMetadata::getMaxCapacity)
           .min()
-          .orElse(maxPartitionCapacity);
+          .orElse(0);
     }
 
     public List<String> currentEmptyPartitions() {

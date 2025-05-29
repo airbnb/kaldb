@@ -282,10 +282,9 @@ public class Astra {
       CacheSlotMetadataStore cacheSlotMetadataStore = new CacheSlotMetadataStore(curatorFramework);
       DatasetMetadataStore datasetMetadataStore = new DatasetMetadataStore(curatorFramework, true);
 
-      long maxPartitionCapacity =
-          astraConfig.getManagerConfig().getPartitionAssignmentConfig().getMaxPartitionCapacity();
       int minNumberOfPartitions =
           astraConfig.getManagerConfig().getPartitionAssignmentConfig().getMinNumberOfPartitions();
+
       PartitionMetadataStore partitionMetadataStore =
           new PartitionMetadataStore(curatorFramework, true);
 
@@ -308,8 +307,7 @@ public class Astra {
                       partitionMetadataStore,
                       snapshotMetadataStore,
                       replicaRestoreService,
-                      minNumberOfPartitions,
-                      maxPartitionCapacity))
+                      minNumberOfPartitions))
               .build();
       services.add(armeriaService);
 

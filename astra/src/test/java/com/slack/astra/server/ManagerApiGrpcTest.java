@@ -116,8 +116,7 @@ public class ManagerApiGrpcTest {
                     partitionMetadataStore,
                     snapshotMetadataStore,
                     replicaRestoreService,
-                    2,
-                    DEFAULT_MAX_CAPACITY))
+                    2))
             .build()
             .start());
     ManagedChannel channel =

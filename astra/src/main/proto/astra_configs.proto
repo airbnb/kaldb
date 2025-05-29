@@ -210,8 +210,6 @@ message ManagerConfig {
   }
 
   message PartitionAssignmentConfig {
-    // max per kafka partition
-    int64 max_partition_capacity = 1;
     // minimum number of partitions per tenant
     int32 min_number_of_partitions = 2;
   }
