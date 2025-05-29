@@ -515,17 +515,19 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   public void createPartition(
       ManagerApi.CreatePartitionRequest request,
       StreamObserver<Metadata.PartitionMetadata> responseObserver) {
-
-    PartitionMetadata existingPartitionMetadata;
     try {
-      existingPartitionMetadata = partitionMetadataStore.getSync(request.getPartitionId());
-    } catch (Exception e) {
-      existingPartitionMetadata = null;
-    }
-    PartitionMetadata newPartitionMetadata =
-        new PartitionMetadata(request.getPartitionId(), request.getMaxCapacity());
+      Preconditions.checkArgument(
+          request.getMaxCapacity() != 0, "Max capacity must be set when creating a new partition");
 
-    try {
+      PartitionMetadata existingPartitionMetadata;
+      try {
+        existingPartitionMetadata = partitionMetadataStore.getSync(request.getPartitionId());
+      } catch (Exception e) {
+        existingPartitionMetadata = null;
+      }
+      PartitionMetadata newPartitionMetadata =
+          new PartitionMetadata(request.getPartitionId(), request.getMaxCapacity());
+
       if (existingPartitionMetadata != null) {
         partitionMetadataStore.updateSync(newPartitionMetadata);
       } else {
@@ -533,6 +535,10 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       }
       responseObserver.onNext(toPartitionMetadataProto(newPartitionMetadata));
       responseObserver.onCompleted();
+    } catch (IllegalArgumentException e) {
+      LOG.error("Error creating new partition", e);
+      responseObserver.onError(
+          Status.INVALID_ARGUMENT.withDescription(e.getMessage()).asException());
     } catch (StatusRuntimeException e) {
       LOG.error("Error creating new partition", e);
       responseObserver.onError(e);

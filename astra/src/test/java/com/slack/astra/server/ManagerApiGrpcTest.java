@@ -1557,16 +1557,16 @@ public class ManagerApiGrpcTest {
   }
 
   @Test
-  public void shouldCreateAndGetNewPartitionOnlyPartitionId() {
-    // a newly created partition should be returned from the API and be in the metadata store
-    String partitionId = "1";
-
-    Metadata.PartitionMetadata createdPartition =
-        managerApiStub.createPartition(
-            ManagerApi.CreatePartitionRequest.newBuilder().setPartitionId(partitionId).build());
-
-    assertThat(createdPartition.getPartitionId()).isEqualTo(partitionId);
-    assertThat(createdPartition.getMaxCapacity()).isEqualTo(0);
+  public void shouldErrorCreatingNewPartitionOnlyPartitionId() {
+    assertThatThrownBy(
+            () -> {
+              managerApiStub.createPartition(
+                  ManagerApi.CreatePartitionRequest.newBuilder().setPartitionId("1").build());
+            })
+        .isInstanceOfSatisfying(
+            StatusRuntimeException.class,
+            withGrpcStatusAndDescription(
+                Status.INVALID_ARGUMENT, "Max capacity must be set when creating a new partition"));
   }
 
   @Test
@@ -1605,9 +1605,13 @@ public class ManagerApiGrpcTest {
 
     Metadata.PartitionMetadata partitionMetadata =
         managerApiStub.createPartition(
-            ManagerApi.CreatePartitionRequest.newBuilder().setPartitionId("1").build());
+            ManagerApi.CreatePartitionRequest.newBuilder()
+                .setPartitionId("1")
+                .setMaxCapacity(10)
+                .build());
 
     assertThat(partitionMetadata.getPartitionId()).isEqualTo("1");
+    assertThat(partitionMetadata.getMaxCapacity()).isEqualTo(10);
 
     ManagerApi.ListPartitionMetadataResponse listPartitionMetadataResponse =
         managerApiStub.listPartition(ManagerApi.ListPartitionRequest.newBuilder().build());
