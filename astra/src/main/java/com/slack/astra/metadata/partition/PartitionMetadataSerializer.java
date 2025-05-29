@@ -3,6 +3,7 @@ package com.slack.astra.metadata.partition;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.util.JsonFormat;
 import com.slack.astra.metadata.core.MetadataSerializer;
+import com.slack.astra.proto.manager_api.ManagerApi;
 import com.slack.astra.proto.metadata.Metadata;
 
 public class PartitionMetadataSerializer implements MetadataSerializer<PartitionMetadata> {
@@ -11,18 +12,33 @@ public class PartitionMetadataSerializer implements MetadataSerializer<Partition
       Metadata.PartitionMetadata partitionMetadataProto) {
 
     return new PartitionMetadata(
+        partitionMetadataProto.getPartitionId(), partitionMetadataProto.getMaxCapacity());
+  }
+
+  public static CalculatedPartitionMetadata fromCalculatedPartitionMetadataProto(
+      ManagerApi.CalculatedPartitionMetadata partitionMetadataProto) {
+
+    return new CalculatedPartitionMetadata(
         partitionMetadataProto.getPartitionId(),
         partitionMetadataProto.getProvisionedCapacity(),
         partitionMetadataProto.getMaxCapacity(),
         partitionMetadataProto.getDedicatedPartition());
   }
 
-  public static Metadata.PartitionMetadata toPartitionMetadataProto(PartitionMetadata metadata) {
-    return Metadata.PartitionMetadata.newBuilder()
+  public static ManagerApi.CalculatedPartitionMetadata toCalculatedPartitionMetadataProto(
+      CalculatedPartitionMetadata metadata) {
+    return ManagerApi.CalculatedPartitionMetadata.newBuilder()
         .setPartitionId(metadata.getPartitionID())
         .setProvisionedCapacity(metadata.getProvisionedCapacity())
         .setMaxCapacity(metadata.getMaxCapacity())
         .setDedicatedPartition(metadata.getDedicatedPartition())
+        .build();
+  }
+
+  public static Metadata.PartitionMetadata toPartitionMetadataProto(PartitionMetadata metadata) {
+    return Metadata.PartitionMetadata.newBuilder()
+        .setPartitionId(metadata.getPartitionID())
+        .setMaxCapacity(metadata.getMaxCapacity())
         .build();
   }
 

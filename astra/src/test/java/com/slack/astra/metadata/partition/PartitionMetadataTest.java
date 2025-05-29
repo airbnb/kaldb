@@ -14,10 +14,10 @@ public class PartitionMetadataTest {
     final long provisionedCapacity = 1000000;
     final long maxCapacity = 5000000;
     final boolean dedicatedPartition = false;
-    PartitionMetadata partitionMetadata =
-        new PartitionMetadata(partitionId, provisionedCapacity, maxCapacity, dedicatedPartition);
+    CalculatedPartitionMetadata partitionMetadata =
+        new CalculatedPartitionMetadata(
+            partitionId, provisionedCapacity, maxCapacity, dedicatedPartition);
 
-    assertThat(partitionMetadata.name).isEqualTo(partitionId);
     assertThat(partitionMetadata.partitionId).isEqualTo(partitionId);
     assertThat(partitionMetadata.provisionedCapacity).isEqualTo(provisionedCapacity);
     assertThat(partitionMetadata.maxCapacity).isEqualTo(maxCapacity);
@@ -26,16 +26,20 @@ public class PartitionMetadataTest {
 
   @Test
   public void testEqualsAndHashCode() {
-    PartitionMetadata partitionMetadata1 = new PartitionMetadata("1", 1000000, 5000000, false);
-    PartitionMetadata partitionMetadata2 = new PartitionMetadata("2", 1000000, 5000000, false);
-    PartitionMetadata partitionMetadata3 = new PartitionMetadata("1", 2000000, 5000000, false);
-    PartitionMetadata partitionMetadata4 = new PartitionMetadata("1", 1000000, 5000000, true);
+    CalculatedPartitionMetadata partitionMetadata1 =
+        new CalculatedPartitionMetadata("1", 1000000, 5000000, false);
+    CalculatedPartitionMetadata partitionMetadata2 =
+        new CalculatedPartitionMetadata("2", 1000000, 5000000, false);
+    CalculatedPartitionMetadata partitionMetadata3 =
+        new CalculatedPartitionMetadata("1", 2000000, 5000000, false);
+    CalculatedPartitionMetadata partitionMetadata4 =
+        new CalculatedPartitionMetadata("1", 1000000, 5000000, true);
 
     assertThat(partitionMetadata1).isNotEqualTo(partitionMetadata2);
     assertThat(partitionMetadata1).isNotEqualTo(partitionMetadata3);
     assertThat(partitionMetadata1).isNotEqualTo(partitionMetadata4);
 
-    Set<PartitionMetadata> set = new HashSet<>();
+    Set<CalculatedPartitionMetadata> set = new HashSet<>();
     set.add(partitionMetadata1);
     set.add(partitionMetadata2);
     set.add(partitionMetadata3);

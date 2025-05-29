@@ -33,7 +33,7 @@ service ManagerApiService {
   rpc CreatePartition(CreatePartitionRequest) returns (PartitionMetadata) {}
 
   // List of partitions used by astra along with usage metadata
-  // TODO maybe include time in the request so you could get a snapshot of the partitions at a given time
+  // TODO consider including time in the request so you could get a snapshot of the partitions at a given time
   rpc ListPartition(ListPartitionRequest) returns (ListPartitionMetadataResponse) {}
 }
 
@@ -119,10 +119,21 @@ message ResetPartitionDataResponse {
 
 message CreatePartitionRequest {
   string partition_id = 1;
-//  int64 max_capacity = 3;
+  int64 max_capacity = 2;
 }
 
 message ListPartitionRequest {}
+
+message ListPartitionMetadataResponse {
+  repeated CalculatedPartitionMetadata partition_metadata = 1;
+}
+
+message CalculatedPartitionMetadata {
+  string partition_id = 1;
+  int64 max_capacity = 2;
+  int64 provisioned_capacity = 3;
+  bool dedicated_partition = 4;
+}
 
 message DeleteDatasetMetadataRequest {
   // name of the dataset / tenant

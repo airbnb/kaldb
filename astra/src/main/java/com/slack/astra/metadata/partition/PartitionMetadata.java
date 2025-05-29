@@ -4,22 +4,17 @@ import com.slack.astra.metadata.core.AstraMetadata;
 import java.util.Objects;
 
 /**
- * PartitionMetadata Object is used to track the provisionedCapacity of a kafka partition in
- * Zookeeper. dedicatedPartition field is set when this partition is dedicated to a single tenant.
- * If false, this partition is shared by a multiple tenant
+ * PartitionMetadata Object is used to track the maxCapacity of a kafka partition in Zookeeper.
+ * dedicatedPartition field is set when this partition is dedicated to a single tenant. If false,
+ * this partition is shared by a multiple tenant
  */
 public class PartitionMetadata extends AstraMetadata {
   public final String partitionId;
-  public long provisionedCapacity;
-  public boolean dedicatedPartition;
   public long maxCapacity;
 
-  public PartitionMetadata(
-      String partition, long provisionedCapacity, long maxCapacity, boolean dedicatedPartition) {
+  public PartitionMetadata(String partition, long maxCapacity) {
     super(partition);
     this.partitionId = partition;
-    this.dedicatedPartition = dedicatedPartition;
-    this.provisionedCapacity = provisionedCapacity;
     this.maxCapacity = maxCapacity;
   }
 
@@ -29,14 +24,6 @@ public class PartitionMetadata extends AstraMetadata {
 
   public String getPartitionID() {
     return this.partitionId;
-  }
-
-  public long getProvisionedCapacity() {
-    return this.provisionedCapacity;
-  }
-
-  public boolean getDedicatedPartition() {
-    return this.dedicatedPartition;
   }
 
   public long getMaxCapacity() {
@@ -49,16 +36,12 @@ public class PartitionMetadata extends AstraMetadata {
     if (!(o instanceof PartitionMetadata)) return false;
     if (!super.equals(o)) return false;
     PartitionMetadata that = (PartitionMetadata) o;
-    return provisionedCapacity == that.provisionedCapacity
-        && partitionId.equals(that.partitionId)
-        && dedicatedPartition == that.dedicatedPartition
-        && maxCapacity == that.maxCapacity;
+    return partitionId.equals(that.partitionId) && maxCapacity == that.maxCapacity;
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(
-        super.hashCode(), partitionId, provisionedCapacity, maxCapacity, dedicatedPartition);
+    return Objects.hash(super.hashCode(), partitionId, maxCapacity);
   }
 
   @Override
@@ -66,12 +49,8 @@ public class PartitionMetadata extends AstraMetadata {
     return "PartitionMetadata{"
         + ", partitionId='"
         + partitionId
-        + ", provisionedCapacity="
-        + provisionedCapacity
         + ", maxCapacity="
         + maxCapacity
-        + ", dedicated partition="
-        + dedicatedPartition
         + '}';
   }
 }

@@ -8,11 +8,11 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import com.slack.astra.chunk.ChunkInfo;
 import com.slack.astra.clusterManager.ReplicaRestoreService;
-import com.slack.astra.metadata.core.InternalMetadataStoreException;
 import com.slack.astra.metadata.dataset.DatasetMetadata;
 import com.slack.astra.metadata.dataset.DatasetMetadataSerializer;
 import com.slack.astra.metadata.dataset.DatasetMetadataStore;
 import com.slack.astra.metadata.dataset.DatasetPartitionMetadata;
+import com.slack.astra.metadata.partition.CalculatedPartitionMetadata;
 import com.slack.astra.metadata.partition.PartitionMetadata;
 import com.slack.astra.metadata.partition.PartitionMetadataSerializer;
 import com.slack.astra.metadata.partition.PartitionMetadataStore;
@@ -521,19 +521,41 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   public void createPartition(
       ManagerApi.CreatePartitionRequest request,
       StreamObserver<Metadata.PartitionMetadata> responseObserver) {
+
+    PartitionMetadata existingPartitionMetadata;
+    try {
+      existingPartitionMetadata = partitionMetadataStore.getSync(request.getPartitionId());
+    } catch (Exception e) {
+      // TODO exceptions
+      existingPartitionMetadata = null;
+    }
+    PartitionMetadata newPartitionMetadata =
+        new PartitionMetadata(request.getPartitionId(), maxPartitionCapacity);
+    if (existingPartitionMetadata != null) {
+      PartitionMetadata updatedPartitionMetadata =
+          new PartitionMetadata(existingPartitionMetadata.partitionId, maxPartitionCapacity);
+      partitionMetadataStore.updateSync(updatedPartitionMetadata);
+      responseObserver.onNext(toPartitionMetadataProto(updatedPartitionMetadata));
+      responseObserver.onCompleted();
+    } else {
+      partitionMetadataStore.createSync(newPartitionMetadata);
+      responseObserver.onNext(toPartitionMetadataProto(newPartitionMetadata));
+      responseObserver.onCompleted();
+      return;
+    }
+    /*
     try {
       try {
         PartitionMetadata partitionMetadata =
             partitionMetadataStore.getSync(request.getPartitionId());
         PartitionMetadata updatedPartitionMetadata =
-            new PartitionMetadata(partitionMetadata.partitionId, 0, maxPartitionCapacity, false);
+            new PartitionMetadata(partitionMetadata.partitionId, maxPartitionCapacity);
         partitionMetadataStore.updateSync(updatedPartitionMetadata);
         responseObserver.onNext(toPartitionMetadataProto(updatedPartitionMetadata));
         responseObserver.onCompleted();
       } catch (InternalMetadataStoreException e) {
         // create
-        PartitionMetadata createPartitionMetadata =
-            new PartitionMetadata(request.getPartitionId(), 0, maxPartitionCapacity, false);
+        PartitionMetadata createPartitionMetadata = newPartitionMetadata;
         partitionMetadataStore.createSync(createPartitionMetadata);
         responseObserver.onNext(toPartitionMetadataProto(createPartitionMetadata));
         responseObserver.onCompleted();
@@ -544,19 +566,19 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     } catch (Exception e) {
       LOG.error("Error creating new partition", e);
       responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
-    }
+    }*/
   }
 
   @Override
   public void listPartition(
       ManagerApi.ListPartitionRequest request,
-      StreamObserver<Metadata.ListPartitionMetadataResponse> responseObserver) {
+      StreamObserver<ManagerApi.ListPartitionMetadataResponse> responseObserver) {
     try {
       responseObserver.onNext(
-          Metadata.ListPartitionMetadataResponse.newBuilder()
+          ManagerApi.ListPartitionMetadataResponse.newBuilder()
               .addAllPartitionMetadata(
                   createPartitionMetadataFromDatasetConfigs().getLivePMDs().stream()
-                      .map(PartitionMetadataSerializer::toPartitionMetadataProto)
+                      .map(PartitionMetadataSerializer::toCalculatedPartitionMetadataProto)
                       .toList())
               .build());
       responseObserver.onCompleted();
@@ -643,7 +665,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       // Then starting with the min number of needed partitions, we look for a set of partitions
       // with
       // enough space going up to the max number of available partitions
-      List<PartitionMetadata> partitionsSorted =
+      List<CalculatedPartitionMetadata> partitionsSorted =
           partitionMetadataFromDatasetConfigs.partitionsSortedByReusedCapacityAndId(
               currentPartitions);
       long currentPerPartitionThroughput;
@@ -669,7 +691,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
                             >= (p.getProvisionedCapacity() - currentPerPartitionThroughput)
                                 + nextPerPartitionThroughput)
                 .limit(proposedPartitionCt)
-                .map(PartitionMetadata::getPartitionID)
+                .map(CalculatedPartitionMetadata::getPartitionID)
                 .toList();
         if (lastProposal.size() >= minNumNeededPartitions
             && lastProposal.size() == proposedPartitionCt) {
@@ -695,7 +717,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     private final Map<String, Long> partitionProvisioning = new HashMap<>();
     private final Map<String, List<String>> partitionDatasets = new HashMap<>();
     private final Map<String, List<String>> partitionDedication = new HashMap<>();
-    private final List<PartitionMetadata> livePMDs;
+    private final List<CalculatedPartitionMetadata> livePMDs;
 
     public PartitionMetadataFromDatasetConfigs(
         List<DatasetMetadata> datasetMetadataList,
@@ -736,7 +758,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
           partitionIds.stream()
               .map(
                   id ->
-                      new PartitionMetadata(
+                      new CalculatedPartitionMetadata(
                           id,
                           partitionProvisioning.get(id),
                           partitionMetadataList.stream()
@@ -753,7 +775,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
     public long maxCapacityForPartitions() {
       return getLivePMDs().stream()
-          .mapToLong(PartitionMetadata::getMaxCapacity)
+          .mapToLong(CalculatedPartitionMetadata::getMaxCapacity)
           .min()
           .orElse(maxPartitionCapacity);
     }
@@ -769,15 +791,16 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       return getLivePMDs().size();
     }
 
-    public List<PartitionMetadata> partitionsSortedByReusedCapacityAndId(
+    public List<CalculatedPartitionMetadata> partitionsSortedByReusedCapacityAndId(
         List<String> reusablePartitions) {
       return getLivePMDs().stream()
           .sorted(
               Comparator.comparing(
-                      (PartitionMetadata p) -> reusablePartitions.contains(p.getPartitionID()))
-                  .thenComparing(PartitionMetadata::getProvisionedCapacity)
+                      (CalculatedPartitionMetadata p) ->
+                          reusablePartitions.contains(p.getPartitionID()))
+                  .thenComparing(CalculatedPartitionMetadata::getProvisionedCapacity)
                   .reversed()
-                  .thenComparing(PartitionMetadata::getPartitionID))
+                  .thenComparing(CalculatedPartitionMetadata::getPartitionID))
           .toList();
     }
 
@@ -794,7 +817,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       return minNumberOfPartitions;
     }
 
-    public List<PartitionMetadata> getLivePMDs() {
+    public List<CalculatedPartitionMetadata> getLivePMDs() {
       return livePMDs;
     }
 

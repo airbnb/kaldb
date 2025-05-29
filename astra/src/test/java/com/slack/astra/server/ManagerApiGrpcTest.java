@@ -18,6 +18,7 @@ import com.slack.astra.metadata.core.InternalMetadataStoreException;
 import com.slack.astra.metadata.dataset.DatasetMetadata;
 import com.slack.astra.metadata.dataset.DatasetMetadataStore;
 import com.slack.astra.metadata.dataset.DatasetPartitionMetadata;
+import com.slack.astra.metadata.partition.CalculatedPartitionMetadata;
 import com.slack.astra.metadata.partition.PartitionMetadata;
 import com.slack.astra.metadata.partition.PartitionMetadataSerializer;
 import com.slack.astra.metadata.partition.PartitionMetadataStore;
@@ -529,7 +530,7 @@ public class ManagerApiGrpcTest {
                 new DatasetPartitionMetadata(
                     Instant.now().toEpochMilli(), MAX_TIME, usedPartitions)),
             "whatever"));
-    createDedicatedPartitions(usedPartitions, existingDatasetThroughputBytes / 2);
+    createDedicatedPartitions(usedPartitions);
     createPartitions("3");
 
     String datasetName = "testDataset";
@@ -559,7 +560,7 @@ public class ManagerApiGrpcTest {
                     Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
             "whatever",
             true));
-    createDedicatedPartitions(usedExistingPartitions, existingDatasetThroughputBytes / 2);
+    createDedicatedPartitions(usedExistingPartitions);
     createPartitions("3", "4");
 
     String datasetName = "testDataset";
@@ -595,8 +596,7 @@ public class ManagerApiGrpcTest {
                 new DatasetPartitionMetadata(
                     Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
             "whatever"));
-    createDedicatedPartitions(
-        usedExistingPartitions, existingDatasetThroughputBytes / usedExistingPartitions.size());
+    createDedicatedPartitions(usedExistingPartitions);
 
     String datasetName = "testDataset";
     createEmptyDatasetGRPC(datasetName, "testOwner");
@@ -616,8 +616,7 @@ public class ManagerApiGrpcTest {
 
     int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY;
     List<String> usedExistingPartitions = List.of("1", "2", "3");
-    createDedicatedPartitions(
-        usedExistingPartitions, existingDatasetThroughputBytes / usedExistingPartitions.size());
+    createDedicatedPartitions(usedExistingPartitions);
     createPartitions("4");
 
     datasetMetadataStore.createSync(
@@ -650,8 +649,7 @@ public class ManagerApiGrpcTest {
 
     int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY * 3;
     List<String> usedExistingPartitions = List.of("1", "2", "3");
-    createDedicatedPartitions(
-        usedExistingPartitions, existingDatasetThroughputBytes / usedExistingPartitions.size());
+    createDedicatedPartitions(usedExistingPartitions);
     createPartitions("4");
 
     datasetMetadataStore.createSync(
@@ -690,7 +688,7 @@ public class ManagerApiGrpcTest {
                 new DatasetPartitionMetadata(
                     Instant.now().toEpochMilli(), MAX_TIME, usedPartitions)),
             "whatever"));
-    createPartitions(usedPartitions, existingDatasetThroughputBytes / 2);
+    createPartitions(usedPartitions);
     createPartitions("3");
 
     String datasetName = "testDataset";
@@ -818,9 +816,7 @@ public class ManagerApiGrpcTest {
                 new DatasetPartitionMetadata(
                     Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
             "whatever"));
-    createPartitions(
-        usedExistingPartitions,
-        Math.ceilDiv(existingDatasetThroughputBytes, usedExistingPartitions.size()));
+    createPartitions(usedExistingPartitions);
 
     String datasetName = "testDataset";
     createEmptyDatasetGRPC(datasetName, "testOwner");
@@ -862,8 +858,7 @@ public class ManagerApiGrpcTest {
                 new DatasetPartitionMetadata(
                     Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
             "whatever"));
-    createDedicatedPartitions(
-        usedExistingPartitions, existingDatasetThroughputBytes / usedExistingPartitions.size());
+    createDedicatedPartitions(usedExistingPartitions);
     // action
     // - create an empty dataset
     // - update its partitions with some throughputs
@@ -895,8 +890,7 @@ public class ManagerApiGrpcTest {
                     Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
             "whatever",
             true));
-    createDedicatedPartitions(
-        usedExistingPartitions, existingDatasetThroughputBytes / usedExistingPartitions.size());
+    createDedicatedPartitions(usedExistingPartitions);
     createPartitions(unusedExistingPartitions.toArray(new String[0]));
 
     String datasetName = "testDataset";
@@ -1240,8 +1234,8 @@ public class ManagerApiGrpcTest {
 
     assertThat(getDatasetMetadataGRPC(datasetName).getPartitionConfigsList()).isEmpty();
 
-    assertThat(partitionMetadataStore.getSync("1")).isEqualTo(createSharedPartitionMetadata("1"));
-    assertThat(partitionMetadataStore.getSync("2")).isEqualTo(createSharedPartitionMetadata("2"));
+    assertThat(getPartitionForId("1")).isEqualTo(createEmptySharedCalculatedPartitionMetadata("1"));
+    assertThat(getPartitionForId("2")).isEqualTo(createEmptySharedCalculatedPartitionMetadata("2"));
   }
 
   @Test
@@ -1573,12 +1567,10 @@ public class ManagerApiGrpcTest {
             ManagerApi.CreatePartitionRequest.newBuilder().setPartitionId(partitionId).build());
 
     assertThat(createdPartition.getPartitionId()).isEqualTo(partitionId);
-    assertThat(createdPartition.getProvisionedCapacity()).isEqualTo(0);
     assertThat(createdPartition.getMaxCapacity()).isEqualTo(DEFAULT_MAX_CAPACITY);
-    assertThat(createdPartition.getDedicatedPartition()).isEqualTo(false);
 
-    assertThat(partitionMetadataStore.getSync(partitionId))
-        .isEqualTo(createSharedPartitionMetadata(partitionId));
+    assertThat(getPartitionForId(partitionId))
+        .isEqualTo(createEmptySharedCalculatedPartitionMetadata(partitionId));
   }
 
   @Test
@@ -1591,13 +1583,26 @@ public class ManagerApiGrpcTest {
 
     assertThat(createdPartition.getPartitionId()).isEqualTo(partitionId);
 
-    PartitionMetadata partitionMetadata = partitionMetadataStore.getSync(partitionId);
-    assertThat(partitionMetadata).isEqualTo(createSharedPartitionMetadata(partitionId, 0));
+    assertThat(getPartitionForId(partitionId))
+        .isEqualTo(createEmptySharedCalculatedPartitionMetadata(partitionId));
+  }
+
+  private CalculatedPartitionMetadata getPartitionForId(String partitionId) {
+    return managerApiStub
+        .listPartition(ManagerApi.ListPartitionRequest.newBuilder().build())
+        .getPartitionMetadataList()
+        .stream()
+        .filter(p -> p.getPartitionId().equals(partitionId))
+        .map(PartitionMetadataSerializer::fromCalculatedPartitionMetadataProto)
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new IllegalStateException("Partition with id %s not found".formatted(partitionId)));
   }
 
   @Test
   public void shouldNotCreateNewPartitionWhenExistingPartition() {
-    partitionMetadataStore.createSync(createSharedPartitionMetadata("1", 1000000));
+    partitionMetadataStore.createSync(createSharedPartitionMetadata("1"));
 
     Metadata.PartitionMetadata partitionMetadata =
         managerApiStub.createPartition(
@@ -1605,7 +1610,7 @@ public class ManagerApiGrpcTest {
 
     assertThat(partitionMetadata.getPartitionId()).isEqualTo("1");
 
-    Metadata.ListPartitionMetadataResponse listPartitionMetadataResponse =
+    ManagerApi.ListPartitionMetadataResponse listPartitionMetadataResponse =
         managerApiStub.listPartition(ManagerApi.ListPartitionRequest.newBuilder().build());
     assertThat(listPartitionMetadataResponse.getPartitionMetadataList().size()).isEqualTo(1);
   }
@@ -1613,9 +1618,9 @@ public class ManagerApiGrpcTest {
   @Test
   public void shouldListPartition() {
     partitionMetadataStore.createSync(createSharedPartitionMetadata("1"));
-    partitionMetadataStore.createSync(createDedicatedPartitionMetadata("2", 0));
+    partitionMetadataStore.createSync(createDedicatedPartitionMetadata("2"));
 
-    Metadata.ListPartitionMetadataResponse listPartitionMetadataResponse =
+    ManagerApi.ListPartitionMetadataResponse listPartitionMetadataResponse =
         managerApiStub.listPartition(ManagerApi.ListPartitionRequest.newBuilder().build());
 
     assertThat(listPartitionMetadataResponse.getPartitionMetadataList().size()).isEqualTo(2);
@@ -1627,8 +1632,8 @@ public class ManagerApiGrpcTest {
     String datasetOwner = "testOwner";
     String datasetServicePattern = "testDataset";
 
-    partitionMetadataStore.createSync(createDedicatedPartitionMetadata("1", 500000));
-    partitionMetadataStore.createSync(createDedicatedPartitionMetadata("2", 500000));
+    partitionMetadataStore.createSync(createDedicatedPartitionMetadata("1"));
+    partitionMetadataStore.createSync(createDedicatedPartitionMetadata("2"));
 
     datasetMetadataStore.createSync(
         new DatasetMetadata(
@@ -1689,8 +1694,8 @@ public class ManagerApiGrpcTest {
     String datasetOwner = "testOwner";
     String datasetServicePattern = "testDataset";
 
-    partitionMetadataStore.createSync(createDedicatedPartitionMetadata("1", 4000000));
-    partitionMetadataStore.createSync(createDedicatedPartitionMetadata("2", 4000000));
+    partitionMetadataStore.createSync(createDedicatedPartitionMetadata("1"));
+    partitionMetadataStore.createSync(createDedicatedPartitionMetadata("2"));
 
     datasetMetadataStore.createSync(
         new DatasetMetadata(
@@ -1713,56 +1718,58 @@ public class ManagerApiGrpcTest {
 
     assertThat(throwable.getStatus().getCode()).isEqualTo(Status.UNKNOWN.getCode());
 
-    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
-    assertThat(partitionMetadata1.getProvisionedCapacity()).isEqualTo(4000000);
-    assertThat(partitionMetadata1.getDedicatedPartition()).isEqualTo(true);
-
-    PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
-    assertThat(partitionMetadata2.getProvisionedCapacity()).isEqualTo(4000000);
-    assertThat(partitionMetadata2.getDedicatedPartition()).isEqualTo(true);
+    List<ManagerApi.CalculatedPartitionMetadata> partitionMetadataList =
+        managerApiStub
+            .listPartition(ManagerApi.ListPartitionRequest.newBuilder().build())
+            .getPartitionMetadataList();
+    assertThat(partitionMetadataList.size()).isEqualTo(2);
+    assertThat(partitionMetadataList)
+        .extracting(ManagerApi.CalculatedPartitionMetadata::getProvisionedCapacity)
+        .containsExactly(3000000L, 3000000L);
+    assertThat(partitionMetadataList)
+        .extracting(ManagerApi.CalculatedPartitionMetadata::getDedicatedPartition)
+        .containsExactly(false, false);
   }
 
-  private Condition<? super PartitionMetadata> dedicatedPartitionsWithCapacity(
+  private Condition<? super CalculatedPartitionMetadata> dedicatedPartitionsWithCapacity(
       long provisionedCapacity) {
     return partitionsWithCapacityAndDedicated(provisionedCapacity, true);
   }
 
-  private Condition<? super PartitionMetadata> sharedPartitionsWithCapacity(
+  private Condition<? super CalculatedPartitionMetadata> sharedPartitionsWithCapacity(
       long provisionedCapacity) {
     return partitionsWithCapacityAndDedicated(provisionedCapacity, false);
   }
 
-  private Condition<? super PartitionMetadata> partitionsWithCapacityAndDedicated(
+  private Condition<? super CalculatedPartitionMetadata> partitionsWithCapacityAndDedicated(
       long provisionedCapacity, boolean dedicated) {
     return new Condition<>(
         p -> p.getProvisionedCapacity() == provisionedCapacity && p.dedicatedPartition == dedicated,
         (dedicated ? "dedicated" : "shared") + " partition with capacity " + provisionedCapacity);
   }
 
-  private List<PartitionMetadata> getPartitionMetadata(String... partitionIds) {
-    Metadata.ListPartitionMetadataResponse listPartitionMetadataResponse =
+  private List<CalculatedPartitionMetadata> getPartitionMetadata(String... partitionIds) {
+    ManagerApi.ListPartitionMetadataResponse listPartitionMetadataResponse =
         managerApiStub.listPartition(ManagerApi.ListPartitionRequest.newBuilder().build());
     return listPartitionMetadataResponse.getPartitionMetadataList().stream()
-        .map(PartitionMetadataSerializer::fromPartitionMetadataProto)
+        .map(PartitionMetadataSerializer::fromCalculatedPartitionMetadataProto)
         .filter(p -> Arrays.asList(partitionIds).contains(p.getPartitionID()))
         .toList();
   }
 
   private void createPartitions(String... numbers) {
-    createPartitions(List.of(numbers), 0);
+    createPartitions(List.of(numbers));
   }
 
-  private void createPartitions(List<String> usedExistingPartitions, int provisionedCapacity) {
+  private void createPartitions(List<String> usedExistingPartitions) {
     for (String number : usedExistingPartitions) {
-      partitionMetadataStore.createSync(createSharedPartitionMetadata(number, provisionedCapacity));
+      partitionMetadataStore.createSync(createSharedPartitionMetadata(number));
     }
   }
 
-  private void createDedicatedPartitions(
-      List<String> usedExistingPartitions, int provisionedCapacity) {
+  private void createDedicatedPartitions(List<String> usedExistingPartitions) {
     for (String number : usedExistingPartitions) {
-      partitionMetadataStore.createSync(
-          createDedicatedPartitionMetadata(number, provisionedCapacity));
+      partitionMetadataStore.createSync(createDedicatedPartitionMetadata(number));
     }
   }
 
@@ -1872,17 +1879,16 @@ public class ManagerApiGrpcTest {
         expectedThroughput);
   }
 
-  private static PartitionMetadata createDedicatedPartitionMetadata(
-      String partitionNumber, long provisionedCapacity) {
-    return new PartitionMetadata(partitionNumber, provisionedCapacity, DEFAULT_MAX_CAPACITY, true);
-  }
-
-  private static PartitionMetadata createSharedPartitionMetadata(
-      String partitionNumber, long provisionedCapacity) {
-    return new PartitionMetadata(partitionNumber, provisionedCapacity, DEFAULT_MAX_CAPACITY, false);
+  private static PartitionMetadata createDedicatedPartitionMetadata(String partitionNumber) {
+    return new PartitionMetadata(partitionNumber, DEFAULT_MAX_CAPACITY);
   }
 
   private static PartitionMetadata createSharedPartitionMetadata(String partitionNumber) {
-    return new PartitionMetadata(partitionNumber, 0, DEFAULT_MAX_CAPACITY, false);
+    return new PartitionMetadata(partitionNumber, DEFAULT_MAX_CAPACITY);
+  }
+
+  private static CalculatedPartitionMetadata createEmptySharedCalculatedPartitionMetadata(
+      String partitionNumber) {
+    return new CalculatedPartitionMetadata(partitionNumber, 0, DEFAULT_MAX_CAPACITY, false);
   }
 }
