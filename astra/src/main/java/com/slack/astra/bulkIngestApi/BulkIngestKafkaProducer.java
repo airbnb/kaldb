@@ -336,10 +336,23 @@ public class BulkIngestKafkaProducer extends AbstractExecutionThreadService {
         // we intentionally suppress FutureReturnValueIgnored here in errorprone - this is because
         // we wrap this in a transaction, which is responsible for flushing all of the pending
         // messages
-        kafkaProducer.send(producerRecord);
+        if (useKafkaTransactions) {
+          kafkaProducer.send(producerRecord);
+        } else {
+          kafkaProducer.send(
+              producerRecord,
+              (metadata, exception) -> {
+                if (exception != null) {
+                  LOG.error(
+                      "Kafka send failure for index {} partition {}",
+                      index,
+                      partition,
+                      exception);
+                }
+              });
+        }
       }
     }
-
     return new BulkIngestResponse(totalDocs, 0, "");
   }
 
