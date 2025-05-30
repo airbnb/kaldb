@@ -30,7 +30,7 @@ service ManagerApiService {
   rpc ResetPartitionData(ResetPartitionDataRequest) returns (ResetPartitionDataResponse) {}
 
   // Create Partition in partition map
-  rpc CreatePartition(CreatePartitionRequest) returns (PartitionMetadata) {}
+  rpc CreateOrUpdatePartition(CreatePartitionRequest) returns (PartitionMetadata) {}
 
   // List of partitions used by astra along with usage metadata
   // TODO consider including time in the request so you could get a snapshot of the partitions at a given time

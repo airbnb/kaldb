@@ -1560,7 +1560,7 @@ public class ManagerApiGrpcTest {
   public void shouldErrorCreatingNewPartitionOnlyPartitionId() {
     assertThatThrownBy(
             () -> {
-              managerApiStub.createPartition(
+              managerApiStub.createOrUpdatePartition(
                   ManagerApi.CreatePartitionRequest.newBuilder().setPartitionId("1").build());
             })
         .isInstanceOfSatisfying(
@@ -1574,7 +1574,7 @@ public class ManagerApiGrpcTest {
     String partitionId = "1";
 
     Metadata.PartitionMetadata createdPartition =
-        managerApiStub.createPartition(
+        managerApiStub.createOrUpdatePartition(
             ManagerApi.CreatePartitionRequest.newBuilder()
                 .setPartitionId(partitionId)
                 .setMaxCapacity(100)
@@ -1604,7 +1604,7 @@ public class ManagerApiGrpcTest {
     partitionMetadataStore.createSync(createSharedPartitionMetadata("1"));
 
     Metadata.PartitionMetadata partitionMetadata =
-        managerApiStub.createPartition(
+        managerApiStub.createOrUpdatePartition(
             ManagerApi.CreatePartitionRequest.newBuilder()
                 .setPartitionId("1")
                 .setMaxCapacity(10)

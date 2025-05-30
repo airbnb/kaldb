@@ -512,7 +512,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   }
 
   @Override
-  public void createPartition(
+  public void createOrUpdatePartition(
       ManagerApi.CreatePartitionRequest request,
       StreamObserver<Metadata.PartitionMetadata> responseObserver) {
     try {
@@ -528,13 +528,20 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       PartitionMetadata newPartitionMetadata =
           new PartitionMetadata(request.getPartitionId(), request.getMaxCapacity());
 
-      if (existingPartitionMetadata != null) {
-        partitionMetadataStore.updateSync(newPartitionMetadata);
-      } else {
+      boolean noExistingPartition = existingPartitionMetadata == null;
+      if (noExistingPartition) {
         partitionMetadataStore.createSync(newPartitionMetadata);
+      } else {
+        partitionMetadataStore.updateSync(newPartitionMetadata);
       }
       responseObserver.onNext(toPartitionMetadataProto(newPartitionMetadata));
       responseObserver.onCompleted();
+      LOG.info(
+          "{} partition: {}, max capacity: {} -> {}",
+          noExistingPartition ? "Created" : "Updated",
+          request.getPartitionId(),
+          noExistingPartition ? 0 : existingPartitionMetadata.getMaxCapacity(),
+          request.getMaxCapacity());
     } catch (IllegalArgumentException e) {
       LOG.error("Error creating new partition", e);
       responseObserver.onError(
