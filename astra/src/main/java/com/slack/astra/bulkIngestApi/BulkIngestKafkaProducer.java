@@ -32,6 +32,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -219,15 +220,19 @@ public class BulkIngestKafkaProducer extends AbstractExecutionThreadService {
       } catch (Exception e) {
         LOG.error("Failed to write batch to kafka", e);
         for (BulkIngestRequest request : requests) {
-          responseMap.put(
-              request,
+          BulkIngestResponse resp =
               new BulkIngestResponse(
                   0,
                   request.getInputDocs().values().stream().mapToInt(List::size).sum(),
-                  e.getMessage()));
+                  e.getMessage());
+          responseMap.put(request, resp);
+          // propagate failure response
+          if (!request.setResponse(resp)) {
+            LOG.warn("Failed to add result to the bulk ingest request on error", e);
+            failedSetResponseCounter.increment();
+          }
         }
       }
-
       return responseMap;
     }
   }
@@ -308,6 +313,9 @@ public class BulkIngestKafkaProducer extends AbstractExecutionThreadService {
       Map<String, List<Trace.Span>> indexDocs, KafkaProducer<String, byte[]> kafkaProducer) {
     int totalDocs = indexDocs.values().stream().mapToInt(List::size).sum();
 
+    AtomicInteger failedDocs = new AtomicInteger(0);
+    AtomicReference<String> errorMsg = new AtomicReference<>("");
+
     // we cannot create a generic pool of producers because the kafka API expects the transaction ID
     // to be a property while creating the producer object.
     for (Map.Entry<String, List<Trace.Span>> indexDoc : indexDocs.entrySet()) {
@@ -339,21 +347,26 @@ public class BulkIngestKafkaProducer extends AbstractExecutionThreadService {
         if (useKafkaTransactions) {
           kafkaProducer.send(producerRecord);
         } else {
+          // For non-transactional mode, collect errors from the callback
           kafkaProducer.send(
               producerRecord,
               (metadata, exception) -> {
                 if (exception != null) {
                   LOG.error(
-                      "Kafka send failure for index {} partition {}",
-                      index,
-                      partition,
-                      exception);
+                      "Kafka send failure for index {} partition {}", index, partition, exception);
+                  failedDocs.incrementAndGet();
+                  errorMsg.set(exception.getMessage());
                 }
               });
         }
       }
     }
-    return new BulkIngestResponse(totalDocs, 0, "");
+    // we ensure all records are sent before returning the response
+    if (!useKafkaTransactions) {
+      kafkaProducer.flush();
+    }
+
+    return new BulkIngestResponse(totalDocs - failedDocs.get(), failedDocs.get(), errorMsg.get());
   }
 
   private KafkaProducer<String, byte[]> createKafkaTransactionProducer(String transactionId) {
