@@ -38,6 +38,7 @@ import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
@@ -45,6 +46,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.stream.LongStream;
+import java.util.stream.Stream;
 import org.apache.curator.test.TestingServer;
 import org.apache.curator.x.async.AsyncCuratorFramework;
 import org.assertj.core.api.Condition;
@@ -662,7 +665,8 @@ public class ManagerApiGrpcTest {
     String datasetName = "testDataset";
     createEmptyDatasetGRPC(datasetName, "testOwner");
 
-    assertThatThrownBy(() -> updatePartitionAssignmentGRPC(datasetName, DEFAULT_MAX_CAPACITY))
+    assertThatThrownBy(
+            () -> updatePartitionAssignmentGRPC(datasetName, DEFAULT_MAX_CAPACITY, false))
         .isInstanceOfSatisfying(
             StatusRuntimeException.class,
             withGrpcStatusAndDescription(
@@ -719,7 +723,7 @@ public class ManagerApiGrpcTest {
     long nowMs = Instant.now().toEpochMilli();
     long throughputBytes = 10;
     ManagerApi.UpdatePartitionAssignmentResponse updateResponse =
-        updatePartitionAssignmentGRPC(datasetName, throughputBytes);
+        updatePartitionAssignmentGRPC(datasetName, throughputBytes, false);
     assertThat(updateResponse.getAssignedPartitionIdsList()).isEqualTo(List.of("1", "2"));
     await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs));
 
@@ -754,7 +758,7 @@ public class ManagerApiGrpcTest {
     long nowMs = Instant.now().toEpochMilli();
     long throughputBytes = 1_000;
     ManagerApi.UpdatePartitionAssignmentResponse updateResponse =
-        updatePartitionAssignmentGRPC(datasetName, throughputBytes);
+        updatePartitionAssignmentGRPC(datasetName, throughputBytes, false);
     assertThat(updateResponse.getAssignedPartitionIdsList()).isEqualTo(List.of("1", "2"));
     await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs));
 
@@ -789,7 +793,7 @@ public class ManagerApiGrpcTest {
     createEmptyDatasetGRPC(datasetName, "testOwner");
 
     long throughputBytes = DEFAULT_MAX_CAPACITY;
-    assertThatThrownBy(() -> updatePartitionAssignmentGRPC(datasetName, throughputBytes))
+    assertThatThrownBy(() -> updatePartitionAssignmentGRPC(datasetName, throughputBytes, false))
         .isInstanceOfSatisfying(
             StatusRuntimeException.class,
             withGrpcStatusAndDescription(
@@ -821,7 +825,7 @@ public class ManagerApiGrpcTest {
     long nowMs = Instant.now().toEpochMilli();
     long throughputBytes = DEFAULT_MAX_CAPACITY - 1;
     ManagerApi.UpdatePartitionAssignmentResponse updateResponse =
-        updatePartitionAssignmentGRPC(datasetName, throughputBytes);
+        updatePartitionAssignmentGRPC(datasetName, throughputBytes, false);
     assertThat(updateResponse.getAssignedPartitionIdsList()).isEqualTo(List.of("1", "2", "3"));
     await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs));
 
@@ -862,7 +866,8 @@ public class ManagerApiGrpcTest {
     String datasetName = "testDataset";
     createEmptyDatasetGRPC(datasetName, "testOwner");
 
-    assertThatThrownBy(() -> updatePartitionAssignmentGRPC(datasetName, DEFAULT_MAX_CAPACITY))
+    assertThatThrownBy(
+            () -> updatePartitionAssignmentGRPC(datasetName, DEFAULT_MAX_CAPACITY, false))
         .isInstanceOfSatisfying(
             StatusRuntimeException.class,
             withGrpcStatusAndDescription(
@@ -895,7 +900,7 @@ public class ManagerApiGrpcTest {
     long nowMs = Instant.now().toEpochMilli();
     long throughputBytes = DEFAULT_MAX_CAPACITY;
     ManagerApi.UpdatePartitionAssignmentResponse updateResponse =
-        updatePartitionAssignmentGRPC(datasetName, throughputBytes);
+        updatePartitionAssignmentGRPC(datasetName, throughputBytes, false);
     assertThat(updateResponse.getAssignedPartitionIdsList()).isEqualTo(unusedExistingPartitions);
     await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs));
 
@@ -913,7 +918,7 @@ public class ManagerApiGrpcTest {
   @Test
   public void shouldAutoAssign2NoPartitions() {
     createEmptyDatasetGRPC("testDataset", "testOwner");
-    assertThatThrownBy(() -> updatePartitionAssignmentGRPC("testDataset", 10))
+    assertThatThrownBy(() -> updatePartitionAssignmentGRPC("testDataset", 10, false))
         .isInstanceOfSatisfying(
             io.grpc.StatusRuntimeException.class,
             withGrpcStatusAndDescription(
@@ -925,7 +930,7 @@ public class ManagerApiGrpcTest {
     createEmptyDatasetGRPC("testDataset", "testOwner");
     createPartitions("1");
 
-    assertThatThrownBy(() -> updatePartitionAssignmentGRPC("testDataset", 10))
+    assertThatThrownBy(() -> updatePartitionAssignmentGRPC("testDataset", 10, false))
         .isInstanceOfSatisfying(
             io.grpc.StatusRuntimeException.class,
             withGrpcStatusAndDescription(
@@ -935,11 +940,54 @@ public class ManagerApiGrpcTest {
 
   @Test
   public void shouldInvalidArgumentOnUpdatingWithBlankDataset() {
-    assertThatThrownBy(() -> updatePartitionAssignmentGRPC("", 10))
+    assertThatThrownBy(() -> updatePartitionAssignmentGRPC("", 10, false))
         .isInstanceOfSatisfying(
             io.grpc.StatusRuntimeException.class,
             withGrpcStatusAndDescription(
                 Status.INVALID_ARGUMENT, "Dataset name must not be blank string"));
+  }
+
+  // padding tests
+  // - validate that the end time is always after the start with the padding
+  @Test
+  public void shouldEnsureThatActiveTimesDoNotOverlap() {
+    String datasetName = "testDataset";
+    createEmptyDatasetGRPC(datasetName, "testOwner");
+    createPartitions("1", "2", "3", "4");
+    managerApiStub.updatePartitionAssignment(
+        ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
+            .setName(datasetName)
+            .setThroughputBytes(1000)
+            .setRequireDedicatedPartition(true)
+            .addAllPartitionIds(List.of("1"))
+            .build());
+
+    long nowMs = Instant.now().toEpochMilli();
+    managerApiStub.updatePartitionAssignment(
+        ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
+            .setName(datasetName)
+            .setThroughputBytes(1000)
+            .setRequireDedicatedPartition(true)
+            .addAllPartitionIds(List.of("1", "2"))
+            .build());
+
+    Metadata.DatasetMetadata datasetMetadata = getDatasetMetadataGRPC(datasetName);
+    assertThat(datasetMetadata.getPartitionConfigsList().size()).isEqualTo(2);
+    // expect that the first new epoch starts > 15ish minutes from now
+    assertThat(datasetMetadata.getPartitionConfigs(0).getStartTimeEpochMs())
+        .isGreaterThan(nowMs + Duration.ofMinutes(15).minusSeconds(1).toMillis());
+
+    // assert that start - end - start - end are monotonically increasing
+    LongStream startEndTimes =
+        datasetMetadata.getPartitionConfigsList().stream()
+            .flatMapToLong(
+                (p) -> Stream.of(p.getStartTimeEpochMs(), p.getEndTimeEpochMs()).mapToLong(i -> i));
+    final long[] prev = {nowMs};
+    startEndTimes.forEach(
+        time -> {
+          assertThat(time).isGreaterThan(prev[0]);
+          prev[0] = time;
+        });
   }
 
   @Test
@@ -1789,11 +1837,6 @@ public class ManagerApiGrpcTest {
                   "expected description %s",
                   expectedDescription));
     };
-  }
-
-  private ManagerApi.UpdatePartitionAssignmentResponse updatePartitionAssignmentGRPC(
-      String datasetName, long throughputBytes) {
-    return updatePartitionAssignmentGRPC(datasetName, throughputBytes, false);
   }
 
   private ManagerApi.UpdatePartitionAssignmentResponse updatePartitionAssignmentGRPC(

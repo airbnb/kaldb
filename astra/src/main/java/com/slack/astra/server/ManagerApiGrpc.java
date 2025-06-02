@@ -592,7 +592,8 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     if (partitionMetadataFromDatasetConfigs.hasNoPartitionsDeclared()) {
       throw Status.FAILED_PRECONDITION
           .withDescription(
-              "Needed %d partitions with enough capacity, found 0".formatted(partitionMetadataFromDatasetConfigs.minNumberOfPartitions))
+              "Needed %d partitions with enough capacity, found 0"
+                  .formatted(partitionMetadataFromDatasetConfigs.minNumberOfPartitions))
           .asRuntimeException();
     }
     List<String> currentPartitions =
