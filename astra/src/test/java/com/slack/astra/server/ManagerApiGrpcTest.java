@@ -639,11 +639,9 @@ public class ManagerApiGrpcTest {
                 "Needed 2 partitions with enough capacity, found 1: [4]"));
   }
 
-  // 7. 1 existing shared dataset, 3 partitions, 2 used, one free -> error (space doesn't matter
-  // because can't have 2 partitions for both)
   @Test
   public void shouldAutoAssignAddDedicated6() {
-    // 6. 1 existing dedicated dataset, 4 partitions, 3 used 1 free but not enough space even with
+    // 6. 1 existing dedicated dataset, 4 partitions, 3 full 1 free but not enough space even with
     // reassignment based on throughput amounts requested
 
     int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY * 3;
