@@ -582,7 +582,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
    * @param requireDedicatedPartition flag to indicate if we need dedicated partitions
    * @return List of partition Ids to be assigned in the new DatasetPartitionMetadata
    */
-  private List<String> autoAssignPartition(
+  private static List<String> autoAssignPartition(
       DatasetMetadata datasetMetadata,
       long throughputBytes,
       boolean requireDedicatedPartition,
@@ -592,7 +592,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     if (partitionMetadataFromDatasetConfigs.hasNoPartitionsDeclared()) {
       throw Status.FAILED_PRECONDITION
           .withDescription(
-              "Needed %d partitions with enough capacity, found 0".formatted(minNumberOfPartitions))
+              "Needed %d partitions with enough capacity, found 0".formatted(partitionMetadataFromDatasetConfigs.minNumberOfPartitions))
           .asRuntimeException();
     }
     List<String> currentPartitions =
