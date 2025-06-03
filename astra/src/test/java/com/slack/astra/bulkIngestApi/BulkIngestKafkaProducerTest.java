@@ -30,6 +30,7 @@ import org.apache.curator.x.async.AsyncCuratorFramework;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.junit.jupiter.api.AfterEach;
@@ -193,6 +194,66 @@ class BulkIngestKafkaProducerTest {
     assertThat(
             MetricsUtil.getTimerCount(BulkIngestKafkaProducer.KAFKA_RESTART_COUNTER, meterRegistry))
         .isEqualTo(1);
+  }
+
+  @Test
+  public void testKafkaSendErrorPropagatedWithoutTransactions() throws Exception {
+    bulkIngestKafkaProducer.stopAsync().awaitTerminated(DEFAULT_START_STOP_DURATION);
+    System.setProperty("astra.bulkIngest.useKafkaTransactions", "false");
+
+    bulkIngestKafkaProducer =
+        new BulkIngestKafkaProducer(datasetMetadataStore, preprocessorConfig, meterRegistry);
+
+    java.lang.reflect.Field kafkaProducerField =
+        BulkIngestKafkaProducer.class.getDeclaredField("kafkaProducer");
+    kafkaProducerField.setAccessible(true);
+
+    Properties props = new Properties();
+    props.put(
+        ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,
+        "org.apache.kafka.common.serialization.StringSerializer");
+    props.put(
+        ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
+        "org.apache.kafka.common.serialization.ByteArraySerializer");
+    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+
+    org.apache.kafka.clients.producer.KafkaProducer<String, byte[]> failingProducer =
+        new org.apache.kafka.clients.producer.KafkaProducer<>(props) {
+          @Override
+          public java.util.concurrent.Future<org.apache.kafka.clients.producer.RecordMetadata> send(
+              org.apache.kafka.clients.producer.ProducerRecord<String, byte[]> record,
+              org.apache.kafka.clients.producer.Callback callback) {
+            if (callback != null) {
+              callback.onCompletion(null, new RuntimeException("Kafka send error"));
+            }
+            return null;
+          }
+        };
+
+    kafkaProducerField.set(bulkIngestKafkaProducer, failingProducer);
+
+    bulkIngestKafkaProducer.startAsync().awaitRunning(DEFAULT_START_STOP_DURATION);
+
+    Trace.Span testDoc = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("test-doc")).build();
+    BulkIngestRequest request =
+        bulkIngestKafkaProducer.submitRequest(Map.of(INDEX_NAME, List.of(testDoc)));
+
+    AtomicReference<BulkIngestResponse> response = new AtomicReference<>();
+    Thread.ofVirtual()
+        .start(
+            () -> {
+              try {
+                response.set(request.getResponse());
+              } catch (InterruptedException ignored) {
+              }
+            });
+
+    await().until(() -> response.get() != null);
+
+    assertThat(response.get().failedDocs()).isEqualTo(1);
+    assertThat(response.get().errorMsg()).contains("Kafka send error");
+
+    System.setProperty("astra.bulkIngest.useKafkaTransactions", "true");
   }
 
   @Test
