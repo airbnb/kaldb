@@ -176,4 +176,14 @@ public class DatasetMetadata extends AstraMetadata {
             datasetPartitionMetadata -> datasetPartitionMetadata.getEndTimeEpochMs() != MAX_TIME)
         .toList();
   }
+
+  public List<String> existingDedicatedPartitions() {
+    if (!isUsingDedicatedPartitions()) {
+      return List.of();
+    } else {
+      return getLatestPartitionMetadata()
+          .map(DatasetPartitionMetadata::getPartitions)
+          .orElse(ImmutableList.of());
+    }
+  }
 }

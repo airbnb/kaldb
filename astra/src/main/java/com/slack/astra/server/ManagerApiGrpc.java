@@ -618,9 +618,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       //   to cover the requested throughput
       //
       // this ensures that we minimize partition churn and that we have enough partitions.
-      List<String> reusablePartitions =
-          partitionMetadataFromDatasetConfigs.existingDedicatedPartitions(
-              datasetMetadata.getName());
+      List<String> reusablePartitions = datasetMetadata.existingDedicatedPartitions();
       List<String> proposedPartitionIds =
           Stream.concat(
                   reusablePartitions.stream().sorted(),
@@ -707,7 +705,6 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
    */
   private static class PartitionMetadataFromDatasetConfigs {
     private final long minNumberOfPartitions;
-    private final Map<String, List<String>> partitionDatasets = new HashMap<>();
     private final List<CalculatedPartitionMetadata> livePMDs;
 
     public PartitionMetadataFromDatasetConfigs(
@@ -715,6 +712,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         List<PartitionMetadata> partitionMetadataList,
         long minNumberOfPartitions) {
       this.minNumberOfPartitions = minNumberOfPartitions;
+      final Map<String, List<String>> partitionDatasets = new HashMap<>();
       final Map<String, Long> partitionProvisioning = new HashMap<>();
       final List<String> partitionIds = new ArrayList<>();
       final Map<String, List<String>> partitionDedication = new HashMap<>();
@@ -722,7 +720,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         partitionIds.add(partitionMetadata.getPartitionID());
         partitionProvisioning.put(partitionMetadata.getPartitionID(), 0L);
         partitionDedication.put(partitionMetadata.getPartitionID(), new ArrayList<>());
-        this.partitionDatasets.put(partitionMetadata.getPartitionID(), new ArrayList<>());
+        partitionDatasets.put(partitionMetadata.getPartitionID(), new ArrayList<>());
       }
       for (DatasetMetadata datasetMetadata : datasetMetadataList) {
         Optional<DatasetPartitionMetadata> latest = datasetMetadata.getLatestPartitionMetadata();
@@ -765,26 +763,26 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     }
 
     public long maxCapacityForPartitions() {
-      return getLivePMDs().stream()
+      return livePMDs.stream()
           .mapToLong(CalculatedPartitionMetadata::getMaxCapacity)
           .min()
           .orElse(0);
     }
 
     public List<String> currentEmptyPartitions() {
-      return partitionDatasets.entrySet().stream()
-          .filter(entry -> entry.getValue().isEmpty())
-          .map(Map.Entry::getKey)
-          .toList();
+      return livePMDs.stream()
+        .filter(capacity -> capacity.getProvisionedCapacity() == 0)
+        .map(CalculatedPartitionMetadata::getPartitionID)
+        .toList();
     }
 
     public long maxPartitionsUsableByDataSet() {
-      return getLivePMDs().size();
+      return livePMDs.size();
     }
 
     public List<CalculatedPartitionMetadata> partitionsSortedByReusedCapacityAndId(
         List<String> reusablePartitions) {
-      return getLivePMDs().stream()
+      return livePMDs.stream()
           .sorted(
               Comparator.comparing(
                       (CalculatedPartitionMetadata p) ->
@@ -792,15 +790,6 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
                   .thenComparing(CalculatedPartitionMetadata::getProvisionedCapacity)
                   .reversed()
                   .thenComparing(CalculatedPartitionMetadata::getPartitionID))
-          .toList();
-    }
-
-    public List<String> existingDedicatedPartitions(String datasetName) {
-      return partitionDatasets.entrySet().stream()
-          .filter(
-              entry ->
-                  entry.getValue().size() == 1 && entry.getValue().getFirst().equals(datasetName))
-          .map(Map.Entry::getKey)
           .toList();
     }
 
