@@ -1,5 +1,6 @@
 package com.slack.astra.metadata.partition;
 
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -12,13 +13,24 @@ public class CalculatedPartitionMetadata {
   public final long provisionedCapacity;
   public final boolean dedicatedPartition;
   public final long maxCapacity;
+  public final List<String> datasets;
 
   public CalculatedPartitionMetadata(
       String partition, long provisionedCapacity, long maxCapacity, boolean dedicatedPartition) {
+    this(partition, provisionedCapacity, maxCapacity, dedicatedPartition, List.of());
+  }
+
+  public CalculatedPartitionMetadata(
+      String partition,
+      long provisionedCapacity,
+      long maxCapacity,
+      boolean dedicatedPartition,
+      List<String> datasets) {
     this.partitionId = partition;
     this.dedicatedPartition = dedicatedPartition;
     this.provisionedCapacity = provisionedCapacity;
     this.maxCapacity = maxCapacity;
+    this.datasets = datasets;
   }
 
   public String getPartitionID() {

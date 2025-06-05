@@ -618,7 +618,8 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       //   to cover the requested throughput
       //
       // this ensures that we minimize partition churn and that we have enough partitions.
-      List<String> reusablePartitions = datasetMetadata.existingDedicatedPartitions();
+      List<String> reusablePartitions =
+          partitionMetadataFromDatasetConfigs.existingDedicatedPartitions(datasetMetadata);
       List<String> proposedPartitionIds =
           Stream.concat(
                   reusablePartitions.stream().sorted(),
@@ -712,50 +713,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         List<PartitionMetadata> partitionMetadataList,
         long minNumberOfPartitions) {
       this.minNumberOfPartitions = minNumberOfPartitions;
-      final Map<String, List<String>> partitionDatasets = new HashMap<>();
-      final Map<String, Long> partitionProvisioning = new HashMap<>();
-      final List<String> partitionIds = new ArrayList<>();
-      final Map<String, List<String>> partitionDedication = new HashMap<>();
-      for (PartitionMetadata partitionMetadata : partitionMetadataList) {
-        partitionIds.add(partitionMetadata.getPartitionID());
-        partitionProvisioning.put(partitionMetadata.getPartitionID(), 0L);
-        partitionDedication.put(partitionMetadata.getPartitionID(), new ArrayList<>());
-        partitionDatasets.put(partitionMetadata.getPartitionID(), new ArrayList<>());
-      }
-      for (DatasetMetadata datasetMetadata : datasetMetadataList) {
-        Optional<DatasetPartitionMetadata> latest = datasetMetadata.getLatestPartitionMetadata();
-        long perPartitionValue =
-            latest
-                .map(
-                    p ->
-                        Math.ceilDiv(
-                            datasetMetadata.getThroughputBytes(), p.getPartitions().size()))
-                .orElse(0L);
-
-        boolean useDedicatedPartition = datasetMetadata.isUsingDedicatedPartitions();
-        for (String partitionId :
-            latest.map(DatasetPartitionMetadata::getPartitions).orElse(ImmutableList.of())) {
-          partitionProvisioning.put(
-              partitionId, perPartitionValue + partitionProvisioning.getOrDefault(partitionId, 0L));
-          partitionDatasets.get(partitionId).add(datasetMetadata.getName());
-          if (useDedicatedPartition) {
-            partitionDedication.get(partitionId).add(datasetMetadata.getName());
-          }
-        }
-      }
-      livePMDs =
-          partitionIds.stream()
-              .map(
-                  id ->
-                      new CalculatedPartitionMetadata(
-                          id,
-                          partitionProvisioning.get(id),
-                          partitionMetadataList.stream()
-                              .mapToLong(PartitionMetadata::getMaxCapacity)
-                              .min()
-                              .orElse(0),
-                          !partitionDedication.get(id).isEmpty()))
-              .toList();
+      livePMDs = calculatePartitionMetadataFromConfig(datasetMetadataList, partitionMetadataList);
     }
 
     public boolean hasNoPartitionsDeclared() {
@@ -771,9 +729,9 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
 
     public List<String> currentEmptyPartitions() {
       return livePMDs.stream()
-        .filter(capacity -> capacity.getProvisionedCapacity() == 0)
-        .map(CalculatedPartitionMetadata::getPartitionID)
-        .toList();
+          .filter(capacity -> capacity.getProvisionedCapacity() == 0)
+          .map(CalculatedPartitionMetadata::getPartitionID)
+          .toList();
     }
 
     public long maxPartitionsUsableByDataSet() {
@@ -804,5 +762,61 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     public List<String> getPartitionIds() {
       return livePMDs.stream().map(CalculatedPartitionMetadata::getPartitionID).toList();
     }
+
+    public List<String> existingDedicatedPartitions(DatasetMetadata datasetMetadata) {
+      return livePMDs.stream()
+          .filter(
+              p -> p.datasets.size() == 1 && p.datasets.get(0).equals(datasetMetadata.getName()))
+          .map(CalculatedPartitionMetadata::getPartitionID)
+          .toList();
+    }
+  }
+
+  private static List<CalculatedPartitionMetadata> calculatePartitionMetadataFromConfig(
+      List<DatasetMetadata> datasetMetadataList, List<PartitionMetadata> partitionMetadataList) {
+    final Map<String, List<String>> partitionDatasets = new HashMap<>();
+    final Map<String, Long> partitionProvisioning = new HashMap<>();
+    final List<String> partitionIds = new ArrayList<>();
+    final Map<String, List<String>> partitionDedication = new HashMap<>();
+    for (PartitionMetadata partitionMetadata : partitionMetadataList) {
+      partitionIds.add(partitionMetadata.getPartitionID());
+      partitionProvisioning.put(partitionMetadata.getPartitionID(), 0L);
+      partitionDedication.put(partitionMetadata.getPartitionID(), new ArrayList<>());
+      partitionDatasets.put(partitionMetadata.getPartitionID(), new ArrayList<>());
+    }
+    for (DatasetMetadata datasetMetadata : datasetMetadataList) {
+      Optional<DatasetPartitionMetadata> latest = datasetMetadata.getLatestPartitionMetadata();
+      long perPartitionValue =
+          latest
+              .map(
+                  p -> Math.ceilDiv(datasetMetadata.getThroughputBytes(), p.getPartitions().size()))
+              .orElse(0L);
+
+      boolean useDedicatedPartition = datasetMetadata.isUsingDedicatedPartitions();
+      for (String partitionId :
+          latest.map(DatasetPartitionMetadata::getPartitions).orElse(ImmutableList.of())) {
+        partitionProvisioning.put(
+            partitionId, perPartitionValue + partitionProvisioning.getOrDefault(partitionId, 0L));
+        partitionDatasets.get(partitionId).add(datasetMetadata.getName());
+        if (useDedicatedPartition) {
+          partitionDedication.get(partitionId).add(datasetMetadata.getName());
+        }
+      }
+    }
+    List<CalculatedPartitionMetadata> calculatedPartitionMetadata =
+        partitionIds.stream()
+            .map(
+                id ->
+                    new CalculatedPartitionMetadata(
+                        id,
+                        partitionProvisioning.get(id),
+                        partitionMetadataList.stream()
+                            .mapToLong(PartitionMetadata::getMaxCapacity)
+                            .min()
+                            .orElse(0),
+                        !partitionDedication.get(id).isEmpty(),
+                        partitionDatasets.get(id)))
+            .toList();
+    return calculatedPartitionMetadata;
   }
 }
