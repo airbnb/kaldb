@@ -533,6 +533,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       if (noExistingPartition) {
         partitionMetadataStore.createSync(newPartitionMetadata);
       } else {
+        // TODO disallow changing the max capacity of a partition
         partitionMetadataStore.updateSync(newPartitionMetadata);
       }
       responseObserver.onNext(toPartitionMetadataProto(newPartitionMetadata));

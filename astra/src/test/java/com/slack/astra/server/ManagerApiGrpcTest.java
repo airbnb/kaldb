@@ -1125,8 +1125,7 @@ public class ManagerApiGrpcTest {
 
     String datasetName = "testDataset";
     createEmptyDatasetGRPC(datasetName, "testOwner");
-    long nowMs = Instant.now().toEpochMilli();
-    long throughputBytes = 1000;
+
     ManagerApi.UpdatePartitionAssignmentResponse response =
         updatePartitionAssignmentGRPC(datasetName, 250, false);
     assertThat(response.getAssignedPartitionIdsList()).isEqualTo(List.of("3", "4"));
