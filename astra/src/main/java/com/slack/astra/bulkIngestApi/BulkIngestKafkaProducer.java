@@ -226,11 +226,6 @@ public class BulkIngestKafkaProducer extends AbstractExecutionThreadService {
                   request.getInputDocs().values().stream().mapToInt(List::size).sum(),
                   e.getMessage());
           responseMap.put(request, resp);
-          // propagate failure response
-          if (!request.setResponse(resp)) {
-            LOG.warn("Failed to add result to the bulk ingest request on error", e);
-            failedSetResponseCounter.increment();
-          }
         }
       }
       return responseMap;

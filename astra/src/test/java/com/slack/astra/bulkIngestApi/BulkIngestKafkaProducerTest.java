@@ -252,8 +252,6 @@ class BulkIngestKafkaProducerTest {
 
     assertThat(response.get().failedDocs()).isEqualTo(1);
     assertThat(response.get().errorMsg()).contains("Kafka send error");
-
-    System.setProperty("astra.bulkIngest.useKafkaTransactions", "true");
   }
 
   @Test
