@@ -274,7 +274,7 @@ public abstract class ReadWriteChunk<T> implements Chunk<T> {
       }
       // and schema file exists in s3
       if (!filesUploaded.contains(chunkInfo.chunkId + "/" + SCHEMA_FILE_NAME)) {
-        logger.error("Schema file {} was not uploaded to S3.", SCHEMA_FILE_NAME);
+        logger.error("Schema file was not uploaded to S3: {}", SCHEMA_FILE_NAME);
         return false;
       }
       logger.info("Finished RW chunk snapshot to S3 {}.", chunkInfo);
