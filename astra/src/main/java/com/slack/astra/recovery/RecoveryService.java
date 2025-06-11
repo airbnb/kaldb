@@ -312,8 +312,9 @@ public class RecoveryService extends AbstractIdleService {
       if (partitionOffsets.startOffset != recoveryTaskMetadata.startOffset
           || recoveryTaskMetadata.endOffset != partitionOffsets.endOffset) {
         recoveryRecordsNoLongerAvailable.increment(
-                (double) ((partitionOffsets.startOffset - recoveryTaskMetadata.startOffset)
-                + (partitionOffsets.endOffset - recoveryTaskMetadata.endOffset)));
+            (double)
+                ((partitionOffsets.startOffset - recoveryTaskMetadata.startOffset)
+                    + (partitionOffsets.endOffset - recoveryTaskMetadata.endOffset)));
       }
 
       try {
@@ -373,7 +374,7 @@ public class RecoveryService extends AbstractIdleService {
           recoveryTaskMetadata,
           nanosToMillis(offsetsValidatedTime - startTime));
       recoveryRecordsNoLongerAvailable.increment(
-              (double) (recoveryTaskMetadata.endOffset - recoveryTaskMetadata.startOffset + 1));
+          (double) (recoveryTaskMetadata.endOffset - recoveryTaskMetadata.startOffset + 1));
       return true;
     }
   }
