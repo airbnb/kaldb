@@ -411,10 +411,12 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
 
         List<String> filesInS3 = blobStore.listFiles(snapshotMetadata.snapshotId);
         if (numFilesLocal != filesInS3.size()) {
-          throw new IOException(
+          String errorString =
               String.format(
                   "Mismatch in number of files in S3 (%s) and local directory (%s) for snapshot %s",
-                  filesInS3.size(), numFilesLocal, snapshotMetadata.toString()));
+                  filesInS3.size(), numFilesLocal, snapshotMetadata.toString());
+          LOG.error(errorString);
+          throw new IOException(errorString);
         }
       }
 
