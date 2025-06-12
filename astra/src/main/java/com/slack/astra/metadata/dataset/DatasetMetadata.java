@@ -5,6 +5,7 @@ import static com.slack.astra.server.ManagerApiGrpc.MAX_TIME;
 
 import com.google.common.collect.ImmutableList;
 import com.slack.astra.metadata.core.AstraMetadata;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -175,5 +176,18 @@ public class DatasetMetadata extends AstraMetadata {
         .filter(
             datasetPartitionMetadata -> datasetPartitionMetadata.getEndTimeEpochMs() != MAX_TIME)
         .toList();
+  }
+
+  public long getLatestPerPartitionThroughput() {
+    int partitionCount =
+        getLatestPartitionMetadata()
+            .map(DatasetPartitionMetadata::getPartitions)
+            .map(Collection::size)
+            .orElse(0);
+    if (partitionCount == 0) {
+      return 0;
+    } else {
+      return Math.ceilDiv(throughputBytes, partitionCount);
+    }
   }
 }

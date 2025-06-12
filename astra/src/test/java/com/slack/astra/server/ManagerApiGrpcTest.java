@@ -978,6 +978,8 @@ public class ManagerApiGrpcTest {
     String datasetName = "testDataset";
     createEmptyDatasetGRPC(datasetName, "testOwner");
     createPartitions("1", "2", "3", "4");
+
+    long nowMs = Instant.now().toEpochMilli();
     managerApiStub.updatePartitionAssignment(
         ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
             .setName(datasetName)
@@ -986,7 +988,8 @@ public class ManagerApiGrpcTest {
             .addAllPartitionIds(List.of("1"))
             .build());
 
-    long nowMs = Instant.now().toEpochMilli();
+    await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs));
+
     managerApiStub.updatePartitionAssignment(
         ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
             .setName(datasetName)
@@ -994,6 +997,8 @@ public class ManagerApiGrpcTest {
             .setRequireDedicatedPartition(true)
             .addAllPartitionIds(List.of("1", "2"))
             .build());
+
+    await().until(() -> getDatasetMetadataGRPC(datasetName).getPartitionConfigsList().size() == 2);
 
     Metadata.DatasetMetadata datasetMetadata = getDatasetMetadataGRPC(datasetName);
     assertThat(datasetMetadata.getPartitionConfigsList()).hasSize(2);
@@ -1117,7 +1122,7 @@ public class ManagerApiGrpcTest {
   }
 
   @Test
-  public void shouldHandleDifferentPartitionSizesOnAutoAssigment() {
+  public void shouldHandleDifferentPartitionSizesOnAutoAssignmentSharedPartitions() {
     partitionMetadataStore.createSync(new PartitionMetadata("1", 1000));
     partitionMetadataStore.createSync(new PartitionMetadata("2", 500));
     partitionMetadataStore.createSync(new PartitionMetadata("3", 250));
@@ -1126,14 +1131,54 @@ public class ManagerApiGrpcTest {
     String datasetName = "testDataset";
     createEmptyDatasetGRPC(datasetName, "testOwner");
 
+    long nowMs = Instant.now().toEpochMilli();
     ManagerApi.UpdatePartitionAssignmentResponse response =
         updatePartitionAssignmentGRPC(datasetName, 250, false);
+    await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs));
+
     assertThat(response.getAssignedPartitionIdsList()).isEqualTo(List.of("3", "4"));
+
+    long nowMs1 = Instant.now().toEpochMilli();
     response = updatePartitionAssignmentGRPC(datasetName, 500, false);
+    await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs1));
+
     assertThat(response.getAssignedPartitionIdsList()).isEqualTo(List.of("2", "3"));
 
+    long nowMs2 = Instant.now().toEpochMilli();
     response = updatePartitionAssignmentGRPC(datasetName, 1000, false);
+    await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs2));
+
     assertThat(response.getAssignedPartitionIdsList()).isEqualTo(List.of("1", "2"));
+  }
+
+  @Test
+  public void shouldHandleDifferentPartitionSizesOnAutoAssignmentDedicatedPartitions() {
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 1000));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 500));
+    partitionMetadataStore.createSync(new PartitionMetadata("3", 250));
+    partitionMetadataStore.createSync(new PartitionMetadata("4", 125));
+
+    String datasetName = "testDataset";
+    createEmptyDatasetGRPC(datasetName, "testOwner");
+
+    long nowMs = Instant.now().toEpochMilli();
+    ManagerApi.UpdatePartitionAssignmentResponse response =
+        updatePartitionAssignmentGRPC(datasetName, 250, true);
+    await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs));
+
+    assertThat(response.getAssignedPartitionIdsList()).isEqualTo(List.of("3", "4"));
+
+    long nowMs1 = Instant.now().toEpochMilli();
+    response = updatePartitionAssignmentGRPC(datasetName, 500, true);
+    await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs1));
+
+    assertThat(response.getAssignedPartitionIdsList()).isEqualTo(List.of("2", "3", "4"));
+
+    long nowMs2 = Instant.now().toEpochMilli();
+    response = updatePartitionAssignmentGRPC(datasetName, 1000, true);
+    await().until(() -> datasetHasPartitionConfigAfterTime(datasetName, nowMs2));
+
+    assertThat(response.getAssignedPartitionIdsList()).isEqualTo(List.of("1", "2", "3", "4"));
   }
 
   @Test
@@ -1319,7 +1364,7 @@ public class ManagerApiGrpcTest {
             StatusRuntimeException.class,
             withGrpcStatusAndDescription(
                 Status.FAILED_PRECONDITION,
-                "Needed 3 partitions with enough capacity, found 0: []"));
+                "Needed 2 partitions with enough capacity, found 0: []"));
 
     assertThat(getDatasetMetadataGRPC(datasetName).getPartitionConfigsList()).isEmpty();
 

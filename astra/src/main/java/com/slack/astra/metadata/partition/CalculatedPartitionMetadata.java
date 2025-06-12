@@ -49,6 +49,10 @@ public class CalculatedPartitionMetadata {
     return this.maxCapacity;
   }
 
+  public long getAvailableCapacity() {
+    return maxCapacity - provisionedCapacity;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
