@@ -97,7 +97,7 @@ public class DatasetPartitionMetadataTest {
     set.add(datasetPartitionMetadata2);
     set.add(datasetPartitionMetadata3);
     set.add(datasetPartitionMetadata4);
-    assertThat(set.size()).isEqualTo(5);
+    assertThat(set.size()).isEqualTo(4);
     assertThat(set)
         .containsOnly(
             datasetPartitionMetadata1,
