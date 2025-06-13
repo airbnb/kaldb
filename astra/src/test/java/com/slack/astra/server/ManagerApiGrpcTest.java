@@ -388,10 +388,8 @@ public class ManagerApiGrpcTest {
     assertThat(firstDatasetMetadata.getThroughputBytes()).isEqualTo(throughputBytes);
     assertThat(firstDatasetMetadata.getPartitionConfigs().size()).isEqualTo(1);
 
-    partitionMetadataStore.createSync(createPartitionMetadata("3"));
-    partitionMetadataStore.createSync(createPartitionMetadata("4"));
-    partitionMetadataStore.createSync(createPartitionMetadata("5"));
-
+    createPartitions("3", "4", "5");
+    await().until(() -> partitionMetadataStore.listSync().size() == 5);
     // only update the partition assignment, leaving throughput
     managerApiStub.updatePartitionAssignment(
         ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
