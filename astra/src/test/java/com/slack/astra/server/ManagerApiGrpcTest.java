@@ -1753,8 +1753,8 @@ public class ManagerApiGrpcTest {
 
   @Test
   public void shouldListPartition() {
-    partitionMetadataStore.createSync(createPartitionMetadata("1"));
-    partitionMetadataStore.createSync(createPartitionMetadata("2"));
+    createPartitions("1", "2");
+    await().until(() -> partitionMetadataStore.listSync().size() == 2);
 
     ManagerApi.ListPartitionMetadataResponse listPartitionMetadataResponse =
         managerApiStub.listPartition(ManagerApi.ListPartitionRequest.newBuilder().build());
@@ -1768,8 +1768,8 @@ public class ManagerApiGrpcTest {
     String datasetOwner = "testOwner";
     String datasetServicePattern = "testDataset";
 
-    partitionMetadataStore.createSync(createPartitionMetadata("1"));
-    partitionMetadataStore.createSync(createPartitionMetadata("2"));
+    createPartitions("1", "2");
+    await().until(() -> partitionMetadataStore.listSync().size() == 2);
 
     datasetMetadataStore.createSync(
         new DatasetMetadata(
