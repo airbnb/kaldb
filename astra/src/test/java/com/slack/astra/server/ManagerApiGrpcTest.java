@@ -1759,7 +1759,7 @@ public class ManagerApiGrpcTest {
     ManagerApi.ListPartitionMetadataResponse listPartitionMetadataResponse =
         managerApiStub.listPartition(ManagerApi.ListPartitionRequest.newBuilder().build());
 
-    assertThat(listPartitionMetadataResponse.getPartitionMetadataList().size()).isEqualTo(2);
+    assertThat(listPartitionMetadataResponse.getPartitionMetadataList()).hasSize(2);
   }
 
   @Test
