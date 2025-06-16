@@ -17,6 +17,8 @@ import com.slack.astra.metadata.core.InternalMetadataStoreException;
 import com.slack.astra.metadata.dataset.DatasetMetadata;
 import com.slack.astra.metadata.dataset.DatasetMetadataStore;
 import com.slack.astra.metadata.dataset.DatasetPartitionMetadata;
+import com.slack.astra.metadata.partition.PartitionMetadata;
+import com.slack.astra.metadata.partition.PartitionMetadataStore;
 import com.slack.astra.metadata.replica.ReplicaMetadataStore;
 import com.slack.astra.metadata.snapshot.SnapshotMetadata;
 import com.slack.astra.metadata.snapshot.SnapshotMetadataStore;
@@ -56,6 +58,7 @@ public class ManagerApiGrpcTest {
 
   private AsyncCuratorFramework curatorFramework;
   private DatasetMetadataStore datasetMetadataStore;
+  private PartitionMetadataStore partitionMetadataStore;
   private SnapshotMetadataStore snapshotMetadataStore;
   private ReplicaMetadataStore replicaMetadataStore;
   private ReplicaRestoreService replicaRestoreService;
@@ -78,6 +81,7 @@ public class ManagerApiGrpcTest {
 
     curatorFramework = CuratorBuilder.build(meterRegistry, zkConfig);
     datasetMetadataStore = spy(new DatasetMetadataStore(curatorFramework, true));
+    partitionMetadataStore = spy(new PartitionMetadataStore(curatorFramework, true));
     snapshotMetadataStore = spy(new SnapshotMetadataStore(curatorFramework));
     replicaMetadataStore = spy(new ReplicaMetadataStore(curatorFramework));
 
@@ -102,7 +106,12 @@ public class ManagerApiGrpcTest {
             .directExecutor()
             .addService(
                 new ManagerApiGrpc(
-                    datasetMetadataStore, snapshotMetadataStore, replicaRestoreService))
+                    datasetMetadataStore,
+                    partitionMetadataStore,
+                    snapshotMetadataStore,
+                    replicaRestoreService,
+                    5000000,
+                    2))
             .build()
             .start());
     ManagedChannel channel =
@@ -120,6 +129,7 @@ public class ManagerApiGrpcTest {
     replicaMetadataStore.close();
     snapshotMetadataStore.close();
     datasetMetadataStore.close();
+    partitionMetadataStore.close();
     curatorFramework.unwrap().close();
 
     testingServer.close();
@@ -332,9 +342,12 @@ public class ManagerApiGrpcTest {
   }
 
   @Test
-  public void shouldUpdatePartitionAssignments() {
+  public void shouldUpdatePartitionManualAssignments() {
     String datasetName = "testDataset";
     String datasetOwner = "testOwner";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 0, 5000000, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 0, 5000000, false));
 
     Metadata.DatasetMetadata initialDatasetRequest =
         managerApiStub.createDatasetMetadata(
@@ -372,11 +385,22 @@ public class ManagerApiGrpcTest {
     assertThat(firstAssignment.getPartitionConfigsList().get(0).getEndTimeEpochMs())
         .isEqualTo(MAX_TIME);
 
+    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getProvisionedCapacity()).isEqualTo(5);
+    assertThat(partitionMetadata1.getDedicatedPartition()).isEqualTo(false);
+    PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getProvisionedCapacity()).isEqualTo(5);
+    assertThat(partitionMetadata2.getDedicatedPartition()).isEqualTo(false);
+
     DatasetMetadata firstDatasetMetadata = datasetMetadataStore.getSync(datasetName);
     assertThat(firstDatasetMetadata.getName()).isEqualTo(datasetName);
     assertThat(firstDatasetMetadata.getOwner()).isEqualTo(datasetOwner);
     assertThat(firstDatasetMetadata.getThroughputBytes()).isEqualTo(throughputBytes);
     assertThat(firstDatasetMetadata.getPartitionConfigs().size()).isEqualTo(1);
+
+    partitionMetadataStore.createSync(new PartitionMetadata("3", 0, 5000000, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("4", 0, 5000000, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("5", 0, 5000000, false));
 
     // only update the partition assignment, leaving throughput
     managerApiStub.updatePartitionAssignment(
@@ -412,18 +436,36 @@ public class ManagerApiGrpcTest {
     assertThat(secondAssignment.get().getPartitionConfigsList().get(1).getEndTimeEpochMs())
         .isEqualTo(MAX_TIME);
 
+    partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(partitionMetadata1.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(partitionMetadata2.getDedicatedPartition()).isEqualTo(false);
+    PartitionMetadata partitionMetadata3 = partitionMetadataStore.getSync("3");
+    assertThat(partitionMetadata3.getProvisionedCapacity()).isEqualTo(4);
+    assertThat(partitionMetadata3.getDedicatedPartition()).isEqualTo(false);
+    PartitionMetadata partitionMetadata4 = partitionMetadataStore.getSync("4");
+    assertThat(partitionMetadata4.getProvisionedCapacity()).isEqualTo(4);
+    assertThat(partitionMetadata4.getDedicatedPartition()).isEqualTo(false);
+    PartitionMetadata partitionMetadata5 = partitionMetadataStore.getSync("5");
+    assertThat(partitionMetadata5.getProvisionedCapacity()).isEqualTo(4);
+    assertThat(partitionMetadata5.getDedicatedPartition()).isEqualTo(false);
+
     DatasetMetadata secondDatasetMetadata = datasetMetadataStore.getSync(datasetName);
     assertThat(secondDatasetMetadata.getName()).isEqualTo(datasetName);
     assertThat(secondDatasetMetadata.getOwner()).isEqualTo(datasetOwner);
     assertThat(secondDatasetMetadata.getThroughputBytes()).isEqualTo(throughputBytes);
     assertThat(secondDatasetMetadata.getPartitionConfigs().size()).isEqualTo(2);
 
-    // only update the throughput, leaving the partition assignments
+    // only update the throughput, leaving the partition assignments (we need to re-specify to avoid
+    // auto-assignment)
     long updatedThroughputBytes = 12;
     managerApiStub.updatePartitionAssignment(
         ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
             .setName(datasetName)
             .setThroughputBytes(updatedThroughputBytes)
+            .addAllPartitionIds(List.of("3", "4", "5"))
             .build());
 
     AtomicReference<Metadata.DatasetMetadata> thirdAssignment = new AtomicReference<>();
@@ -439,7 +481,7 @@ public class ManagerApiGrpcTest {
             });
 
     assertThat(thirdAssignment.get().getThroughputBytes()).isEqualTo(updatedThroughputBytes);
-    assertThat(thirdAssignment.get().getPartitionConfigsList().size()).isEqualTo(2);
+    assertThat(thirdAssignment.get().getPartitionConfigsList().size()).isEqualTo(3);
     assertThat(thirdAssignment.get().getPartitionConfigsList().get(0).getPartitionsList())
         .isEqualTo(List.of("1", "2"));
     assertThat(thirdAssignment.get().getPartitionConfigsList().get(0).getEndTimeEpochMs())
@@ -447,22 +489,659 @@ public class ManagerApiGrpcTest {
 
     assertThat(thirdAssignment.get().getPartitionConfigsList().get(1).getPartitionsList())
         .isEqualTo(List.of("3", "4", "5"));
-    assertThat(thirdAssignment.get().getPartitionConfigsList().get(1).getStartTimeEpochMs())
-        .isGreaterThanOrEqualTo(nowMs);
     assertThat(thirdAssignment.get().getPartitionConfigsList().get(1).getEndTimeEpochMs())
+        .isNotEqualTo(MAX_TIME);
+
+    assertThat(thirdAssignment.get().getPartitionConfigsList().get(2).getPartitionsList())
+        .isEqualTo(List.of("3", "4", "5"));
+    assertThat(thirdAssignment.get().getPartitionConfigsList().get(2).getStartTimeEpochMs())
+        .isGreaterThanOrEqualTo(nowMs);
+    assertThat(thirdAssignment.get().getPartitionConfigsList().get(2).getEndTimeEpochMs())
         .isEqualTo(MAX_TIME);
+
+    partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(partitionMetadata1.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(partitionMetadata2.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata3 = partitionMetadataStore.getSync("3");
+    assertThat(partitionMetadata3.getProvisionedCapacity()).isEqualTo(4);
+    assertThat(partitionMetadata3.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata4 = partitionMetadataStore.getSync("4");
+    assertThat(partitionMetadata4.getProvisionedCapacity()).isEqualTo(4);
+    assertThat(partitionMetadata4.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata5 = partitionMetadataStore.getSync("5");
+    assertThat(partitionMetadata5.getProvisionedCapacity()).isEqualTo(4);
+    assertThat(partitionMetadata5.getDedicatedPartition()).isEqualTo(false);
 
     DatasetMetadata thirdDatasetMetadata = datasetMetadataStore.getSync(datasetName);
     assertThat(thirdDatasetMetadata.getName()).isEqualTo(datasetName);
     assertThat(thirdDatasetMetadata.getOwner()).isEqualTo(datasetOwner);
     assertThat(thirdDatasetMetadata.getThroughputBytes()).isEqualTo(updatedThroughputBytes);
-    assertThat(thirdDatasetMetadata.getPartitionConfigs().size()).isEqualTo(2);
+    assertThat(thirdDatasetMetadata.getPartitionConfigs().size()).isEqualTo(3);
+  }
+
+  @Test
+  public void shouldUpdatePartitionAutoAssignmentsSingleDatasetMetadata() {
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 0, 5000000, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 0, 5000000, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("3", 0, 5000000, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("4", 0, 5000000, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("5", 0, 5000000, false));
+
+    Metadata.DatasetMetadata initialDatasetRequest =
+        managerApiStub.createDatasetMetadata(
+            ManagerApi.CreateDatasetMetadataRequest.newBuilder()
+                .setName(datasetName)
+                .setOwner(datasetOwner)
+                .build());
+    assertThat(initialDatasetRequest.getPartitionConfigsList().size()).isEqualTo(0);
+
+    // first assignment: partitionList empty, ThroughputBytes provided, requireDedicatedPartition =
+    // False
+    long nowMs = Instant.now().toEpochMilli();
+    long throughputBytes = 10;
+    managerApiStub.updatePartitionAssignment(
+        ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
+            .setName(datasetName)
+            .setThroughputBytes(throughputBytes)
+            .build());
+    await()
+        .until(
+            () ->
+                datasetMetadataStore.listSync().size() == 1
+                    && datasetMetadataStore.listSync().get(0).getPartitionConfigs().size() == 1);
+
+    Metadata.DatasetMetadata firstAssignment =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName).build());
+
+    assertThat(firstAssignment.getThroughputBytes()).isEqualTo(throughputBytes);
+    assertThat(firstAssignment.getPartitionConfigsList().size()).isEqualTo(1);
+    assertThat(firstAssignment.getPartitionConfigsList().get(0).getPartitionsList())
+        .isEqualTo(List.of("1", "2"));
+    assertThat(firstAssignment.getPartitionConfigsList().get(0).getStartTimeEpochMs())
+        .isGreaterThanOrEqualTo(nowMs);
+    assertThat(firstAssignment.getPartitionConfigsList().get(0).getEndTimeEpochMs())
+        .isEqualTo(MAX_TIME);
+
+    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getProvisionedCapacity()).isEqualTo(5);
+    assertThat(partitionMetadata1.getDedicatedPartition()).isEqualTo(false);
+    PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getProvisionedCapacity()).isEqualTo(5);
+    assertThat(partitionMetadata2.getDedicatedPartition()).isEqualTo(false);
+
+    DatasetMetadata firstDatasetMetadata = datasetMetadataStore.getSync(datasetName);
+    assertThat(firstDatasetMetadata.getName()).isEqualTo(datasetName);
+    assertThat(firstDatasetMetadata.getOwner()).isEqualTo(datasetOwner);
+    assertThat(firstDatasetMetadata.getThroughputBytes()).isEqualTo(throughputBytes);
+    assertThat(firstDatasetMetadata.getPartitionConfigs().size()).isEqualTo(1);
+
+    // second assignment: partitionList empty, ThroughputBytes not provided,
+    // requireDedicatedPartition = True
+    nowMs = Instant.now().toEpochMilli();
+    throughputBytes = -1;
+    managerApiStub.updatePartitionAssignment(
+        ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
+            .setName(datasetName)
+            .setThroughputBytes(throughputBytes)
+            .setRequireDedicatedPartition(true)
+            .build());
+    await()
+        .until(
+            () ->
+                datasetMetadataStore.listSync().size() == 1
+                    && datasetMetadataStore.listSync().get(0).getPartitionConfigs().size() == 2);
+
+    Metadata.DatasetMetadata secondAssignment =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName).build());
+
+    assertThat(secondAssignment.getThroughputBytes()).isEqualTo(10);
+    assertThat(secondAssignment.getPartitionConfigsList().size()).isEqualTo(2);
+    assertThat(secondAssignment.getPartitionConfigsList().get(0).getPartitionsList())
+        .isEqualTo(List.of("1", "2"));
+    assertThat(secondAssignment.getPartitionConfigsList().get(0).getEndTimeEpochMs())
+        .isNotEqualTo(MAX_TIME);
+    assertThat(secondAssignment.getPartitionConfigsList().get(1).getPartitionsList())
+        .isEqualTo(List.of("1", "2"));
+    assertThat(secondAssignment.getPartitionConfigsList().get(1).getStartTimeEpochMs())
+        .isGreaterThanOrEqualTo(nowMs);
+    assertThat(secondAssignment.getPartitionConfigsList().get(1).getEndTimeEpochMs())
+        .isEqualTo(MAX_TIME);
+
+    partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getProvisionedCapacity()).isEqualTo(5);
+    assertThat(partitionMetadata1.getDedicatedPartition()).isEqualTo(true);
+    partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getProvisionedCapacity()).isEqualTo(5);
+    assertThat(partitionMetadata2.getDedicatedPartition()).isEqualTo(true);
+
+    DatasetMetadata secondDatasetMetadata = datasetMetadataStore.getSync(datasetName);
+    assertThat(secondDatasetMetadata.getName()).isEqualTo(datasetName);
+    assertThat(secondDatasetMetadata.getOwner()).isEqualTo(datasetOwner);
+    assertThat(secondDatasetMetadata.getThroughputBytes()).isEqualTo(10);
+    assertThat(secondDatasetMetadata.getPartitionConfigs().size()).isEqualTo(2);
+
+    // third assignment: partitionList given, ThroughputBytes provided, requireDedicatedPartition =
+    // False
+    nowMs = Instant.now().toEpochMilli();
+    throughputBytes = 12;
+    managerApiStub.updatePartitionAssignment(
+        ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
+            .setName(datasetName)
+            .setThroughputBytes(throughputBytes)
+            .addAllPartitionIds(List.of("3", "4", "5"))
+            .build());
+    await()
+        .until(
+            () ->
+                datasetMetadataStore.listSync().size() == 1
+                    && datasetMetadataStore.listSync().get(0).getPartitionConfigs().size() == 3);
+
+    Metadata.DatasetMetadata thirdAssignment =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName).build());
+
+    assertThat(thirdAssignment.getThroughputBytes()).isEqualTo(throughputBytes);
+    assertThat(thirdAssignment.getPartitionConfigsList().size()).isEqualTo(3);
+    assertThat(thirdAssignment.getPartitionConfigsList().get(0).getPartitionsList())
+        .isEqualTo(List.of("1", "2"));
+    assertThat(thirdAssignment.getPartitionConfigsList().get(0).getEndTimeEpochMs())
+        .isNotEqualTo(MAX_TIME);
+    assertThat(thirdAssignment.getPartitionConfigsList().get(1).getPartitionsList())
+        .isEqualTo(List.of("1", "2"));
+    assertThat(thirdAssignment.getPartitionConfigsList().get(1).getEndTimeEpochMs())
+        .isNotEqualTo(MAX_TIME);
+
+    assertThat(thirdAssignment.getPartitionConfigsList().get(2).getPartitionsList())
+        .isEqualTo(List.of("3", "4", "5"));
+    assertThat(thirdAssignment.getPartitionConfigsList().get(2).getStartTimeEpochMs())
+        .isGreaterThanOrEqualTo(nowMs);
+    assertThat(thirdAssignment.getPartitionConfigsList().get(2).getEndTimeEpochMs())
+        .isEqualTo(MAX_TIME);
+
+    partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(partitionMetadata1.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(partitionMetadata2.getDedicatedPartition()).isEqualTo(false);
+    PartitionMetadata partitionMetadata3 = partitionMetadataStore.getSync("3");
+    assertThat(partitionMetadata3.getProvisionedCapacity()).isEqualTo(4);
+    assertThat(partitionMetadata3.getDedicatedPartition()).isEqualTo(false);
+    PartitionMetadata partitionMetadata4 = partitionMetadataStore.getSync("4");
+    assertThat(partitionMetadata4.getProvisionedCapacity()).isEqualTo(4);
+    assertThat(partitionMetadata4.getDedicatedPartition()).isEqualTo(false);
+    PartitionMetadata partitionMetadata5 = partitionMetadataStore.getSync("5");
+    assertThat(partitionMetadata5.getProvisionedCapacity()).isEqualTo(4);
+    assertThat(partitionMetadata5.getDedicatedPartition()).isEqualTo(false);
+
+    DatasetMetadata thirdDatasetMetadata = datasetMetadataStore.getSync(datasetName);
+    assertThat(thirdDatasetMetadata.getName()).isEqualTo(datasetName);
+    assertThat(thirdDatasetMetadata.getOwner()).isEqualTo(datasetOwner);
+    assertThat(thirdDatasetMetadata.getThroughputBytes()).isEqualTo(throughputBytes);
+    assertThat(thirdDatasetMetadata.getPartitionConfigs().size()).isEqualTo(3);
+
+    // fourth assignment: move back to auto-assignment, also decrease in partitions
+    nowMs = Instant.now().toEpochMilli();
+    throughputBytes = -1;
+    managerApiStub.updatePartitionAssignment(
+        ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
+            .setName(datasetName)
+            .setThroughputBytes(throughputBytes)
+            .build());
+    await()
+        .until(
+            () ->
+                datasetMetadataStore.listSync().size() == 1
+                    && datasetMetadataStore.listSync().get(0).getPartitionConfigs().size() == 4);
+
+    Metadata.DatasetMetadata fourthAssignment =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName).build());
+
+    assertThat(fourthAssignment.getThroughputBytes()).isEqualTo(12);
+    assertThat(fourthAssignment.getPartitionConfigsList().size()).isEqualTo(4);
+    assertThat(fourthAssignment.getPartitionConfigsList().get(0).getPartitionsList())
+        .isEqualTo(List.of("1", "2"));
+    assertThat(fourthAssignment.getPartitionConfigsList().get(0).getEndTimeEpochMs())
+        .isNotEqualTo(MAX_TIME);
+    assertThat(fourthAssignment.getPartitionConfigsList().get(1).getPartitionsList())
+        .isEqualTo(List.of("1", "2"));
+    assertThat(fourthAssignment.getPartitionConfigsList().get(1).getEndTimeEpochMs())
+        .isNotEqualTo(MAX_TIME);
+
+    assertThat(fourthAssignment.getPartitionConfigsList().get(2).getPartitionsList())
+        .isEqualTo(List.of("3", "4", "5"));
+    assertThat(fourthAssignment.getPartitionConfigsList().get(2).getEndTimeEpochMs())
+        .isNotEqualTo(MAX_TIME);
+
+    assertThat(fourthAssignment.getPartitionConfigsList().get(3).getPartitionsList())
+        .isEqualTo(List.of("3", "4"));
+    assertThat(fourthAssignment.getPartitionConfigsList().get(3).getStartTimeEpochMs())
+        .isGreaterThanOrEqualTo(nowMs);
+    assertThat(fourthAssignment.getPartitionConfigsList().get(3).getEndTimeEpochMs())
+        .isEqualTo(MAX_TIME);
+
+    partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(partitionMetadata1.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(partitionMetadata2.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata3 = partitionMetadataStore.getSync("3");
+    assertThat(partitionMetadata3.getProvisionedCapacity()).isEqualTo(6);
+    assertThat(partitionMetadata3.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata4 = partitionMetadataStore.getSync("4");
+    assertThat(partitionMetadata4.getProvisionedCapacity()).isEqualTo(6);
+    assertThat(partitionMetadata4.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata5 = partitionMetadataStore.getSync("5");
+    assertThat(partitionMetadata5.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(partitionMetadata5.getDedicatedPartition()).isEqualTo(false);
+
+    DatasetMetadata fourthDatasetMetadata = datasetMetadataStore.getSync(datasetName);
+    assertThat(fourthDatasetMetadata.getName()).isEqualTo(datasetName);
+    assertThat(fourthDatasetMetadata.getOwner()).isEqualTo(datasetOwner);
+    assertThat(fourthDatasetMetadata.getThroughputBytes()).isEqualTo(12);
+    assertThat(fourthDatasetMetadata.getPartitionConfigs().size()).isEqualTo(4);
+  }
+
+  @Test
+  public void shouldUpdatePartitionAutoAssignmentsMultipleDatasetMetadata() {
+    String datasetName1 = "testDataset1";
+    String datasetOwner1 = "testOwner1";
+    String datasetName2 = "testDataset2";
+    String datasetOwner2 = "testOwner2";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 0, 5000000, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 0, 5000000, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("3", 0, 5000000, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("4", 0, 5000000, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("5", 0, 5000000, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("6", 0, 5000000, false));
+
+    Metadata.DatasetMetadata initialDatasetRequest1 =
+        managerApiStub.createDatasetMetadata(
+            ManagerApi.CreateDatasetMetadataRequest.newBuilder()
+                .setName(datasetName1)
+                .setOwner(datasetOwner1)
+                .build());
+    assertThat(initialDatasetRequest1.getPartitionConfigsList().size()).isEqualTo(0);
+
+    Metadata.DatasetMetadata initialDatasetRequest2 =
+        managerApiStub.createDatasetMetadata(
+            ManagerApi.CreateDatasetMetadataRequest.newBuilder()
+                .setName(datasetName2)
+                .setOwner(datasetOwner2)
+                .build());
+    assertThat(initialDatasetRequest2.getPartitionConfigsList().size()).isEqualTo(0);
+
+    // first assignment: partitionList empty, ThroughputBytes provided
+    long nowMs = Instant.now().toEpochMilli();
+    managerApiStub.updatePartitionAssignment(
+        ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
+            .setName(datasetName1)
+            .setThroughputBytes(12000000)
+            .build());
+    managerApiStub.updatePartitionAssignment(
+        ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
+            .setName(datasetName2)
+            .setThroughputBytes(2000000)
+            .build());
+    await()
+        .until(
+            () ->
+                datasetMetadataStore.listSync().size() == 2
+                    && datasetMetadataStore.listSync().get(0).getPartitionConfigs().size() == 1
+                    && datasetMetadataStore.listSync().get(1).getPartitionConfigs().size() == 1);
+
+    Metadata.DatasetMetadata firstAssignment1 =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName1).build());
+
+    Metadata.DatasetMetadata firstAssignment2 =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName2).build());
+
+    assertThat(firstAssignment1.getThroughputBytes()).isEqualTo(12000000);
+    assertThat(firstAssignment1.getPartitionConfigsList().size()).isEqualTo(1);
+    assertThat(firstAssignment1.getPartitionConfigsList().get(0).getPartitionsList())
+        .isEqualTo(List.of("1", "2", "3"));
+    assertThat(firstAssignment1.getPartitionConfigsList().get(0).getStartTimeEpochMs())
+        .isGreaterThanOrEqualTo(nowMs);
+    assertThat(firstAssignment1.getPartitionConfigsList().get(0).getEndTimeEpochMs())
+        .isEqualTo(MAX_TIME);
+
+    assertThat(firstAssignment2.getThroughputBytes()).isEqualTo(2000000);
+    assertThat(firstAssignment2.getPartitionConfigsList().size()).isEqualTo(1);
+    assertThat(firstAssignment2.getPartitionConfigsList().get(0).getPartitionsList())
+        .isEqualTo(List.of("1", "2"));
+    assertThat(firstAssignment2.getPartitionConfigsList().get(0).getStartTimeEpochMs())
+        .isGreaterThanOrEqualTo(nowMs);
+    assertThat(firstAssignment2.getPartitionConfigsList().get(0).getEndTimeEpochMs())
+        .isEqualTo(MAX_TIME);
+
+    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getProvisionedCapacity()).isEqualTo(5000000);
+    assertThat(partitionMetadata1.getDedicatedPartition()).isEqualTo(false);
+    PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getProvisionedCapacity()).isEqualTo(5000000);
+    assertThat(partitionMetadata2.getDedicatedPartition()).isEqualTo(false);
+    PartitionMetadata partitionMetadata3 = partitionMetadataStore.getSync("3");
+    assertThat(partitionMetadata3.getProvisionedCapacity()).isEqualTo(4000000);
+    assertThat(partitionMetadata3.getDedicatedPartition()).isEqualTo(false);
+
+    DatasetMetadata firstDatasetMetadata1 = datasetMetadataStore.getSync(datasetName1);
+    assertThat(firstDatasetMetadata1.getName()).isEqualTo(datasetName1);
+    assertThat(firstDatasetMetadata1.getOwner()).isEqualTo(datasetOwner1);
+    assertThat(firstDatasetMetadata1.getThroughputBytes()).isEqualTo(12000000);
+    assertThat(firstDatasetMetadata1.getPartitionConfigs().size()).isEqualTo(1);
+
+    DatasetMetadata firstDatasetMetadata2 = datasetMetadataStore.getSync(datasetName2);
+    assertThat(firstDatasetMetadata2.getName()).isEqualTo(datasetName2);
+    assertThat(firstDatasetMetadata2.getOwner()).isEqualTo(datasetOwner2);
+    assertThat(firstDatasetMetadata2.getThroughputBytes()).isEqualTo(2000000);
+    assertThat(firstDatasetMetadata2.getPartitionConfigs().size()).isEqualTo(1);
+
+    // second Assignment: move dataset 1 to dedicated partitions, require dedicated partitions =
+    // True
+    nowMs = Instant.now().toEpochMilli();
+    managerApiStub.updatePartitionAssignment(
+        ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
+            .setName(datasetName1)
+            .setThroughputBytes(-1)
+            .setRequireDedicatedPartition(true)
+            .build());
+
+    await()
+        .until(
+            () ->
+                datasetMetadataStore.listSync().size() == 2
+                    && datasetMetadataStore.getSync(datasetName1).getPartitionConfigs().size() == 2
+                    && datasetMetadataStore.getSync(datasetName2).getPartitionConfigs().size()
+                        == 1);
+
+    Metadata.DatasetMetadata secondAssignment1 =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName1).build());
+
+    Metadata.DatasetMetadata secondAssignment2 =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName2).build());
+
+    assertThat(secondAssignment1.getThroughputBytes()).isEqualTo(12000000);
+    assertThat(secondAssignment1.getPartitionConfigsList().size()).isEqualTo(2);
+    assertThat(secondAssignment1.getPartitionConfigsList().get(0).getPartitionsList())
+        .isEqualTo(List.of("1", "2", "3"));
+    assertThat(secondAssignment1.getPartitionConfigsList().get(0).getEndTimeEpochMs())
+        .isNotEqualTo(MAX_TIME);
+
+    assertThat(secondAssignment1.getPartitionConfigsList().get(1).getPartitionsList())
+        .isEqualTo(List.of("3", "4", "5"));
+    assertThat(secondAssignment1.getPartitionConfigsList().get(1).getStartTimeEpochMs())
+        .isGreaterThanOrEqualTo(nowMs);
+    assertThat(secondAssignment1.getPartitionConfigsList().get(1).getEndTimeEpochMs())
+        .isEqualTo(MAX_TIME);
+
+    assertThat(secondAssignment2.getThroughputBytes()).isEqualTo(2000000);
+    assertThat(secondAssignment2.getPartitionConfigsList().size()).isEqualTo(1);
+    assertThat(secondAssignment2.getPartitionConfigsList().get(0).getPartitionsList())
+        .isEqualTo(List.of("1", "2"));
+    assertThat(secondAssignment2.getPartitionConfigsList().get(0).getStartTimeEpochMs())
+        .isGreaterThanOrEqualTo(nowMs);
+    assertThat(secondAssignment2.getPartitionConfigsList().get(0).getEndTimeEpochMs())
+        .isEqualTo(MAX_TIME);
+
+    partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getProvisionedCapacity()).isEqualTo(1000000);
+    assertThat(partitionMetadata1.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getProvisionedCapacity()).isEqualTo(1000000);
+    assertThat(partitionMetadata2.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata3 = partitionMetadataStore.getSync("3");
+    assertThat(partitionMetadata3.getProvisionedCapacity()).isEqualTo(4000000);
+    assertThat(partitionMetadata3.getDedicatedPartition()).isEqualTo(true);
+    PartitionMetadata partitionMetadata4 = partitionMetadataStore.getSync("4");
+    assertThat(partitionMetadata4.getProvisionedCapacity()).isEqualTo(4000000);
+    assertThat(partitionMetadata4.getDedicatedPartition()).isEqualTo(true);
+    PartitionMetadata partitionMetadata5 = partitionMetadataStore.getSync("5");
+    assertThat(partitionMetadata5.getProvisionedCapacity()).isEqualTo(4000000);
+    assertThat(partitionMetadata5.getDedicatedPartition()).isEqualTo(true);
+
+    DatasetMetadata secondDatasetMetadata1 = datasetMetadataStore.getSync(datasetName1);
+    assertThat(secondDatasetMetadata1.getName()).isEqualTo(datasetName1);
+    assertThat(secondDatasetMetadata1.getOwner()).isEqualTo(datasetOwner1);
+    assertThat(secondDatasetMetadata1.getThroughputBytes()).isEqualTo(12000000);
+    assertThat(secondDatasetMetadata1.getPartitionConfigs().size()).isEqualTo(2);
+
+    DatasetMetadata secondDatasetMetadata2 = datasetMetadataStore.getSync(datasetName2);
+    assertThat(secondDatasetMetadata2.getName()).isEqualTo(datasetName2);
+    assertThat(secondDatasetMetadata2.getOwner()).isEqualTo(datasetOwner2);
+    assertThat(secondDatasetMetadata2.getThroughputBytes()).isEqualTo(2000000);
+    assertThat(secondDatasetMetadata2.getPartitionConfigs().size()).isEqualTo(1);
+
+    // third Assignment: move dataset 1 to shared partitions, decrease throughput to 8000000
+    nowMs = Instant.now().toEpochMilli();
+    managerApiStub.updatePartitionAssignment(
+        ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
+            .setName(datasetName1)
+            .setThroughputBytes(8000000)
+            .setRequireDedicatedPartition(false)
+            .build());
+
+    await()
+        .until(
+            () ->
+                datasetMetadataStore.listSync().size() == 2
+                    && datasetMetadataStore.getSync(datasetName1).getPartitionConfigs().size() == 3
+                    && datasetMetadataStore.getSync(datasetName2).getPartitionConfigs().size()
+                        == 1);
+
+    Metadata.DatasetMetadata thirdAssignment1 =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName1).build());
+
+    Metadata.DatasetMetadata thirdAssignment2 =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName2).build());
+
+    assertThat(thirdAssignment1.getThroughputBytes()).isEqualTo(8000000);
+    assertThat(thirdAssignment1.getPartitionConfigsList().size()).isEqualTo(3);
+    assertThat(thirdAssignment1.getPartitionConfigsList().get(0).getPartitionsList())
+        .isEqualTo(List.of("1", "2", "3"));
+    assertThat(thirdAssignment1.getPartitionConfigsList().get(0).getEndTimeEpochMs())
+        .isNotEqualTo(MAX_TIME);
+    assertThat(thirdAssignment1.getPartitionConfigsList().get(1).getPartitionsList())
+        .isEqualTo(List.of("3", "4", "5"));
+    assertThat(thirdAssignment1.getPartitionConfigsList().get(1).getEndTimeEpochMs())
+        .isNotEqualTo(MAX_TIME);
+
+    assertThat(thirdAssignment1.getPartitionConfigsList().get(2).getPartitionsList())
+        .isEqualTo(List.of("3", "4"));
+    assertThat(thirdAssignment1.getPartitionConfigsList().get(2).getStartTimeEpochMs())
+        .isGreaterThanOrEqualTo(nowMs);
+    assertThat(thirdAssignment1.getPartitionConfigsList().get(2).getEndTimeEpochMs())
+        .isEqualTo(MAX_TIME);
+
+    assertThat(thirdAssignment2.getThroughputBytes()).isEqualTo(2000000);
+    assertThat(thirdAssignment2.getPartitionConfigsList().size()).isEqualTo(1);
+    assertThat(thirdAssignment2.getPartitionConfigsList().get(0).getPartitionsList())
+        .isEqualTo(List.of("1", "2"));
+    assertThat(thirdAssignment2.getPartitionConfigsList().get(0).getStartTimeEpochMs())
+        .isGreaterThanOrEqualTo(nowMs);
+    assertThat(thirdAssignment2.getPartitionConfigsList().get(0).getEndTimeEpochMs())
+        .isEqualTo(MAX_TIME);
+
+    partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getProvisionedCapacity()).isEqualTo(1000000);
+    assertThat(partitionMetadata1.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getProvisionedCapacity()).isEqualTo(1000000);
+    assertThat(partitionMetadata2.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata3 = partitionMetadataStore.getSync("3");
+    assertThat(partitionMetadata3.getProvisionedCapacity()).isEqualTo(4000000);
+    assertThat(partitionMetadata3.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata4 = partitionMetadataStore.getSync("4");
+    assertThat(partitionMetadata4.getProvisionedCapacity()).isEqualTo(4000000);
+    assertThat(partitionMetadata4.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata5 = partitionMetadataStore.getSync("5");
+    assertThat(partitionMetadata5.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(partitionMetadata5.getDedicatedPartition()).isEqualTo(false);
+
+    DatasetMetadata thirdDatasetMetadata1 = datasetMetadataStore.getSync(datasetName1);
+    assertThat(thirdDatasetMetadata1.getName()).isEqualTo(datasetName1);
+    assertThat(thirdDatasetMetadata1.getOwner()).isEqualTo(datasetOwner1);
+    assertThat(thirdDatasetMetadata1.getThroughputBytes()).isEqualTo(8000000);
+    assertThat(thirdDatasetMetadata1.getPartitionConfigs().size()).isEqualTo(3);
+
+    DatasetMetadata thirdDatasetMetadata2 = datasetMetadataStore.getSync(datasetName2);
+    assertThat(thirdDatasetMetadata2.getName()).isEqualTo(datasetName2);
+    assertThat(thirdDatasetMetadata2.getOwner()).isEqualTo(datasetOwner2);
+    assertThat(thirdDatasetMetadata2.getThroughputBytes()).isEqualTo(2000000);
+    assertThat(thirdDatasetMetadata2.getPartitionConfigs().size()).isEqualTo(1);
+
+    // fourth Assignment: move dataset 1 to shared partitions, increase throughput to 12000000
+    nowMs = Instant.now().toEpochMilli();
+    managerApiStub.updatePartitionAssignment(
+        ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
+            .setName(datasetName1)
+            .setThroughputBytes(12000000)
+            .setRequireDedicatedPartition(false)
+            .build());
+
+    await()
+        .until(
+            () ->
+                datasetMetadataStore.listSync().size() == 2
+                    && datasetMetadataStore.getSync(datasetName1).getPartitionConfigs().size() == 4
+                    && datasetMetadataStore.getSync(datasetName2).getPartitionConfigs().size()
+                        == 1);
+
+    Metadata.DatasetMetadata fourthAssignment1 =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName1).build());
+
+    Metadata.DatasetMetadata fourthAssignment2 =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName2).build());
+
+    assertThat(fourthAssignment1.getThroughputBytes()).isEqualTo(12000000);
+    assertThat(fourthAssignment1.getPartitionConfigsList().size()).isEqualTo(4);
+    assertThat(fourthAssignment1.getPartitionConfigsList().get(0).getPartitionsList())
+        .isEqualTo(List.of("1", "2", "3"));
+    assertThat(fourthAssignment1.getPartitionConfigsList().get(0).getEndTimeEpochMs())
+        .isNotEqualTo(MAX_TIME);
+    assertThat(fourthAssignment1.getPartitionConfigsList().get(1).getPartitionsList())
+        .isEqualTo(List.of("3", "4", "5"));
+    assertThat(fourthAssignment1.getPartitionConfigsList().get(1).getEndTimeEpochMs())
+        .isNotEqualTo(MAX_TIME);
+    assertThat(fourthAssignment1.getPartitionConfigsList().get(2).getPartitionsList())
+        .isEqualTo(List.of("3", "4"));
+    assertThat(fourthAssignment1.getPartitionConfigsList().get(2).getEndTimeEpochMs())
+        .isNotEqualTo(MAX_TIME);
+    assertThat(fourthAssignment1.getPartitionConfigsList().get(3).getPartitionsList())
+        .isEqualTo(List.of("3", "4", "1"));
+    assertThat(fourthAssignment1.getPartitionConfigsList().get(3).getStartTimeEpochMs())
+        .isGreaterThanOrEqualTo(nowMs);
+    assertThat(fourthAssignment1.getPartitionConfigsList().get(3).getEndTimeEpochMs())
+        .isEqualTo(MAX_TIME);
+
+    assertThat(fourthAssignment2.getThroughputBytes()).isEqualTo(2000000);
+    assertThat(fourthAssignment2.getPartitionConfigsList().size()).isEqualTo(1);
+    assertThat(fourthAssignment2.getPartitionConfigsList().get(0).getPartitionsList())
+        .isEqualTo(List.of("1", "2"));
+    assertThat(fourthAssignment2.getPartitionConfigsList().get(0).getStartTimeEpochMs())
+        .isGreaterThanOrEqualTo(nowMs);
+    assertThat(fourthAssignment2.getPartitionConfigsList().get(0).getEndTimeEpochMs())
+        .isEqualTo(MAX_TIME);
+
+    partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getProvisionedCapacity()).isEqualTo(5000000);
+    assertThat(partitionMetadata1.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getProvisionedCapacity()).isEqualTo(1000000);
+    assertThat(partitionMetadata2.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata3 = partitionMetadataStore.getSync("3");
+    assertThat(partitionMetadata3.getProvisionedCapacity()).isEqualTo(4000000);
+    assertThat(partitionMetadata3.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata4 = partitionMetadataStore.getSync("4");
+    assertThat(partitionMetadata4.getProvisionedCapacity()).isEqualTo(4000000);
+    assertThat(partitionMetadata4.getDedicatedPartition()).isEqualTo(false);
+    partitionMetadata5 = partitionMetadataStore.getSync("5");
+    assertThat(partitionMetadata5.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(partitionMetadata5.getDedicatedPartition()).isEqualTo(false);
+
+    DatasetMetadata fourthDatasetMetadata1 = datasetMetadataStore.getSync(datasetName1);
+    assertThat(fourthDatasetMetadata1.getName()).isEqualTo(datasetName1);
+    assertThat(fourthDatasetMetadata1.getOwner()).isEqualTo(datasetOwner1);
+    assertThat(fourthDatasetMetadata1.getThroughputBytes()).isEqualTo(12000000);
+    assertThat(fourthDatasetMetadata1.getPartitionConfigs().size()).isEqualTo(4);
+
+    DatasetMetadata fourthDatasetMetadata2 = datasetMetadataStore.getSync(datasetName2);
+    assertThat(fourthDatasetMetadata2.getName()).isEqualTo(datasetName2);
+    assertThat(fourthDatasetMetadata2.getOwner()).isEqualTo(datasetOwner2);
+    assertThat(fourthDatasetMetadata2.getThroughputBytes()).isEqualTo(2000000);
+    assertThat(fourthDatasetMetadata2.getPartitionConfigs().size()).isEqualTo(1);
+  }
+
+  @Test
+  public void shouldErrorUpdatingPartitionAutoAssignmentNotEnoughPartitions() {
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 0, 5000000, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 0, 5000000, false));
+
+    Metadata.DatasetMetadata initialDatasetRequest =
+        managerApiStub.createDatasetMetadata(
+            ManagerApi.CreateDatasetMetadataRequest.newBuilder()
+                .setName(datasetName)
+                .setOwner(datasetOwner)
+                .build());
+    assertThat(initialDatasetRequest.getPartitionConfigsList().size()).isEqualTo(0);
+
+    StatusRuntimeException throwable1 =
+        (StatusRuntimeException)
+            catchThrowable(
+                () ->
+                    managerApiStub.updatePartitionAssignment(
+                        ManagerApi.UpdatePartitionAssignmentRequest.newBuilder()
+                            .setName(datasetName)
+                            .setThroughputBytes(15000000)
+                            .build()));
+    assertThat(throwable1.getStatus().getCode()).isEqualTo(Status.UNKNOWN.getCode());
+    assertThat(throwable1.getMessage())
+        .isEqualTo(
+            "UNKNOWN: Error updating partition assignment, could not find partitions to assign");
+
+    assertThat(AstraMetadataTestUtils.listSyncUncached(datasetMetadataStore).size()).isEqualTo(1);
+
+    Metadata.DatasetMetadata firstAssignment =
+        managerApiStub.getDatasetMetadata(
+            ManagerApi.GetDatasetMetadataRequest.newBuilder().setName(datasetName).build());
+    assertThat(firstAssignment.getPartitionConfigsList().size()).isEqualTo(0);
+
+    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(partitionMetadata1.getDedicatedPartition()).isEqualTo(false);
+    PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(partitionMetadata2.getDedicatedPartition()).isEqualTo(false);
   }
 
   @Test
   public void shouldErrorUpdatingPartitionAssignmentNonexistentDataset() {
     String datasetName = "testDataset";
     List<String> partitionList = List.of("1", "2");
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 0, 5000000, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 0, 5000000, false));
 
     StatusRuntimeException throwable1 =
         (StatusRuntimeException)
@@ -774,5 +1453,181 @@ public class ManagerApiGrpcTest {
         .isEqualTo(0);
 
     replicaRestoreService.stopAsync();
+  }
+
+  @Test
+  public void shouldCreateAndGetNewPartitionOnlyPartitionId() {
+    String partitionId = "1";
+
+    Metadata.PartitionMetadata createdPartition =
+        managerApiStub.createPartition(
+            ManagerApi.CreatePartitionRequest.newBuilder().setPartitionId(partitionId).build());
+
+    assertThat(createdPartition.getPartitionId()).isEqualTo(partitionId);
+    assertThat(createdPartition.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(createdPartition.getMaxCapacity()).isEqualTo(5000000);
+    assertThat(createdPartition.getDedicatedPartition()).isEqualTo(false);
+
+    PartitionMetadata partitionMetadata = partitionMetadataStore.getSync(partitionId);
+    assertThat(partitionMetadata.getName()).isEqualTo(partitionId);
+    assertThat(partitionMetadata.getPartitionID()).isEqualTo(partitionId);
+    assertThat(partitionMetadata.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(partitionMetadata.getMaxCapacity()).isEqualTo(5000000);
+    assertThat(partitionMetadata.getDedicatedPartition()).isEqualTo(false);
+  }
+
+  @Test
+  public void shouldCreateAndGetNewPartition() {
+    String partitionId = "1";
+    long provisionedCapacity = 1000000;
+    boolean dedicatedPartition = false;
+
+    Metadata.PartitionMetadata createdPartition =
+        managerApiStub.createPartition(
+            ManagerApi.CreatePartitionRequest.newBuilder()
+                .setPartitionId(partitionId)
+                .setProvisionedCapacity(provisionedCapacity)
+                .setDedicatedPartition(dedicatedPartition)
+                .build());
+
+    assertThat(createdPartition.getPartitionId()).isEqualTo(partitionId);
+    assertThat(createdPartition.getProvisionedCapacity()).isEqualTo(provisionedCapacity);
+    assertThat(createdPartition.getMaxCapacity()).isEqualTo(5000000);
+    assertThat(createdPartition.getDedicatedPartition()).isEqualTo(dedicatedPartition);
+
+    PartitionMetadata partitionMetadata = partitionMetadataStore.getSync(partitionId);
+    assertThat(partitionMetadata.getName()).isEqualTo(partitionId);
+    assertThat(partitionMetadata.getPartitionID()).isEqualTo(partitionId);
+    assertThat(partitionMetadata.getProvisionedCapacity()).isEqualTo(provisionedCapacity);
+    assertThat(partitionMetadata.getDedicatedPartition()).isEqualTo(dedicatedPartition);
+  }
+
+  @Test
+  public void shouldUpdateExistingPartition() {
+    String partitionId = "1";
+    boolean dedicatedPartition = true;
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 1000000, 5000000, false));
+
+    Metadata.PartitionMetadata partitionMetadata =
+        managerApiStub.createPartition(
+            ManagerApi.CreatePartitionRequest.newBuilder()
+                .setPartitionId(partitionId)
+                .setDedicatedPartition(dedicatedPartition)
+                .build());
+
+    assertThat(partitionMetadata.getPartitionId()).isEqualTo(partitionId);
+    assertThat(partitionMetadata.getProvisionedCapacity()).isEqualTo(1000000);
+    assertThat(partitionMetadata.getDedicatedPartition()).isEqualTo(dedicatedPartition);
+  }
+
+  @Test
+  public void shouldListPartition() {
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 0, 5000000, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 0, 5000000, true));
+
+    Metadata.ListPartitionMetadataResponse listPartitionMetadataResponse =
+        managerApiStub.listPartition(ManagerApi.ListPartitionRequest.newBuilder().build());
+
+    assertThat(listPartitionMetadataResponse.getPartitionMetadataList().size()).isEqualTo(2);
+  }
+
+  @Test
+  public void shouldDeleteDedicatedPartitionDatasetMetadata() {
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+    String datasetServicePattern = "testDataset";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 500000, 5000000, true));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 500000, 5000000, true));
+
+    datasetMetadataStore.createSync(
+        new DatasetMetadata(
+            datasetName,
+            datasetOwner,
+            1000000,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"))),
+            datasetServicePattern));
+    managerApiStub.deleteDatasetMetadata(
+        ManagerApi.DeleteDatasetMetadataRequest.newBuilder().setName(datasetName).build());
+
+    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(partitionMetadata1.getDedicatedPartition()).isEqualTo(false);
+
+    PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getProvisionedCapacity()).isEqualTo(0);
+    assertThat(partitionMetadata2.getDedicatedPartition()).isEqualTo(false);
+  }
+
+  @Test
+  public void shouldDeleteSharedPartitionDatasetMetadata() {
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+    String datasetServicePattern = "testDataset";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 4000000, 5000000, false));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 4000000, 5000000, false));
+
+    datasetMetadataStore.createSync(
+        new DatasetMetadata(
+            datasetName,
+            datasetOwner,
+            6000000,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"))),
+            datasetServicePattern));
+    managerApiStub.deleteDatasetMetadata(
+        ManagerApi.DeleteDatasetMetadataRequest.newBuilder().setName(datasetName).build());
+
+    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getProvisionedCapacity()).isEqualTo(1000000);
+    assertThat(partitionMetadata1.getDedicatedPartition()).isEqualTo(false);
+
+    PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getProvisionedCapacity()).isEqualTo(1000000);
+    assertThat(partitionMetadata2.getDedicatedPartition()).isEqualTo(false);
+  }
+
+  @Test
+  public void shouldErrorDeletingNonExistentDatasetMetadata() {
+    String datasetName = "testDataset";
+    String datasetOwner = "testOwner";
+    String datasetServicePattern = "testDataset";
+
+    partitionMetadataStore.createSync(new PartitionMetadata("1", 4000000, 5000000, true));
+    partitionMetadataStore.createSync(new PartitionMetadata("2", 4000000, 5000000, true));
+
+    datasetMetadataStore.createSync(
+        new DatasetMetadata(
+            datasetName,
+            datasetOwner,
+            6000000,
+            List.of(
+                new DatasetPartitionMetadata(
+                    Instant.now().toEpochMilli(), MAX_TIME, List.of("1", "2"))),
+            datasetServicePattern));
+
+    StatusRuntimeException throwable =
+        (StatusRuntimeException)
+            catchThrowable(
+                () ->
+                    managerApiStub.deleteDatasetMetadata(
+                        ManagerApi.DeleteDatasetMetadataRequest.newBuilder()
+                            .setName("testDataset1")
+                            .build()));
+
+    assertThat(throwable.getStatus().getCode()).isEqualTo(Status.UNKNOWN.getCode());
+
+    PartitionMetadata partitionMetadata1 = partitionMetadataStore.getSync("1");
+    assertThat(partitionMetadata1.getProvisionedCapacity()).isEqualTo(4000000);
+    assertThat(partitionMetadata1.getDedicatedPartition()).isEqualTo(true);
+
+    PartitionMetadata partitionMetadata2 = partitionMetadataStore.getSync("2");
+    assertThat(partitionMetadata2.getProvisionedCapacity()).isEqualTo(4000000);
+    assertThat(partitionMetadata2.getDedicatedPartition()).isEqualTo(true);
   }
 }

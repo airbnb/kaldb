@@ -180,6 +180,9 @@ message DatasetPartitionMetadata {
 
   // List of Kafka partition ids
   repeated string partitions = 3;
+
+  // using dedicated partition
+  bool using_dedicated_partition = 4;
 }
 
 // Schema definitions.
@@ -230,4 +233,15 @@ message CacheNodeMetadata {
   string hostname = 3;
   int64  node_capacity_bytes = 4;
   string replica_set = 5;
+}
+
+message PartitionMetadata {
+  string partition_id = 1;
+  int64 provisioned_capacity = 2;
+  int64 max_capacity = 3;
+  bool dedicated_partition = 4;
+}
+
+message ListPartitionMetadataResponse {
+  repeated PartitionMetadata partition_metadata = 1;
 }
