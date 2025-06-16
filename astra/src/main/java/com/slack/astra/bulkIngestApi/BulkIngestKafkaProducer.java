@@ -29,12 +29,12 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -333,7 +333,8 @@ public class BulkIngestKafkaProducer extends AbstractExecutionThreadService {
       if (useKafkaTransactions) {
         for (Trace.Span doc : indexDoc.getValue()) {
           ProducerRecord<String, byte[]> producerRecord =
-                  new ProducerRecord<>(kafkaConfig.getKafkaTopic(), partition, index, doc.toByteArray());
+              new ProducerRecord<>(
+                  kafkaConfig.getKafkaTopic(), partition, index, doc.toByteArray());
 
           // we intentionally suppress FutureReturnValueIgnored here in errorprone - this is because
           // we wrap this in a transaction, which is responsible for flushing all of the pending
@@ -341,34 +342,43 @@ public class BulkIngestKafkaProducer extends AbstractExecutionThreadService {
           kafkaProducer.send(producerRecord);
         }
       } else {
-        List<Future<?>> futures = indexDoc.getValue().stream()
-            .map(doc -> new ProducerRecord<>(kafkaConfig.getKafkaTopic(), partition, index, doc.toByteArray()))
-            .map(kafkaProducer::send)
-            .collect(Collectors.toList());
+        List<Future<?>> futures =
+            indexDoc.getValue().stream()
+                .map(
+                    doc ->
+                        new ProducerRecord<>(
+                            kafkaConfig.getKafkaTopic(), partition, index, doc.toByteArray()))
+                .map(kafkaProducer::send)
+                .collect(Collectors.toList());
 
         kafkaProducer.flush();
 
-        long failureCount = futures.stream()
-              .mapToLong(future -> {
-                try {
-                  future.get();
-                  return 0L;
-                } catch (ExecutionException | InterruptedException e) {
-                  LOG.error("Kafka send failed for index {} partition {}", index, partition, e);
-                  return 1L;
-                }
-              })
-              .sum();
+        long failureCount =
+            futures.stream()
+                .mapToLong(
+                    future -> {
+                      try {
+                        future.get();
+                        return 0L;
+                      } catch (ExecutionException | InterruptedException e) {
+                        LOG.error(
+                            "Kafka send failed for index {} partition {}", index, partition, e);
+                        return 1L;
+                      }
+                    })
+                .sum();
         if (failureCount > 0) {
-          String errorMsg = String.format("Kafka send failure. index: %s partition: %d failures: %d - check logs for details.",
-              index, partition, failureCount);
-          return new BulkIngestResponse(totalDocs - (int) failureCount, (int) failureCount, errorMsg);
+          String errorMsg =
+              String.format(
+                  "Kafka send failure. index: %s partition: %d failures: %d - check logs for details.",
+                  index, partition, failureCount);
+          return new BulkIngestResponse(
+              totalDocs - (int) failureCount, (int) failureCount, errorMsg);
         }
-
       }
     }
-      return new BulkIngestResponse(totalDocs, 0, "");
-    }
+    return new BulkIngestResponse(totalDocs, 0, "");
+  }
 
   private KafkaProducer<String, byte[]> createKafkaTransactionProducer(String transactionId) {
     Properties props = new Properties();
