@@ -13,6 +13,8 @@ import static com.slack.astra.testlib.TemporaryLogStoreAndSearcherExtension.addM
 import static com.slack.astra.util.AggregatorFactoriesUtil.createGenericDateHistogramAggregatorFactoriesBuilder;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 
 import brave.Tracing;
 import com.adobe.testing.s3mock.junit5.S3MockExtension;
@@ -580,6 +582,82 @@ public class ReadOnlyChunkImplTest {
     try (var files = java.nio.file.Files.list(readOnlyChunk.getDataDirectory())) {
       assertThat(files.findFirst().isPresent()).isFalse();
     }
+
+    curatorFramework.unwrap().close();
+  }
+
+  @Test
+  public void shouldFailIfDownloadedFilesDoNotMatchS3List() throws Exception {
+    AstraConfigs.AstraConfig config = makeCacheConfig();
+    AstraConfigs.ZookeeperConfig zkConfig =
+        AstraConfigs.ZookeeperConfig.newBuilder()
+            .setZkConnectString(testingServer.getConnectString())
+            .setZkPathPrefix("shouldFailIfDownloadedFilesDoNotMatchS3List")
+            .setZkSessionTimeoutMs(1000)
+            .setZkConnectionTimeoutMs(1000)
+            .setSleepBetweenRetriesMs(1000)
+            .build();
+
+    AsyncCuratorFramework curatorFramework = CuratorBuilder.build(meterRegistry, zkConfig);
+    ReplicaMetadataStore replicaMetadataStore = new ReplicaMetadataStore(curatorFramework);
+    SnapshotMetadataStore snapshotMetadataStore = new SnapshotMetadataStore(curatorFramework);
+    SearchMetadataStore searchMetadataStore = new SearchMetadataStore(curatorFramework, true);
+    CacheSlotMetadataStore cacheSlotMetadataStore = new CacheSlotMetadataStore(curatorFramework);
+
+    String snapshotId = "broken-download-snapshot";
+    String replicaId = "replica-broken";
+
+    // Write a complete snapshot to S3
+    initializeZkSnapshot(curatorFramework, snapshotId, 0);
+    initializeZkReplica(curatorFramework, replicaId, snapshotId);
+    initializeBlobStorageWithIndex(snapshotId, false);
+
+    // Spy the blob store and override download to simulate missing file
+    BlobStore spyBlobStore = org.mockito.Mockito.spy(blobStore);
+    doAnswer(
+            invocation -> {
+              // Actually call through first to do the full download
+              invocation.callRealMethod();
+
+              // Then delete one of the files locally to simulate incomplete download
+              Path targetDir = invocation.getArgument(1);
+              Path schemaFile = targetDir.resolve(SCHEMA_FILE_NAME);
+              java.nio.file.Files.deleteIfExists(schemaFile);
+              return null;
+            })
+        .when(spyBlobStore)
+        .download(any(), any());
+
+    ReadOnlyChunkImpl<LogMessage> chunk =
+        new ReadOnlyChunkImpl<>(
+            curatorFramework,
+            meterRegistry,
+            spyBlobStore,
+            SearchContext.fromConfig(config.getCacheConfig().getServerConfig()),
+            config.getS3Config().getS3Bucket(),
+            config.getCacheConfig().getDataDirectory(),
+            config.getCacheConfig().getReplicaSet(),
+            cacheSlotMetadataStore,
+            replicaMetadataStore,
+            snapshotMetadataStore,
+            searchMetadataStore);
+
+    // Wait for chunk to register as FREE
+    await()
+        .until(
+            () -> chunk.getChunkMetadataState() == Metadata.CacheSlotMetadata.CacheSlotState.FREE);
+
+    assignReplicaToChunk(cacheSlotMetadataStore, replicaId, chunk);
+
+    // Assert that the chunk was released due to mismatched file count
+    await()
+        .until(
+            () -> chunk.getChunkMetadataState() == Metadata.CacheSlotMetadata.CacheSlotState.FREE);
+
+    assertThat(searchMetadataStore.listSync()).isEmpty();
+
+    assertThat(meterRegistry.get(CHUNK_ASSIGNMENT_TIMER).tag("successful", "false").timer().count())
+        .isEqualTo(1);
 
     curatorFramework.unwrap().close();
   }
