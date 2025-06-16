@@ -32,8 +32,9 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -308,9 +309,6 @@ public class BulkIngestKafkaProducer extends AbstractExecutionThreadService {
       Map<String, List<Trace.Span>> indexDocs, KafkaProducer<String, byte[]> kafkaProducer) {
     int totalDocs = indexDocs.values().stream().mapToInt(List::size).sum();
 
-    AtomicInteger failedDocs = new AtomicInteger(0);
-    AtomicReference<String> errorMsg = new AtomicReference<>("");
-
     // we cannot create a generic pool of producers because the kafka API expects the transaction ID
     // to be a property while creating the producer object.
     for (Map.Entry<String, List<Trace.Span>> indexDoc : indexDocs.entrySet()) {
@@ -332,37 +330,45 @@ public class BulkIngestKafkaProducer extends AbstractExecutionThreadService {
       // Till we fix the producer design to allow for multiple /_bulk requests to be able to
       // write to the same txn
       // we will limit producing documents 1 thread at a time
-      for (Trace.Span doc : indexDoc.getValue()) {
-        ProducerRecord<String, byte[]> producerRecord =
-            new ProducerRecord<>(kafkaConfig.getKafkaTopic(), partition, index, doc.toByteArray());
+      if (useKafkaTransactions) {
+        for (Trace.Span doc : indexDoc.getValue()) {
+          ProducerRecord<String, byte[]> producerRecord =
+                  new ProducerRecord<>(kafkaConfig.getKafkaTopic(), partition, index, doc.toByteArray());
 
-        // we intentionally suppress FutureReturnValueIgnored here in errorprone - this is because
-        // we wrap this in a transaction, which is responsible for flushing all of the pending
-        // messages
-        if (useKafkaTransactions) {
+          // we intentionally suppress FutureReturnValueIgnored here in errorprone - this is because
+          // we wrap this in a transaction, which is responsible for flushing all of the pending
+          // messages
           kafkaProducer.send(producerRecord);
-        } else {
-          // For non-transactional mode, collect errors from the callback
-          kafkaProducer.send(
-              producerRecord,
-              (metadata, exception) -> {
-                if (exception != null) {
-                  LOG.error(
-                      "Kafka send failure for index {} partition {}", index, partition, exception);
-                  failedDocs.incrementAndGet();
-                  errorMsg.set(exception.getMessage());
-                }
-              });
         }
+      } else {
+        List<Future<?>> futures = indexDoc.getValue().stream()
+            .map(doc -> new ProducerRecord<>(kafkaConfig.getKafkaTopic(), partition, index, doc.toByteArray()))
+            .map(kafkaProducer::send)
+            .collect(Collectors.toList());
+
+        kafkaProducer.flush();
+
+        long failureCount = futures.stream()
+              .mapToLong(future -> {
+                try {
+                  future.get();
+                  return 0L;
+                } catch (ExecutionException | InterruptedException e) {
+                  LOG.error("Kafka send failed for index {} partition {}", index, partition, e);
+                  return 1L;
+                }
+              })
+              .sum();
+        if (failureCount > 0) {
+          String errorMsg = String.format("Kafka send failure. index: %s partition: %d failures: %d - check logs for details.",
+              index, partition, failureCount);
+          return new BulkIngestResponse(totalDocs - (int) failureCount, (int) failureCount, errorMsg);
+        }
+
       }
     }
-    // we ensure all records are sent before returning the response
-    if (!useKafkaTransactions) {
-      kafkaProducer.flush();
+      return new BulkIngestResponse(totalDocs, 0, "");
     }
-
-    return new BulkIngestResponse(totalDocs - failedDocs.get(), failedDocs.get(), errorMsg.get());
-  }
 
   private KafkaProducer<String, byte[]> createKafkaTransactionProducer(String transactionId) {
     Properties props = new Properties();
