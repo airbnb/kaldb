@@ -623,7 +623,8 @@ public class ManagerApiGrpcTest {
             List.of(
                 new DatasetPartitionMetadata(
                     Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
-            "whatever"));
+            "whatever",
+            true));
     createPartitions(usedExistingPartitions);
 
     String datasetName = "testDataset";
@@ -639,8 +640,8 @@ public class ManagerApiGrpcTest {
 
   @Test
   public void shouldAutoAssignAddDedicated5() {
-    // 5. 1 existing dedicated dataset, 4 partitions, 3 used 1 free but could be reassigned based on
-    // throughput amounts requested
+    // 5. 1 existing dedicated dataset, 4 partitions, 3 used 1 free. Fail because there must be 2
+    // partitions assigned even though the one available has enough throughput
 
     int existingDatasetThroughputBytes = DEFAULT_MAX_CAPACITY;
     List<String> usedExistingPartitions = List.of("1", "2", "3");
@@ -654,7 +655,8 @@ public class ManagerApiGrpcTest {
             List.of(
                 new DatasetPartitionMetadata(
                     Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
-            "whatever"));
+            "whatever",
+            true));
 
     String datasetName = "testDataset";
     createEmptyDatasetGRPC(datasetName, "testOwner");
@@ -684,7 +686,8 @@ public class ManagerApiGrpcTest {
             List.of(
                 new DatasetPartitionMetadata(
                     Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
-            "whatever"));
+            "whatever",
+            true));
 
     String datasetName = "testDataset";
     createEmptyDatasetGRPC(datasetName, "testOwner");
@@ -815,8 +818,8 @@ public class ManagerApiGrpcTest {
     String datasetName = "testDataset";
     createEmptyDatasetGRPC(datasetName, "testOwner");
 
-    long throughputBytes = DEFAULT_MAX_CAPACITY;
-    assertThatThrownBy(() -> updatePartitionAssignmentGRPC(datasetName, throughputBytes, false))
+    assertThatThrownBy(
+            () -> updatePartitionAssignmentGRPC(datasetName, DEFAULT_MAX_CAPACITY, false))
         .isInstanceOfSatisfying(
             StatusRuntimeException.class,
             withGrpcStatusAndDescription(
@@ -881,7 +884,8 @@ public class ManagerApiGrpcTest {
             List.of(
                 new DatasetPartitionMetadata(
                     Instant.now().toEpochMilli(), MAX_TIME, usedExistingPartitions)),
-            "whatever"));
+            "whatever",
+            true));
     createPartitions(usedExistingPartitions);
     // action
     // - create an empty dataset
@@ -1693,7 +1697,7 @@ public class ManagerApiGrpcTest {
   public void shouldErrorCreatingNewPartitionOnlyPartitionId() {
     assertThatThrownBy(
             () -> {
-              managerApiStub.createOrUpdatePartition(
+              managerApiStub.createPartition(
                   ManagerApi.CreatePartitionRequest.newBuilder().setPartitionId("1").build());
             })
         .isInstanceOfSatisfying(
@@ -1707,7 +1711,7 @@ public class ManagerApiGrpcTest {
     String partitionId = "1";
 
     Metadata.PartitionMetadata createdPartition =
-        managerApiStub.createOrUpdatePartition(
+        managerApiStub.createPartition(
             ManagerApi.CreatePartitionRequest.newBuilder()
                 .setPartitionId(partitionId)
                 .setMaxCapacity(100)
@@ -1736,15 +1740,17 @@ public class ManagerApiGrpcTest {
   public void shouldNotCreateNewPartitionWhenExistingPartition() {
     partitionMetadataStore.createSync(createPartitionMetadata("1"));
 
-    Metadata.PartitionMetadata partitionMetadata =
-        managerApiStub.createOrUpdatePartition(
-            ManagerApi.CreatePartitionRequest.newBuilder()
-                .setPartitionId("1")
-                .setMaxCapacity(10)
-                .build());
-
-    assertThat(partitionMetadata.getPartitionId()).isEqualTo("1");
-    assertThat(partitionMetadata.getMaxCapacity()).isEqualTo(10);
+    assertThatThrownBy(
+            () ->
+                managerApiStub.createPartition(
+                    ManagerApi.CreatePartitionRequest.newBuilder()
+                        .setPartitionId("1")
+                        .setMaxCapacity(100)
+                        .build()))
+        .isInstanceOfSatisfying(
+            StatusRuntimeException.class,
+            withGrpcStatusAndDescription(
+                Status.ALREADY_EXISTS, "Partition with id '1' already exists"));
 
     ManagerApi.ListPartitionMetadataResponse listPartitionMetadataResponse =
         managerApiStub.listPartition(ManagerApi.ListPartitionRequest.newBuilder().build());

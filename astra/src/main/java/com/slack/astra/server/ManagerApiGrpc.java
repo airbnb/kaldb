@@ -239,6 +239,12 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
           return;
         }
         LOG.info("Auto-assigning partitions for {} to : {}", request.getName(), partitionIdList);
+        if (partitionIdList.isEmpty()) {
+          String msg = "Error updating partition assignment, could not find partitions to assign";
+          LOG.error(msg);
+          responseObserver.onError(Status.UNKNOWN.withDescription(msg).asException());
+          return;
+        }
       } else {
         partitionIdList = request.getPartitionIdsList();
         LOG.info(
@@ -256,12 +262,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
         // - don't have enough capacity for the requested throughput
       }
       partitionIdList = partitionIdList.stream().sorted().toList();
-      if (partitionIdList.isEmpty()) {
-        String msg = "Error updating partition assignment, could not find partitions to assign";
-        LOG.error(msg);
-        responseObserver.onError(Status.UNKNOWN.withDescription(msg).asException());
-        return;
-      }
+
       ImmutableList<DatasetPartitionMetadata> updatedDatasetPartitionMetadata =
           addNewPartition(datasetMetadata, partitionIdList, PARTITION_START_TIME_PADDING_MS);
 
@@ -512,36 +513,28 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   }
 
   @Override
-  public void createOrUpdatePartition(
+  public void createPartition(
       ManagerApi.CreatePartitionRequest request,
       StreamObserver<Metadata.PartitionMetadata> responseObserver) {
     try {
       Preconditions.checkArgument(
           request.getMaxCapacity() != 0, "Max capacity must be set when creating a new partition");
 
-      PartitionMetadata existingPartitionMetadata;
-      try {
-        existingPartitionMetadata = partitionMetadataStore.getSync(request.getPartitionId());
-      } catch (Exception e) {
-        existingPartitionMetadata = null;
+      if (partitionMetadataStore.hasSync(request.getPartitionId())) {
+        String msg = "Partition with id '%s' already exists".formatted(request.getPartitionId());
+        LOG.error(msg);
+        responseObserver.onError(Status.ALREADY_EXISTS.withDescription(msg).asException());
+        return;
       }
       PartitionMetadata newPartitionMetadata =
           new PartitionMetadata(request.getPartitionId(), request.getMaxCapacity());
 
-      boolean noExistingPartition = existingPartitionMetadata == null;
-      if (noExistingPartition) {
-        partitionMetadataStore.createSync(newPartitionMetadata);
-      } else {
-        // TODO disallow changing the max capacity of a partition
-        partitionMetadataStore.updateSync(newPartitionMetadata);
-      }
+      partitionMetadataStore.createSync(newPartitionMetadata);
       responseObserver.onNext(toPartitionMetadataProto(newPartitionMetadata));
       responseObserver.onCompleted();
       LOG.info(
-          "{} partition: {}, max capacity: {} -> {}",
-          noExistingPartition ? "Created" : "Updated",
+          "Created partition: {}, max capacity: {}",
           request.getPartitionId(),
-          noExistingPartition ? 0 : existingPartitionMetadata.getMaxCapacity(),
           request.getMaxCapacity());
     } catch (IllegalArgumentException e) {
       LOG.error("Error creating new partition", e);
