@@ -19,17 +19,17 @@ import com.slack.astra.testlib.TestKafkaServer;
 import com.slack.service.murron.trace.Trace;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.lang.reflect.Field;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-import java.util.concurrent.CompletableFuture;
-import java.lang.reflect.Field;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.curator.test.TestingServer;
 import org.apache.curator.x.async.AsyncCuratorFramework;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -37,8 +37,8 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.junit.jupiter.api.AfterEach;
@@ -226,15 +226,15 @@ class BulkIngestKafkaProducerTest {
 
     // Create producer that returns futures - some succeed, some fail
     AtomicInteger callCount = new AtomicInteger(0);
-    KafkaProducer<String, byte[]> futureBasedProducer = new KafkaProducer<>(props) {
+    KafkaProducer<String, byte[]> futureBasedProducer =
+        new KafkaProducer<>(props) {
           @Override
           public Future<RecordMetadata> send(ProducerRecord<String, byte[]> record) {
             int call = callCount.incrementAndGet();
             if (call <= 2) {
               // First 2 calls succeed
               return CompletableFuture.completedFuture(
-                  new RecordMetadata(
-                      new TopicPartition("test", 0), 0, 0, 0, 0, 0));
+                  new RecordMetadata(new TopicPartition("test", 0), 0, 0, 0, 0, 0));
             } else {
               // Last call fails with ExecutionException
               return CompletableFuture.failedFuture(
@@ -251,7 +251,8 @@ class BulkIngestKafkaProducerTest {
     Trace.Span doc2 = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("success2")).build();
     Trace.Span doc3 = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("failure")).build();
 
-    BulkIngestRequest request = bulkIngestKafkaProducer.submitRequest(Map.of(INDEX_NAME, List.of(doc1, doc2, doc3)));
+    BulkIngestRequest request =
+        bulkIngestKafkaProducer.submitRequest(Map.of(INDEX_NAME, List.of(doc1, doc2, doc3)));
 
     AtomicReference<BulkIngestResponse> response = new AtomicReference<>();
     Thread.ofVirtual()
@@ -270,7 +271,7 @@ class BulkIngestKafkaProducerTest {
     assertThat(response.get().failedDocs()).isEqualTo(1);
     assertThat(response.get().errorMsg())
         .isEqualTo(
-    "Kafka send failure. index: testtransactionindex partition: 0 failures: 1 - check logs for details.");
+            "Kafka send failure. index: testtransactionindex partition: 0 failures: 1 - check logs for details.");
   }
 
   @Test
