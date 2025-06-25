@@ -25,12 +25,20 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.CompletableFuture;
+import java.lang.reflect.Field;
 import org.apache.curator.test.TestingServer;
 import org.apache.curator.x.async.AsyncCuratorFramework;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.junit.jupiter.api.AfterEach;
@@ -206,8 +214,7 @@ class BulkIngestKafkaProducerTest {
     bulkIngestKafkaProducer =
         new BulkIngestKafkaProducer(datasetMetadataStore, preprocessorConfig, meterRegistry);
 
-    java.lang.reflect.Field kafkaProducerField =
-        BulkIngestKafkaProducer.class.getDeclaredField("kafkaProducer");
+    Field kafkaProducerField = BulkIngestKafkaProducer.class.getDeclaredField("kafkaProducer");
     kafkaProducerField.setAccessible(true);
 
     Properties props = new Properties();
@@ -220,24 +227,20 @@ class BulkIngestKafkaProducerTest {
     props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
 
     // Create producer that returns futures - some succeed, some fail
-    java.util.concurrent.atomic.AtomicInteger callCount =
-        new java.util.concurrent.atomic.AtomicInteger(0);
-    org.apache.kafka.clients.producer.KafkaProducer<String, byte[]> futureBasedProducer =
-        new org.apache.kafka.clients.producer.KafkaProducer<>(props) {
+    AtomicInteger callCount = new AtomicInteger(0);
+    KafkaProducer<String, byte[]> futureBasedProducer = new KafkaProducer<>(props) {
           @Override
-          public java.util.concurrent.Future<org.apache.kafka.clients.producer.RecordMetadata> send(
-              org.apache.kafka.clients.producer.ProducerRecord<String, byte[]> record) {
+          public Future<RecordMetadata> send(ProducerRecord<String, byte[]> record) {
             int call = callCount.incrementAndGet();
             if (call <= 2) {
               // First 2 calls succeed
-              return java.util.concurrent.CompletableFuture.completedFuture(
-                  new org.apache.kafka.clients.producer.RecordMetadata(
-                      new org.apache.kafka.common.TopicPartition("test", 0), 0, 0, 0, 0, 0));
+              return CompletableFuture.completedFuture(
+                  new RecordMetadata(
+                      new TopicPartition("test", 0), 0, 0, 0, 0, 0));
             } else {
               // Last call fails with ExecutionException
-              return java.util.concurrent.CompletableFuture.failedFuture(
-                  new java.util.concurrent.ExecutionException(
-                      "Future failed", new RuntimeException("Network error")));
+              return CompletableFuture.failedFuture(
+                  new ExecutionException("Future failed", new Exception("Network error")));
             }
           }
         };
@@ -250,8 +253,7 @@ class BulkIngestKafkaProducerTest {
     Trace.Span doc2 = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("success2")).build();
     Trace.Span doc3 = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("failure")).build();
 
-    BulkIngestRequest request =
-        bulkIngestKafkaProducer.submitRequest(Map.of(INDEX_NAME, List.of(doc1, doc2, doc3)));
+    BulkIngestRequest request = bulkIngestKafkaProducer.submitRequest(Map.of(INDEX_NAME, List.of(doc1, doc2, doc3)));
 
     AtomicReference<BulkIngestResponse> response = new AtomicReference<>();
     Thread.ofVirtual()
@@ -270,9 +272,7 @@ class BulkIngestKafkaProducerTest {
     assertThat(response.get().failedDocs()).isEqualTo(1);
     assertThat(response.get().errorMsg())
         .isEqualTo(
-            String.format(
-                "Kafka send failure. index: %s partition: 0 failures: 1 - check logs for details.",
-                INDEX_NAME));
+    "Kafka send failure. index: testtransactionindex partition: 0 failures: 1 - check logs for details.");
   }
 
   @Test
