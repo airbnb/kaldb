@@ -172,7 +172,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       responseObserver.onNext(
           ManagerApi.DeleteDatasetMetadataResponse.newBuilder()
               .setStatus(
-                  String.format("Deleted dataset metadata %s successfully.", request.getName()))
+                  String.format("Deleted dataset metadata %s successfully", request.getName()))
               .build());
       responseObserver.onCompleted();
 
@@ -545,6 +545,24 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       responseObserver.onError(e);
     } catch (Exception e) {
       LOG.error("Error creating new partition", e);
+      responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
+    }
+  }
+
+  @Override
+  public void deletePartition(
+      ManagerApi.DeletePartitionRequest request,
+      StreamObserver<ManagerApi.DeletePartitionResponse> responseObserver) {
+    try {
+      partitionMetadataStore.deleteSync(request.getPartitionId());
+      responseObserver.onNext(
+          ManagerApi.DeletePartitionResponse.newBuilder()
+              .setStatus(
+                  String.format("Deleted partition %s successfully", request.getPartitionId()))
+              .build());
+      responseObserver.onCompleted();
+    } catch (Exception e) {
+      LOG.error("Error deleting dataset metadata ", e);
       responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
     }
   }

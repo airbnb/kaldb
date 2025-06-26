@@ -32,6 +32,9 @@ service ManagerApiService {
   // Create Partition in partition map
   rpc CreatePartition(CreatePartitionRequest) returns (PartitionMetadata) {}
 
+  // Create Partition in partition map
+  rpc DeletePartition(DeletePartitionRequest) returns (DeletePartitionResponse) {}
+
   // List of partitions used by astra along with usage metadata
   // TODO consider including time in the request so you could get a snapshot of the partitions at a given time
   rpc ListPartition(ListPartitionRequest) returns (ListPartitionMetadataResponse) {}
@@ -120,6 +123,14 @@ message ResetPartitionDataResponse {
 message CreatePartitionRequest {
   string partition_id = 1;
   int64 max_capacity = 2;
+}
+
+message DeletePartitionRequest {
+  string partition_id = 1;
+}
+
+message DeletePartitionResponse {
+  string status = 1;
 }
 
 message ListPartitionRequest {}

@@ -1723,19 +1723,6 @@ public class ManagerApiGrpcTest {
         .isEqualTo(new CalculatedPartitionMetadata(partitionId, 0, 100, false));
   }
 
-  private CalculatedPartitionMetadata getPartitionForId(String partitionId) {
-    return managerApiStub
-        .listPartition(ManagerApi.ListPartitionRequest.newBuilder().build())
-        .getPartitionMetadataList()
-        .stream()
-        .filter(p -> p.getPartitionId().equals(partitionId))
-        .map(PartitionMetadataSerializer::fromCalculatedPartitionMetadataProto)
-        .findFirst()
-        .orElseThrow(
-            () ->
-                new IllegalStateException("Partition with id %s not found".formatted(partitionId)));
-  }
-
   @Test
   public void shouldNotCreateNewPartitionWhenExistingPartition() {
     partitionMetadataStore.createSync(createPartitionMetadata("1"));
@@ -1755,6 +1742,45 @@ public class ManagerApiGrpcTest {
     ManagerApi.ListPartitionMetadataResponse listPartitionMetadataResponse =
         managerApiStub.listPartition(ManagerApi.ListPartitionRequest.newBuilder().build());
     assertThat(listPartitionMetadataResponse.getPartitionMetadataList().size()).isEqualTo(1);
+  }
+
+  @Test
+  public void shouldDeleteExistingPartition() {
+    partitionMetadataStore.createSync(createPartitionMetadata("1"));
+
+    ManagerApi.DeletePartitionResponse response =
+        managerApiStub.deletePartition(
+            ManagerApi.DeletePartitionRequest.newBuilder().setPartitionId("1").build());
+
+    assertThat(response.getStatus()).isEqualTo("Deleted partition 1 successfully");
+
+    ManagerApi.ListPartitionMetadataResponse listPartitionMetadataResponse =
+        managerApiStub.listPartition(ManagerApi.ListPartitionRequest.newBuilder().build());
+    assertThat(listPartitionMetadataResponse.getPartitionMetadataList()).isEmpty();
+  }
+
+  @Test
+  public void shouldErrorOnDeletingNonExistingPartition() {
+    assertThatThrownBy(
+            () ->
+                managerApiStub.deletePartition(
+                    ManagerApi.DeletePartitionRequest.newBuilder().setPartitionId("1").build()))
+        .isInstanceOfSatisfying(
+            StatusRuntimeException.class,
+            withGrpcStatusAndDescription(Status.UNKNOWN, "Error deleting node under at path: 1"));
+  }
+
+  private CalculatedPartitionMetadata getPartitionForId(String partitionId) {
+    return managerApiStub
+        .listPartition(ManagerApi.ListPartitionRequest.newBuilder().build())
+        .getPartitionMetadataList()
+        .stream()
+        .filter(p -> p.getPartitionId().equals(partitionId))
+        .map(PartitionMetadataSerializer::fromCalculatedPartitionMetadataProto)
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new IllegalStateException("Partition with id %s not found".formatted(partitionId)));
   }
 
   @Test
