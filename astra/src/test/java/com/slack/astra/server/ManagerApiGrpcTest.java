@@ -1726,6 +1726,7 @@ public class ManagerApiGrpcTest {
   @Test
   public void shouldNotCreateNewPartitionWhenExistingPartition() {
     partitionMetadataStore.createSync(createPartitionMetadata("1"));
+    await().until(() -> partitionMetadataStore.listSync().size() == 1);
 
     assertThatThrownBy(
             () ->
