@@ -53,7 +53,8 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   private final SnapshotMetadataStore snapshotMetadataStore;
 
   public static final long MAX_TIME = Long.MAX_VALUE;
-  // When partition assignments are updated, we set the start time to this amount of time into the future
+  // When partition assignments are updated, we set the start time to this amount of time into the
+  // future
   // to ensure that all services have time to pick up the assignment before it becomes live.
   // TODO: add to config or a system property so that it can be adjusted if needed.
   public static final long PARTITION_START_TIME_PADDING_MS = Duration.ofMinutes(15).toMillis();
