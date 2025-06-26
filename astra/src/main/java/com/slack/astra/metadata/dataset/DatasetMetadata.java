@@ -1,12 +1,15 @@
 package com.slack.astra.metadata.dataset;
 
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.slack.astra.server.ManagerApiGrpc.MAX_TIME;
 
 import com.google.common.collect.ImmutableList;
 import com.slack.astra.metadata.core.AstraMetadata;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -22,6 +25,7 @@ public class DatasetMetadata extends AstraMetadata {
   public final String serviceNamePattern;
   public final long throughputBytes;
   public final ImmutableList<DatasetPartitionMetadata> partitionConfigs;
+  public final boolean usingDedicatedPartitions;
 
   public DatasetMetadata(
       String name,
@@ -29,6 +33,22 @@ public class DatasetMetadata extends AstraMetadata {
       long throughputBytes,
       List<DatasetPartitionMetadata> partitionConfigs,
       String serviceNamePattern) {
+    this(
+        name,
+        owner,
+        throughputBytes,
+        partitionConfigs,
+        serviceNamePattern,
+        false /* usingDedicatedPartitions */);
+  }
+
+  public DatasetMetadata(
+      String name,
+      String owner,
+      long throughputBytes,
+      List<DatasetPartitionMetadata> partitionConfigs,
+      String serviceNamePattern,
+      boolean usingDedicatedPartitions) {
     super(name);
     checkArgument(name.length() <= 256, "name must be no longer than 256 chars");
     checkArgument(name.matches("^[a-zA-Z0-9_-]*$"), "name must contain only [a-zA-Z0-9_-]");
@@ -48,6 +68,7 @@ public class DatasetMetadata extends AstraMetadata {
     this.serviceNamePattern = serviceNamePattern;
     this.throughputBytes = throughputBytes;
     this.partitionConfigs = ImmutableList.copyOf(partitionConfigs);
+    this.usingDedicatedPartitions = usingDedicatedPartitions;
   }
 
   public DatasetMetadata getDataset() {
@@ -70,6 +91,10 @@ public class DatasetMetadata extends AstraMetadata {
     return serviceNamePattern;
   }
 
+  public boolean isUsingDedicatedPartitions() {
+    return usingDedicatedPartitions;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
@@ -80,13 +105,20 @@ public class DatasetMetadata extends AstraMetadata {
         && name.equals(that.name)
         && owner.equals(that.owner)
         && serviceNamePattern.equals(that.serviceNamePattern)
+        && usingDedicatedPartitions == that.usingDedicatedPartitions
         && partitionConfigs.equals(that.partitionConfigs);
   }
 
   @Override
   public int hashCode() {
     return Objects.hash(
-        super.hashCode(), name, owner, serviceNamePattern, throughputBytes, partitionConfigs);
+        super.hashCode(),
+        name,
+        owner,
+        serviceNamePattern,
+        throughputBytes,
+        partitionConfigs,
+        usingDedicatedPartitions);
   }
 
   @Override
@@ -105,6 +137,8 @@ public class DatasetMetadata extends AstraMetadata {
         + throughputBytes
         + ", partitionConfigs="
         + partitionConfigs
+        + ", usingDedicatedPartitions="
+        + usingDedicatedPartitions
         + '}';
   }
 
@@ -127,6 +161,33 @@ public class DatasetMetadata extends AstraMetadata {
                 < sortedConfigsByStartTime.get(i + 1).startTimeEpochMs,
             errorMessage);
       }
+    }
+  }
+
+  public Optional<DatasetPartitionMetadata> getLatestPartitionMetadata() {
+    return getPartitionConfigs().stream()
+        .filter(
+            datasetPartitionMetadata -> datasetPartitionMetadata.getEndTimeEpochMs() == MAX_TIME)
+        .findFirst();
+  }
+
+  public List<DatasetPartitionMetadata> getAllButLatestDatasetPartitions() {
+    return getPartitionConfigs().stream()
+        .filter(
+            datasetPartitionMetadata -> datasetPartitionMetadata.getEndTimeEpochMs() != MAX_TIME)
+        .toList();
+  }
+
+  public long getLatestPerPartitionThroughput() {
+    int partitionCount =
+        getLatestPartitionMetadata()
+            .map(DatasetPartitionMetadata::getPartitions)
+            .map(Collection::size)
+            .orElse(0);
+    if (partitionCount == 0) {
+      return 0;
+    } else {
+      return Math.ceilDiv(throughputBytes, partitionCount);
     }
   }
 }

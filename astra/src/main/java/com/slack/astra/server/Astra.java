@@ -32,6 +32,7 @@ import com.slack.astra.metadata.core.CloseableLifecycleManager;
 import com.slack.astra.metadata.core.CuratorBuilder;
 import com.slack.astra.metadata.dataset.DatasetMetadataStore;
 import com.slack.astra.metadata.hpa.HpaMetricMetadataStore;
+import com.slack.astra.metadata.partition.PartitionMetadataStore;
 import com.slack.astra.metadata.recovery.RecoveryNodeMetadataStore;
 import com.slack.astra.metadata.recovery.RecoveryTaskMetadataStore;
 import com.slack.astra.metadata.replica.ReplicaMetadataStore;
@@ -281,6 +282,13 @@ public class Astra {
           new RecoveryNodeMetadataStore(curatorFramework, true);
       CacheSlotMetadataStore cacheSlotMetadataStore = new CacheSlotMetadataStore(curatorFramework);
       DatasetMetadataStore datasetMetadataStore = new DatasetMetadataStore(curatorFramework, true);
+
+      int minNumberOfPartitions =
+          astraConfig.getManagerConfig().getPartitionAssignmentConfig().getMinNumberOfPartitions();
+
+      PartitionMetadataStore partitionMetadataStore =
+          new PartitionMetadataStore(curatorFramework, true);
+
       HpaMetricMetadataStore hpaMetricMetadataStore =
           new HpaMetricMetadataStore(curatorFramework, true);
 
@@ -296,7 +304,11 @@ public class Astra {
               .withTracing(astraConfig.getTracingConfig())
               .withGrpcService(
                   new ManagerApiGrpc(
-                      datasetMetadataStore, snapshotMetadataStore, replicaRestoreService))
+                      datasetMetadataStore,
+                      partitionMetadataStore,
+                      snapshotMetadataStore,
+                      replicaRestoreService,
+                      minNumberOfPartitions))
               .build();
       services.add(armeriaService);
 

@@ -14,6 +14,8 @@ service ManagerApiService {
   // ListDatasets returns all available datasets from the metadata store
   rpc ListDatasetMetadata(ListDatasetMetadataRequest) returns (ListDatasetMetadataResponse) {}
 
+  rpc DeleteDatasetMetadata(DeleteDatasetMetadataRequest) returns (DeleteDatasetMetadataResponse) {}
+
   // UpdatePartitionAssignment allocates a new partition assignment for a dataset. If a rate and a list of
   // partition_ids are provided, it will use it use the list of partition ids as the current allocation
   // and invalidates the existing assignment.
@@ -26,9 +28,19 @@ service ManagerApiService {
 
   // Resets the partition offset data to allow using a newer offset for a partition ID
   rpc ResetPartitionData(ResetPartitionDataRequest) returns (ResetPartitionDataResponse) {}
+
+  // Create Partition in partition map
+  rpc CreatePartition(CreatePartitionRequest) returns (PartitionMetadata) {}
+
+  // Create Partition in partition map
+  rpc DeletePartition(DeletePartitionRequest) returns (DeletePartitionResponse) {}
+
+  // List of partitions used by astra along with usage metadata
+  // TODO consider including time in the request so you could get a snapshot of the partitions at a given time
+  rpc ListPartition(ListPartitionRequest) returns (ListPartitionMetadataResponse) {}
 }
 
-// CreateDatasetMetadataRequest represents a new dataset with uninitialized thoughput and partition assignments
+// CreateDatasetMetadataRequest represents a new dataset with uninitialized throughput and partition assignments
 message CreateDatasetMetadataRequest {
   // Name of the dataset, must be unique
   string name = 1;
@@ -71,6 +83,8 @@ message UpdatePartitionAssignmentRequest {
   int64 throughput_bytes = 2;
   // Optional desired partition IDs - if empty will be automatically assigned
   repeated string partition_ids = 3;
+  // Optional required partitions to be exclusive for the tenant - default false
+  bool require_dedicated_partition = 4;
 }
 
 // UpdatePartitionAssignmentResponse represents the response after assigning a new set of partitions
@@ -103,5 +117,40 @@ message ResetPartitionDataRequest {
 }
 
 message ResetPartitionDataResponse {
+  string status = 1;
+}
+
+message CreatePartitionRequest {
+  string partition_id = 1;
+  int64 max_capacity = 2;
+}
+
+message DeletePartitionRequest {
+  string partition_id = 1;
+}
+
+message DeletePartitionResponse {
+  string status = 1;
+}
+
+message ListPartitionRequest {}
+
+message ListPartitionMetadataResponse {
+  repeated CalculatedPartitionMetadata partition_metadata = 1;
+}
+
+message CalculatedPartitionMetadata {
+  string partition_id = 1;
+  int64 max_capacity = 2;
+  int64 provisioned_capacity = 3;
+  bool dedicated_partition = 4;
+}
+
+message DeleteDatasetMetadataRequest {
+  // name of the dataset / tenant
+  string name = 1;
+}
+
+message DeleteDatasetMetadataResponse {
   string status = 1;
 }

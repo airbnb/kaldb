@@ -1,6 +1,7 @@
 package com.slack.astra.server;
 
 import static com.slack.astra.metadata.dataset.DatasetMetadataSerializer.toDatasetMetadataProto;
+import static com.slack.astra.metadata.partition.PartitionMetadataSerializer.toPartitionMetadataProto;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
@@ -11,22 +12,32 @@ import com.slack.astra.metadata.dataset.DatasetMetadata;
 import com.slack.astra.metadata.dataset.DatasetMetadataSerializer;
 import com.slack.astra.metadata.dataset.DatasetMetadataStore;
 import com.slack.astra.metadata.dataset.DatasetPartitionMetadata;
+import com.slack.astra.metadata.partition.CalculatedPartitionMetadata;
+import com.slack.astra.metadata.partition.PartitionMetadata;
+import com.slack.astra.metadata.partition.PartitionMetadataSerializer;
+import com.slack.astra.metadata.partition.PartitionMetadataStore;
 import com.slack.astra.metadata.snapshot.SnapshotMetadata;
 import com.slack.astra.metadata.snapshot.SnapshotMetadataStore;
 import com.slack.astra.proto.manager_api.ManagerApi;
 import com.slack.astra.proto.manager_api.ManagerApiServiceGrpc;
 import com.slack.astra.proto.metadata.Metadata;
 import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.naming.SizeLimitExceededException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,16 +51,30 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   private static final Logger LOG = LoggerFactory.getLogger(ManagerApiGrpc.class);
   private final DatasetMetadataStore datasetMetadataStore;
   private final SnapshotMetadataStore snapshotMetadataStore;
+
   public static final long MAX_TIME = Long.MAX_VALUE;
+  // When partition assignments are updated, we set the start time to this amount of time into the
+  // future
+  // to ensure that all services have time to pick up the assignment before it becomes live.
+  // TODO: add to config or a system property so that it can be adjusted if needed.
+  public static final long PARTITION_START_TIME_PADDING_MS = Duration.ofMinutes(15).toMillis();
+
   private final ReplicaRestoreService replicaRestoreService;
+  private final PartitionMetadataStore partitionMetadataStore;
+  private final int minNumberOfPartitions;
 
   public ManagerApiGrpc(
       DatasetMetadataStore datasetMetadataStore,
+      PartitionMetadataStore partitionMetadataStore,
       SnapshotMetadataStore snapshotMetadataStore,
-      ReplicaRestoreService replicaRestoreService) {
+      ReplicaRestoreService replicaRestoreService,
+      int minNumberOfPartitions) {
     this.datasetMetadataStore = datasetMetadataStore;
     this.snapshotMetadataStore = snapshotMetadataStore;
     this.replicaRestoreService = replicaRestoreService;
+    this.partitionMetadataStore = partitionMetadataStore;
+
+    this.minNumberOfPartitions = minNumberOfPartitions;
   }
 
   /** Initializes a new dataset in the metadata store with no initial allocated capacity */
@@ -65,7 +90,8 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               request.getOwner(),
               0L,
               Collections.emptyList(),
-              request.getServiceNamePattern()));
+              request.getServiceNamePattern(),
+              false));
       responseObserver.onNext(
           toDatasetMetadataProto(datasetMetadataStore.getSync(request.getName())));
       responseObserver.onCompleted();
@@ -90,7 +116,8 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               request.getOwner(),
               existingDatasetMetadata.getThroughputBytes(),
               existingDatasetMetadata.getPartitionConfigs(),
-              request.getServiceNamePattern());
+              request.getServiceNamePattern(),
+              existingDatasetMetadata.isUsingDedicatedPartitions());
       datasetMetadataStore.updateSync(updatedDatasetMetadata);
       responseObserver.onNext(toDatasetMetadataProto(updatedDatasetMetadata));
       responseObserver.onCompleted();
@@ -137,6 +164,32 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     }
   }
 
+  /** Delete a data from the metadata store */
+  @Override
+  public void deleteDatasetMetadata(
+      ManagerApi.DeleteDatasetMetadataRequest request,
+      StreamObserver<ManagerApi.DeleteDatasetMetadataResponse> responseObserver) {
+
+    try {
+      datasetMetadataStore.deleteSync(request.getName());
+      responseObserver.onNext(
+          ManagerApi.DeleteDatasetMetadataResponse.newBuilder()
+              .setStatus(
+                  String.format("Deleted dataset metadata %s successfully", request.getName()))
+              .build());
+      responseObserver.onCompleted();
+
+    } catch (Exception e) {
+      LOG.error("Error deleting dataset metadata ", e);
+      responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
+    }
+  }
+
+  private PartitionMetadataFromDatasetConfigs createPartitionMetadataFromDatasetConfigs() {
+    return new PartitionMetadataFromDatasetConfigs(
+        datasetMetadataStore.listSync(), partitionMetadataStore.listSync(), minNumberOfPartitions);
+  }
+
   /**
    * Allocates a new partition assignment for a dataset. If a rate and a list of partition IDs are
    * provided, it will use it use the list of partition ids as the current allocation and
@@ -146,20 +199,24 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   public void updatePartitionAssignment(
       ManagerApi.UpdatePartitionAssignmentRequest request,
       StreamObserver<ManagerApi.UpdatePartitionAssignmentResponse> responseObserver) {
-    // todo - In the future if only a rate is provided with an empty list the allocation
-    //  will be automatically assigned.
-
     try {
       // todo - add additional validation to ensure the provided allocation makes sense for the
-      //  configured throughput values. If no partitions are provided, auto-allocate.
+      //  configured throughput values.
       Preconditions.checkArgument(
           request.getPartitionIdsList().stream().noneMatch(String::isBlank),
           "PartitionIds list must not contain blank strings");
+      Preconditions.checkArgument(
+          !request.getName().isBlank(), "Dataset name must not be blank string");
 
-      DatasetMetadata datasetMetadata = datasetMetadataStore.getSync(request.getName());
-      ImmutableList<DatasetPartitionMetadata> updatedDatasetPartitionMetadata =
-          addNewPartition(datasetMetadata.getPartitionConfigs(), request.getPartitionIdsList());
-
+      DatasetMetadata datasetMetadata;
+      try {
+        datasetMetadata = datasetMetadataStore.getSync(request.getName());
+      } catch (Exception e) {
+        String msg = "No dataset named, '%s'. Please create it first.".formatted(request.getName());
+        LOG.error(msg);
+        responseObserver.onError(Status.NOT_FOUND.withDescription(msg).asException());
+        return;
+      }
       // if the user provided a non-negative value for throughput set it, otherwise default to the
       // existing value
       long updatedThroughputBytes =
@@ -167,20 +224,77 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
               ? datasetMetadata.getThroughputBytes()
               : request.getThroughputBytes();
 
+      PartitionMetadataFromDatasetConfigs partitionData =
+          createPartitionMetadataFromDatasetConfigs();
+
+      List<String> partitionIdList;
+      if (request.getPartitionIdsList().isEmpty()) {
+        try {
+          partitionIdList =
+              autoAssignPartition(
+                  datasetMetadata,
+                  updatedThroughputBytes,
+                  request.getRequireDedicatedPartition(),
+                  partitionData);
+        } catch (StatusRuntimeException e) {
+          LOG.error("Error autoassigning partitions", e);
+          responseObserver.onError(e);
+          return;
+        }
+        LOG.info("Auto-assigning partitions for {} to : {}", request.getName(), partitionIdList);
+        if (partitionIdList.isEmpty()) {
+          String msg = "Error updating partition assignment, could not find partitions to assign";
+          LOG.error(msg);
+          responseObserver.onError(Status.UNKNOWN.withDescription(msg).asException());
+          return;
+        }
+      } else {
+        partitionIdList = request.getPartitionIdsList();
+        LOG.info(
+            "Manually assigning partitions for {} to : {}", request.getName(), partitionIdList);
+        List<String> nonExistentRequestedPartitionIds =
+            partitionIdList.stream()
+                .filter(id -> !partitionData.getPartitionIds().contains(id))
+                .sorted()
+                .toList();
+        Preconditions.checkArgument(
+            nonExistentRequestedPartitionIds.isEmpty(),
+            "Requested partition IDs do not exist: %s".formatted(nonExistentRequestedPartitionIds));
+        // TODO perhaps we could log warnings if the user is trying to assign to partitions that
+        // - are not empty, when requesting dedicated partitions
+        // - don't have enough capacity for the requested throughput
+      }
+      partitionIdList = partitionIdList.stream().sorted().toList();
+
+      ImmutableList<DatasetPartitionMetadata> updatedDatasetPartitionMetadata =
+          addNewPartition(datasetMetadata, partitionIdList, PARTITION_START_TIME_PADDING_MS);
+
       DatasetMetadata updatedDatasetMetadata =
           new DatasetMetadata(
               datasetMetadata.getName(),
               datasetMetadata.getOwner(),
               updatedThroughputBytes,
               updatedDatasetPartitionMetadata,
-              datasetMetadata.getServiceNamePattern());
+              datasetMetadata.getServiceNamePattern(),
+              request.getRequireDedicatedPartition());
       datasetMetadataStore.updateSync(updatedDatasetMetadata);
 
       responseObserver.onNext(
           ManagerApi.UpdatePartitionAssignmentResponse.newBuilder()
-              .addAllAssignedPartitionIds(request.getPartitionIdsList())
+              .addAllAssignedPartitionIds(partitionIdList)
               .build());
       responseObserver.onCompleted();
+      LOG.info(
+          "Updated partition assignment for dataset: {}, throughput: {} -> {} partitions: {} -> {}",
+          request.getName(),
+          datasetMetadata.getThroughputBytes(),
+          updatedThroughputBytes,
+          datasetMetadata.getLatestPartitionMetadata(),
+          partitionIdList);
+    } catch (IllegalArgumentException e) {
+      LOG.error("Error updating partition assignment", e);
+      responseObserver.onError(
+          Status.INVALID_ARGUMENT.withDescription(e.getMessage()).asException());
     } catch (Exception e) {
       LOG.error("Error updating partition assignment", e);
       responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
@@ -321,34 +435,30 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
    * Returns a new list of dataset partition metadata, with the provided partition IDs as the
    * current active assignment. This finds the current active assignment (end time of max long),
    * sets it to the current time, and then appends a new dataset partition assignment starting from
-   * current time + 1 to max long.
+   * current time + padding + 1 to max long.
    */
   private static ImmutableList<DatasetPartitionMetadata> addNewPartition(
-      List<DatasetPartitionMetadata> existingPartitions, List<String> newPartitionIdsList) {
+      DatasetMetadata datasetMetadata, List<String> newPartitionIdsList, long padding) {
+    ImmutableList<DatasetPartitionMetadata> existingPartitions =
+        datasetMetadata.getPartitionConfigs();
+    // if there are no new partitions, just return the existing ones
     if (newPartitionIdsList.isEmpty()) {
       return ImmutableList.copyOf(existingPartitions);
     }
 
     Optional<DatasetPartitionMetadata> previousActiveDatasetPartition =
-        existingPartitions.stream()
-            .filter(
-                datasetPartitionMetadata ->
-                    datasetPartitionMetadata.getEndTimeEpochMs() == MAX_TIME)
-            .findFirst();
-
+        datasetMetadata.getLatestPartitionMetadata();
     List<DatasetPartitionMetadata> remainingDatasetPartitions =
-        existingPartitions.stream()
-            .filter(
-                datasetPartitionMetadata ->
-                    datasetPartitionMetadata.getEndTimeEpochMs() != MAX_TIME)
-            .collect(Collectors.toList());
+        datasetMetadata.getAllButLatestDatasetPartitions();
+    // if the new partition configuration is the same as the current one, reuse it.
+    if (previousActiveDatasetPartition.isPresent()
+        && previousActiveDatasetPartition.get().getPartitions().equals(newPartitionIdsList)) {
+      return ImmutableList.copyOf(existingPartitions);
+    }
 
-    // todo - consider adding some padding to this value; this may complicate
-    //   validation as you would need to consider what happens when there's a future
+    // todo - consider what happens when there's a future
     //   cut-over already scheduled
-    // todo - if introducing an optional padding this should be added as a method parameter
-    //   see https://github.com/slackhq/astra/pull/244#discussion_r835424863
-    long partitionCutoverTime = Instant.now().toEpochMilli();
+    long partitionCutoverTime = Instant.now().toEpochMilli() + padding;
 
     ImmutableList.Builder<DatasetPartitionMetadata> builder =
         ImmutableList.<DatasetPartitionMetadata>builder().addAll(remainingDatasetPartitions);
@@ -403,5 +513,344 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     }
 
     responseObserver.onCompleted();
+  }
+
+  @Override
+  public void createPartition(
+      ManagerApi.CreatePartitionRequest request,
+      StreamObserver<Metadata.PartitionMetadata> responseObserver) {
+    try {
+      Preconditions.checkArgument(
+          request.getMaxCapacity() != 0, "Max capacity must be set when creating a new partition");
+
+      if (partitionMetadataStore.hasSync(request.getPartitionId())) {
+        String msg = "Partition with id '%s' already exists".formatted(request.getPartitionId());
+        LOG.error(msg);
+        responseObserver.onError(Status.ALREADY_EXISTS.withDescription(msg).asException());
+        return;
+      }
+      PartitionMetadata newPartitionMetadata =
+          new PartitionMetadata(request.getPartitionId(), request.getMaxCapacity());
+
+      partitionMetadataStore.createSync(newPartitionMetadata);
+      responseObserver.onNext(toPartitionMetadataProto(newPartitionMetadata));
+      responseObserver.onCompleted();
+      LOG.info(
+          "Created partition: {}, max capacity: {}",
+          request.getPartitionId(),
+          request.getMaxCapacity());
+    } catch (IllegalArgumentException e) {
+      LOG.error("Error creating new partition", e);
+      responseObserver.onError(
+          Status.INVALID_ARGUMENT.withDescription(e.getMessage()).asException());
+    } catch (StatusRuntimeException e) {
+      LOG.error("Error creating new partition", e);
+      responseObserver.onError(e);
+    } catch (Exception e) {
+      LOG.error("Error creating new partition", e);
+      responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
+    }
+  }
+
+  @Override
+  public void deletePartition(
+      ManagerApi.DeletePartitionRequest request,
+      StreamObserver<ManagerApi.DeletePartitionResponse> responseObserver) {
+    try {
+      partitionMetadataStore.deleteSync(request.getPartitionId());
+      responseObserver.onNext(
+          ManagerApi.DeletePartitionResponse.newBuilder()
+              .setStatus(
+                  String.format("Deleted partition %s successfully", request.getPartitionId()))
+              .build());
+      responseObserver.onCompleted();
+    } catch (Exception e) {
+      LOG.error("Error deleting dataset metadata ", e);
+      responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
+    }
+  }
+
+  @Override
+  public void listPartition(
+      ManagerApi.ListPartitionRequest request,
+      StreamObserver<ManagerApi.ListPartitionMetadataResponse> responseObserver) {
+    try {
+      responseObserver.onNext(
+          ManagerApi.ListPartitionMetadataResponse.newBuilder()
+              .addAllPartitionMetadata(
+                  createPartitionMetadataFromDatasetConfigs().getLivePMDs().stream()
+                      .map(PartitionMetadataSerializer::toCalculatedPartitionMetadataProto)
+                      .toList())
+              .build());
+      responseObserver.onCompleted();
+    } catch (Exception e) {
+      LOG.error("Error fetching partition list", e);
+      responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
+    }
+  }
+
+  /**
+   * automatically finds the partition Ids given requirements, with minimum swaps
+   *
+   * @param datasetMetadata DatasetMetadata object
+   * @param throughputBytes required throughPutBytes
+   * @param requireDedicatedPartition flag to indicate if we need dedicated partitions
+   * @return List of partition Ids to be assigned in the new DatasetPartitionMetadata
+   */
+  private static List<String> autoAssignPartition(
+      DatasetMetadata datasetMetadata,
+      long throughputBytes,
+      boolean requireDedicatedPartition,
+      PartitionMetadataFromDatasetConfigs partitionMetadataFromDatasetConfigs) {
+    if (partitionMetadataFromDatasetConfigs.hasNoPartitionsDeclared()) {
+      throw Status.FAILED_PRECONDITION
+          .withDescription(
+              "Needed %d partitions with enough capacity, found 0"
+                  .formatted(partitionMetadataFromDatasetConfigs.minNumberOfPartitions))
+          .asRuntimeException();
+    }
+
+    // TODO if available capacity minus current is less than requested, bail out
+
+    List<String> currentPartitions =
+        datasetMetadata
+            .getLatestPartitionMetadata()
+            .map(DatasetPartitionMetadata::getPartitions)
+            .orElseGet(ImmutableList::of);
+
+    PartitionMetadataFromDatasetConfigs partitionMetadataAfterDroppingDatasetBeingModified =
+        partitionMetadataFromDatasetConfigs.minusDataset(datasetMetadata);
+    if (requireDedicatedPartition) {
+      // if we require dedicated partitions, we can only reuse partitions that are not shared
+      // approach:
+      // - collect the unshared partitions for the current dataset, sorted by id
+      // - collect the empty partitions, sorted by id
+      // - concat those two lists, then take the first n partitions where n is the minimum needed
+      //   to cover the requested throughput
+      //
+      // this ensures that we minimize partition churn and that we have enough partitions.
+      List<CalculatedPartitionMetadata> reusablePartitions =
+          partitionMetadataAfterDroppingDatasetBeingModified.existingDedicatedPartitions(
+              datasetMetadata);
+      Comparator<CalculatedPartitionMetadata> compareByAvailableCapacityThenId =
+          Comparator.comparing(CalculatedPartitionMetadata::getAvailableCapacity)
+              .thenComparing(CalculatedPartitionMetadata::getPartitionID);
+      List<CalculatedPartitionMetadata> emptyPartitions =
+          partitionMetadataFromDatasetConfigs.currentEmptyPartitions();
+      List<CalculatedPartitionMetadata> sortedPartitions =
+          Stream.concat(
+                  reusablePartitions.stream().sorted(compareByAvailableCapacityThenId),
+                  emptyPartitions.stream().sorted(compareByAvailableCapacityThenId))
+              .toList();
+      List<String> proposedPartitionIds = new ArrayList<>();
+      long proposedProvisionedCapacityUsage = 0;
+      for (CalculatedPartitionMetadata partition : sortedPartitions) {
+        if (proposedProvisionedCapacityUsage >= throughputBytes
+            && proposedPartitionIds.size()
+                >= partitionMetadataFromDatasetConfigs.minNumberOfPartitions) {
+          break;
+        }
+        // TODO need to be sure that the smallest partition has max capacity of at least throughput
+        // / partition ct. Or to change the way we send to partitions to take the max into account.
+        proposedProvisionedCapacityUsage += partition.getAvailableCapacity();
+        proposedPartitionIds.add(partition.getPartitionID());
+      }
+      LOG.debug(
+          "current empty partitions: {}, list to pull from {}, proposed cap {}",
+          partitionMetadataAfterDroppingDatasetBeingModified.currentEmptyPartitions().stream()
+              .map(CalculatedPartitionMetadata::getPartitionID)
+              .toList(),
+          sortedPartitions.stream().map(CalculatedPartitionMetadata::getPartitionID).toList(),
+          proposedProvisionedCapacityUsage);
+      if (proposedProvisionedCapacityUsage >= throughputBytes
+          && proposedPartitionIds.size()
+              >= partitionMetadataFromDatasetConfigs.minNumberOfPartitions) {
+        return proposedPartitionIds;
+      } else {
+        throw Status.FAILED_PRECONDITION
+            .withDescription(
+                "Needed %d partitions with enough capacity, found %d: %s"
+                    .formatted(
+                        partitionMetadataFromDatasetConfigs.minNumberOfPartitions,
+                        proposedPartitionIds.size(),
+                        proposedPartitionIds))
+            .asRuntimeException();
+      }
+    } else {
+      // For datasets that don't require dedicated partitions, we can use any partition
+      // that has enough capacity for the new per partition throughput.
+      //
+      // our goals are to
+      // - minimize partition churn
+      // - maximize the use of existing partitions
+      // so we sort them by
+      //   - in current set vs not -- reuse current set first
+      //   - available capacity asc -- try to saturate the most provisioned partitions first
+      //   - id asc -- within those, sort by id to keep order stable-ish
+      // Then starting with the min number of needed partitions, we look for a set of partitions
+      // with
+      // enough space going up to the max number of available partitions
+      List<CalculatedPartitionMetadata> partitionsSorted =
+          partitionMetadataAfterDroppingDatasetBeingModified.getLivePMDs().stream()
+              .sorted(
+                  Comparator.comparing(
+                          (CalculatedPartitionMetadata p) ->
+                              currentPartitions.contains(p.getPartitionID()))
+                      .reversed()
+                      .thenComparing(CalculatedPartitionMetadata::getAvailableCapacity)
+                      .thenComparing(CalculatedPartitionMetadata::getPartitionID))
+              .toList();
+      LOG.debug(
+          "partitions sorted: {}",
+          partitionsSorted.stream().map(CalculatedPartitionMetadata::getPartitionID).toList());
+
+      List<String> lastProposal = Collections.emptyList();
+      // NB: starting at 1 so that if there is only one partition available,
+      // the error message will communicate that.
+      for (long proposedPartitionCt = 1;
+          proposedPartitionCt <= partitionsSorted.size();
+          proposedPartitionCt++) {
+        long nextPerPartitionThroughput = Math.ceilDiv(throughputBytes, proposedPartitionCt);
+        lastProposal =
+            partitionsSorted.stream()
+                .filter(p -> p.getAvailableCapacity() >= nextPerPartitionThroughput)
+                .limit(proposedPartitionCt)
+                .map(CalculatedPartitionMetadata::getPartitionID)
+                .toList();
+        LOG.debug(
+            "proposal for partition count: {}, per partition throughput: {}, proposal: {}",
+            proposedPartitionCt,
+            nextPerPartitionThroughput,
+            lastProposal);
+        if (lastProposal.size() == proposedPartitionCt
+            && proposedPartitionCt >= partitionMetadataFromDatasetConfigs.minNumberOfPartitions) {
+          return lastProposal;
+        }
+      }
+      throw Status.FAILED_PRECONDITION
+          .withDescription(
+              "Needed %d partitions with enough capacity, found %d: %s"
+                  .formatted(
+                      partitionMetadataFromDatasetConfigs.minNumberOfPartitions,
+                      +lastProposal.size(),
+                      lastProposal))
+          .asRuntimeException();
+    }
+  }
+
+  /**
+   * Holds the result of analyzing the dataset configs and partition metadata. Used for partition
+   * assigment and listing partition metadata.
+   */
+  private static class PartitionMetadataFromDatasetConfigs {
+    private final long minNumberOfPartitions;
+    private final List<CalculatedPartitionMetadata> livePMDs;
+
+    public PartitionMetadataFromDatasetConfigs(
+        List<DatasetMetadata> datasetMetadataList,
+        List<PartitionMetadata> partitionMetadataList,
+        long minNumberOfPartitions) {
+      this(
+          calculatePartitionMetadataFromConfig(datasetMetadataList, partitionMetadataList),
+          minNumberOfPartitions);
+    }
+
+    public PartitionMetadataFromDatasetConfigs(
+        List<CalculatedPartitionMetadata> livePMDs, long minNumberOfPartitions) {
+      this.livePMDs = livePMDs;
+      this.minNumberOfPartitions = minNumberOfPartitions;
+    }
+
+    PartitionMetadataFromDatasetConfigs minusDataset(DatasetMetadata datasetMetadata) {
+      long currentPerPartitionThroughput = datasetMetadata.getLatestPerPartitionThroughput();
+      ImmutableList<String> currentIds =
+          datasetMetadata
+              .getLatestPartitionMetadata()
+              .map(DatasetPartitionMetadata::getPartitions)
+              .orElse(ImmutableList.of());
+
+      List<CalculatedPartitionMetadata> newList =
+          livePMDs.stream()
+              .map(
+                  p -> {
+                    if (currentIds.contains(p.getPartitionID())) {
+                      return new CalculatedPartitionMetadata(
+                          p.getPartitionID(),
+                          Math.max(0, p.getProvisionedCapacity() - currentPerPartitionThroughput),
+                          p.getMaxCapacity(),
+                          p.getDedicatedPartition(),
+                          p.datasets);
+                    } else {
+                      return p;
+                    }
+                  })
+              .toList();
+      return new PartitionMetadataFromDatasetConfigs(newList, minNumberOfPartitions);
+    }
+
+    public boolean hasNoPartitionsDeclared() {
+      return livePMDs.isEmpty();
+    }
+
+    public List<CalculatedPartitionMetadata> currentEmptyPartitions() {
+      return livePMDs.stream().filter(capacity -> capacity.getProvisionedCapacity() == 0).toList();
+    }
+
+    public List<CalculatedPartitionMetadata> getLivePMDs() {
+      return livePMDs;
+    }
+
+    public List<String> getPartitionIds() {
+      return livePMDs.stream().map(CalculatedPartitionMetadata::getPartitionID).toList();
+    }
+
+    public List<CalculatedPartitionMetadata> existingDedicatedPartitions(
+        DatasetMetadata datasetMetadata) {
+      return livePMDs.stream()
+          .filter(
+              p -> p.datasets.size() == 1 && p.datasets.get(0).equals(datasetMetadata.getName()))
+          .toList();
+    }
+  }
+
+  private static List<CalculatedPartitionMetadata> calculatePartitionMetadataFromConfig(
+      List<DatasetMetadata> datasetMetadataList, List<PartitionMetadata> partitionMetadataList) {
+    final Map<String, List<String>> partitionDatasets = new HashMap<>();
+    final Map<String, Long> partitionProvisioning = new HashMap<>();
+    final Map<String, List<String>> partitionDedication = new HashMap<>();
+    for (PartitionMetadata partitionMetadata : partitionMetadataList) {
+      partitionProvisioning.put(partitionMetadata.getPartitionID(), 0L);
+      partitionDedication.put(partitionMetadata.getPartitionID(), new ArrayList<>());
+      partitionDatasets.put(partitionMetadata.getPartitionID(), new ArrayList<>());
+    }
+    for (DatasetMetadata datasetMetadata : datasetMetadataList) {
+      Optional<DatasetPartitionMetadata> latest = datasetMetadata.getLatestPartitionMetadata();
+      long perPartitionValue =
+          latest
+              .map(
+                  p -> Math.ceilDiv(datasetMetadata.getThroughputBytes(), p.getPartitions().size()))
+              .orElse(0L);
+
+      boolean useDedicatedPartition = datasetMetadata.isUsingDedicatedPartitions();
+      for (String partitionId :
+          latest.map(DatasetPartitionMetadata::getPartitions).orElse(ImmutableList.of())) {
+        partitionProvisioning.put(
+            partitionId, perPartitionValue + partitionProvisioning.getOrDefault(partitionId, 0L));
+        partitionDatasets.get(partitionId).add(datasetMetadata.getName());
+        if (useDedicatedPartition) {
+          partitionDedication.get(partitionId).add(datasetMetadata.getName());
+        }
+      }
+    }
+    return partitionMetadataList.stream()
+        .map(
+            p ->
+                new CalculatedPartitionMetadata(
+                    p.getPartitionID(),
+                    partitionProvisioning.get(p.getPartitionID()),
+                    p.getMaxCapacity(),
+                    !partitionDedication.get(p.getPartitionID()).isEmpty(),
+                    partitionDatasets.get(p.getPartitionID())))
+        .toList();
   }
 }

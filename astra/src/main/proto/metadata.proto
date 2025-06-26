@@ -148,6 +148,9 @@ message DatasetMetadata {
 
   // either same as name or a special value _all or * which matches all services
   string service_name_pattern = 5;
+
+  // True if this dataset requires dedicated partitions for auto assigning.
+  bool using_dedicated_partitions = 6;
 }
 
 message HpaMetricMetadata {
@@ -230,4 +233,9 @@ message CacheNodeMetadata {
   string hostname = 3;
   int64  node_capacity_bytes = 4;
   string replica_set = 5;
+}
+
+message PartitionMetadata {
+  string partition_id = 1;
+  int64 max_capacity = 3;
 }
