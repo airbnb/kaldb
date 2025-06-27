@@ -118,7 +118,7 @@ public class IndexingChunkManagerTest {
   private BlobStore blobStore;
   private TestingServer localZkServer;
   private AsyncCuratorFramework curatorFramework;
-  private AstraConfigs.ZookeeperConfig zkConfig;
+  private AstraConfigs.MetadataStoreConfig metadataStoreConfig;
   private SnapshotMetadataStore snapshotMetadataStore;
   private SearchMetadataStore searchMetadataStore;
 
@@ -133,20 +133,26 @@ public class IndexingChunkManagerTest {
     localZkServer = new TestingServer();
     localZkServer.start();
 
-    zkConfig =
-        AstraConfigs.ZookeeperConfig.newBuilder()
-            .setZkConnectString(localZkServer.getConnectString())
-            .setZkPathPrefix(ZK_PATH_PREFIX)
-            .setZkSessionTimeoutMs(15000)
-            .setZkConnectionTimeoutMs(1500)
-            .setSleepBetweenRetriesMs(1000)
-            .setZkCacheInitTimeoutMs(1000)
+    metadataStoreConfig =
+        AstraConfigs.MetadataStoreConfig.newBuilder()
+            .setMode(AstraConfigs.MetadataStoreMode.ZOOKEEPER_EXCLUSIVE)
+            .setZookeeperConfig(
+                AstraConfigs.ZookeeperConfig.newBuilder()
+                    .setZkConnectString(localZkServer.getConnectString())
+                    .setZkPathPrefix(ZK_PATH_PREFIX)
+                    .setZkSessionTimeoutMs(15000)
+                    .setZkConnectionTimeoutMs(1500)
+                    .setSleepBetweenRetriesMs(1000)
+                    .setZkCacheInitTimeoutMs(1000)
+                    .build())
             .build();
 
-    curatorFramework = CuratorBuilder.build(metricsRegistry, zkConfig);
-    snapshotMetadataStore = new SnapshotMetadataStore(curatorFramework, zkConfig, metricsRegistry);
+    curatorFramework =
+        CuratorBuilder.build(metricsRegistry, metadataStoreConfig.getZookeeperConfig());
+    snapshotMetadataStore =
+        new SnapshotMetadataStore(curatorFramework, metadataStoreConfig, metricsRegistry);
     searchMetadataStore =
-        new SearchMetadataStore(curatorFramework, zkConfig, metricsRegistry, false);
+        new SearchMetadataStore(curatorFramework, metadataStoreConfig, metricsRegistry, false);
   }
 
   @AfterEach
@@ -178,7 +184,7 @@ public class IndexingChunkManagerTest {
             curatorFramework,
             searchContext,
             AstraConfigUtil.makeIndexerConfig(TEST_PORT, 1000, 100),
-            zkConfig);
+            metadataStoreConfig);
     chunkManager.startAsync();
     chunkManager.awaitRunning(DEFAULT_START_STOP_DURATION);
   }
@@ -201,7 +207,7 @@ public class IndexingChunkManagerTest {
             curatorFramework,
             searchContext,
             indexerConfig,
-            zkConfig);
+            metadataStoreConfig);
     chunkManager.startAsync();
     chunkManager.awaitRunning(DEFAULT_START_STOP_DURATION);
   }
@@ -531,7 +537,8 @@ public class IndexingChunkManagerTest {
       String searchString,
       int expectedHitCount,
       int totalSnapshots,
-      int expectedSnapshotsWithReplicas) {
+      int expectedSnapshotsWithReplicas,
+      int expectedFailedNodes) {
 
     AstraLocalQueryService<LogMessage> astraLocalQueryService =
         new AstraLocalQueryService<>(chunkManager, Duration.ofSeconds(3));
@@ -553,8 +560,7 @@ public class IndexingChunkManagerTest {
     assertThat(response.getHitsList().size()).isEqualTo(expectedHitCount);
     assertThat(response.getTotalSnapshots()).isEqualTo(totalSnapshots);
     assertThat(response.getSnapshotsWithReplicas()).isEqualTo(expectedSnapshotsWithReplicas);
-    assertThat(response.getFailedNodes()).isEqualTo(0);
-    assertThat(response.getTotalNodes()).isEqualTo(1);
+    assertThat(response.getFailedNodes()).isEqualTo(expectedFailedNodes);
   }
 
   private void testChunkManagerSearch(
@@ -562,7 +568,8 @@ public class IndexingChunkManagerTest {
       String searchString,
       int expectedHitCount,
       int totalSnapshots,
-      int expectedSnapshotsWithReplicas) {
+      int expectedSnapshotsWithReplicas,
+      int expectedFailedNodes) {
 
     testChunkManagerSearch(
         chunkManager,
@@ -570,7 +577,8 @@ public class IndexingChunkManagerTest {
         searchString,
         expectedHitCount,
         totalSnapshots,
-        expectedSnapshotsWithReplicas);
+        expectedSnapshotsWithReplicas,
+        expectedFailedNodes);
   }
 
   private int searchAndGetHitCount(
@@ -613,9 +621,9 @@ public class IndexingChunkManagerTest {
     assertThat(getCount(MESSAGES_FAILED_COUNTER, metricsRegistry)).isEqualTo(0);
     assertThat(getCount(ROLLOVERS_INITIATED, metricsRegistry)).isEqualTo(1);
     assertThat(getCount(ROLLOVERS_FAILED, metricsRegistry)).isEqualTo(0);
-    testChunkManagerSearch(chunkManager, "Message1", 1, 2, 2);
-    testChunkManagerSearch(chunkManager, "Message11", 1, 2, 2);
-    testChunkManagerSearch(chunkManager, "Message1 OR Message11", 2, 2, 2);
+    testChunkManagerSearch(chunkManager, "Message1", 1, 2, 2, 0);
+    testChunkManagerSearch(chunkManager, "Message11", 1, 2, 2, 0);
+    testChunkManagerSearch(chunkManager, "Message1 OR Message11", 2, 2, 2, 0);
 
     checkMetadata(3, 2, 1, 2, 1);
   }
@@ -641,9 +649,9 @@ public class IndexingChunkManagerTest {
     assertThat(getCount(MESSAGES_FAILED_COUNTER, metricsRegistry)).isEqualTo(0);
     assertThat(getCount(ROLLOVERS_INITIATED, metricsRegistry)).isEqualTo(1);
     assertThat(getCount(ROLLOVERS_FAILED, metricsRegistry)).isEqualTo(0);
-    testChunkManagerSearch(chunkManager, "Message1", 1, 2, 2);
-    testChunkManagerSearch(chunkManager, "Message11", 1, 2, 2);
-    testChunkManagerSearch(chunkManager, "Message1 OR Message11", 2, 2, 2);
+    testChunkManagerSearch(chunkManager, "Message1", 1, 2, 2, 0);
+    testChunkManagerSearch(chunkManager, "Message11", 1, 2, 2, 0);
+    testChunkManagerSearch(chunkManager, "Message1 OR Message11", 2, 2, 2, 0);
 
     checkMetadata(3, 2, 1, 2, 1);
 
@@ -662,48 +670,65 @@ public class IndexingChunkManagerTest {
     assertThat(firstChunkId).isNotEmpty();
 
     // Test message in a specific chunk
-    testChunkManagerSearch(chunkManager, List.of(firstChunkId), "Message1", 1, 1, 1);
-    testChunkManagerSearch(chunkManager, List.of(activeChunkId), "Message11", 1, 1, 1);
-    testChunkManagerSearch(chunkManager, List.of(activeChunkId), "Message1 OR Message11", 1, 1, 1);
-    testChunkManagerSearch(chunkManager, List.of(firstChunkId), "Message1 OR Message11", 1, 1, 1);
+    testChunkManagerSearch(chunkManager, List.of(firstChunkId), "Message1", 1, 1, 1, 0);
+    testChunkManagerSearch(chunkManager, List.of(activeChunkId), "Message11", 1, 1, 1, 0);
     testChunkManagerSearch(
-        chunkManager, List.of(firstChunkId, activeChunkId), "Message1 OR Message11", 2, 2, 2);
+        chunkManager, List.of(activeChunkId), "Message1 OR Message11", 1, 1, 1, 0);
+    testChunkManagerSearch(
+        chunkManager, List.of(firstChunkId), "Message1 OR Message11", 1, 1, 1, 0);
+    testChunkManagerSearch(
+        chunkManager, List.of(firstChunkId, activeChunkId), "Message1 OR Message11", 2, 2, 2, 0);
     // Search returns empty results
-    testChunkManagerSearch(chunkManager, List.of(activeChunkId), "Message1", 0, 1, 1);
-    testChunkManagerSearch(chunkManager, List.of(firstChunkId), "Message11", 0, 1, 1);
+    testChunkManagerSearch(chunkManager, List.of(activeChunkId), "Message1", 0, 1, 1, 0);
+    testChunkManagerSearch(chunkManager, List.of(firstChunkId), "Message11", 0, 1, 1, 0);
     testChunkManagerSearch(
-        chunkManager, List.of(firstChunkId, activeChunkId), "Message111", 0, 2, 2);
+        chunkManager, List.of(firstChunkId, activeChunkId), "Message111", 0, 2, 2, 0);
     // test invalid chunk id
-    testChunkManagerSearch(chunkManager, List.of("invalidChunkId"), "Message1", 0, 0, 0);
+    testChunkManagerSearch(chunkManager, List.of("invalidChunkId"), "Message1", 0, 0, 0, 0);
     testChunkManagerSearch(
-        chunkManager, List.of("invalidChunkId", firstChunkId), "Message1", 1, 1, 1);
+        chunkManager, List.of("invalidChunkId", firstChunkId), "Message1", 1, 1, 1, 0);
     testChunkManagerSearch(
-        chunkManager, List.of("invalidChunkId", activeChunkId), "Message1", 0, 1, 1);
+        chunkManager, List.of("invalidChunkId", activeChunkId), "Message1", 0, 1, 1, 0);
     testChunkManagerSearch(
-        chunkManager, List.of("invalidChunkId", firstChunkId, activeChunkId), "Message1", 1, 2, 2);
+        chunkManager,
+        List.of("invalidChunkId", firstChunkId, activeChunkId),
+        "Message1",
+        1,
+        2,
+        2,
+        0);
     testChunkManagerSearch(
-        chunkManager, List.of("invalidChunkId", firstChunkId, activeChunkId), "Message11", 1, 2, 2);
+        chunkManager,
+        List.of("invalidChunkId", firstChunkId, activeChunkId),
+        "Message11",
+        1,
+        2,
+        2,
+        0);
     testChunkManagerSearch(
         chunkManager,
         List.of("invalidChunkId", firstChunkId, activeChunkId),
         "Message1 OR Message11",
         2,
         2,
-        2);
+        2,
+        0);
     testChunkManagerSearch(
         chunkManager,
         List.of("invalidChunkId", firstChunkId, activeChunkId),
         "Message111 OR Message11",
         1,
         2,
-        2);
+        2,
+        0);
     testChunkManagerSearch(
         chunkManager,
         List.of("invalidChunkId", firstChunkId, activeChunkId),
         "Message111",
         0,
         2,
-        2);
+        2,
+        0);
   }
 
   // TODO: Add a unit test where the chunk manager uses a different field conflict policy like
@@ -744,8 +769,8 @@ public class IndexingChunkManagerTest {
     assertThat(chunkManager.getChunkList().size()).isEqualTo(1);
     assertThat(getCount(MESSAGES_RECEIVED_COUNTER, metricsRegistry)).isEqualTo(2);
     assertThat(getCount(MESSAGES_FAILED_COUNTER, metricsRegistry)).isEqualTo(0);
-    testChunkManagerSearch(chunkManager, "Message1", 1, 1, 1);
-    testChunkManagerSearch(chunkManager, "Message100", 1, 1, 1);
+    testChunkManagerSearch(chunkManager, "Message1", 1, 1, 1, 0);
+    testChunkManagerSearch(chunkManager, "Message100", 1, 1, 1, 0);
 
     // Check metadata.
     checkMetadata(1, 1, 0, 1, 1);
@@ -800,7 +825,7 @@ public class IndexingChunkManagerTest {
 
     // Wait for roll over to complete.
     await().until(() -> getCount(ROLLOVERS_COMPLETED, metricsRegistry) == 1);
-    testChunkManagerSearch(chunkManager, "Message2", 1, 1, 1);
+    testChunkManagerSearch(chunkManager, "Message2", 1, 1, 1, 0);
     checkMetadata(2, 1, 1, 1, 0);
 
     Trace.Span msg3 = msgs.get(2);
@@ -814,8 +839,8 @@ public class IndexingChunkManagerTest {
     assertThat(getValue(LIVE_MESSAGES_INDEXED, metricsRegistry)).isEqualTo(1);
     // Commit the new chunk so we can search it.
     chunkManager.getActiveChunk().commit();
-    testChunkManagerSearch(chunkManager, "Message3", 1, 2, 2);
-    testChunkManagerSearch(chunkManager, "Message1", 1, 2, 2);
+    testChunkManagerSearch(chunkManager, "Message3", 1, 2, 2, 0);
+    testChunkManagerSearch(chunkManager, "Message1", 1, 2, 2, 0);
 
     checkMetadata(3, 2, 1, 2, 1);
     // Inserting in an older chunk throws an exception. So, additions go to active chunks only.
@@ -850,9 +875,9 @@ public class IndexingChunkManagerTest {
     assertThat(getCount(ROLLOVERS_INITIATED, metricsRegistry)).isEqualTo(1);
     assertThat(getCount(ROLLOVERS_FAILED, metricsRegistry)).isEqualTo(0);
     assertThat(getCount(ROLLOVERS_COMPLETED, metricsRegistry)).isEqualTo(1);
-    testChunkManagerSearch(chunkManager, "Message1", 1, 2, 2);
-    testChunkManagerSearch(chunkManager, "Message11", 1, 2, 2);
-    testChunkManagerSearch(chunkManager, "Message21", 0, 2, 2);
+    testChunkManagerSearch(chunkManager, "Message1", 1, 2, 2, 0);
+    testChunkManagerSearch(chunkManager, "Message11", 1, 2, 2, 0);
+    testChunkManagerSearch(chunkManager, "Message21", 0, 2, 2, 0);
     checkMetadata(3, 2, 1, 2, 1);
   }
 
@@ -883,9 +908,9 @@ public class IndexingChunkManagerTest {
     assertThat(getCount(ROLLOVERS_INITIATED, metricsRegistry)).isEqualTo(1);
     assertThat(getCount(ROLLOVERS_FAILED, metricsRegistry)).isEqualTo(0);
     checkMetadata(3, 2, 1, 2, 1);
-    testChunkManagerSearch(chunkManager, "Message1", 1, 2, 2);
-    testChunkManagerSearch(chunkManager, "Message11", 1, 2, 2);
-    testChunkManagerSearch(chunkManager, "Message21", 0, 2, 2);
+    testChunkManagerSearch(chunkManager, "Message1", 1, 2, 2, 0);
+    testChunkManagerSearch(chunkManager, "Message11", 1, 2, 2, 0);
+    testChunkManagerSearch(chunkManager, "Message21", 0, 2, 2, 0);
 
     // Add remaining messages to create a second chunk.
     for (Trace.Span m : messages.subList(11, 25)) {
@@ -899,9 +924,9 @@ public class IndexingChunkManagerTest {
     assertThat(getCount(MESSAGES_FAILED_COUNTER, metricsRegistry)).isEqualTo(0);
     assertThat(getCount(ROLLOVERS_INITIATED, metricsRegistry)).isEqualTo(2);
     assertThat(getCount(ROLLOVERS_FAILED, metricsRegistry)).isEqualTo(0);
-    testChunkManagerSearch(chunkManager, "Message1", 1, 3, 3);
-    testChunkManagerSearch(chunkManager, "Message11", 1, 3, 3);
-    testChunkManagerSearch(chunkManager, "Message21", 1, 3, 3);
+    testChunkManagerSearch(chunkManager, "Message1", 1, 3, 3, 0);
+    testChunkManagerSearch(chunkManager, "Message11", 1, 3, 3, 0);
+    testChunkManagerSearch(chunkManager, "Message21", 1, 3, 3, 0);
     checkMetadata(5, 3, 2, 3, 1);
 
     assertThat(chunkManager.getActiveChunk().info().getChunkSnapshotTimeEpochMs()).isZero();
@@ -917,10 +942,10 @@ public class IndexingChunkManagerTest {
 
     // Search all messages.
     for (int i = 1; i <= 25; i++) {
-      testChunkManagerSearch(chunkManager, "Message" + i, 1, 3, 3);
+      testChunkManagerSearch(chunkManager, "Message" + i, 1, 3, 3, 0);
     }
     // No search results for this query.
-    testChunkManagerSearch(chunkManager, "Message261", 0, 3, 3);
+    testChunkManagerSearch(chunkManager, "Message261", 0, 3, 3, 0);
 
     checkMetadata(6, 3, 3, 3, 0);
     testOneFailedChunk(secondChunk);
@@ -935,16 +960,16 @@ public class IndexingChunkManagerTest {
                 .findFirst()
                 .get();
 
-    testChunkManagerSearch(chunkManager, "Message18", 1, 3, 3);
+    testChunkManagerSearch(chunkManager, "Message18", 1, 3, 3, 0);
     // chunk 2 which has docs 12-21 is corrupted
     // an alternate approach I tried was the statement below
     // chunk.getLogSearcher().close();
     // this worked but was kinda flaky since it messes with shutdown and refresh intervals
     chunk.setLogSearcher(new AlreadyClosedLogIndexSearcherImpl());
 
-    testChunkManagerSearch(chunkManager, "Message18", 0, 3, 2);
-    testChunkManagerSearch(chunkManager, "Message1", 1, 3, 2);
-    testChunkManagerSearch(chunkManager, "Message25", 1, 3, 2);
+    testChunkManagerSearch(chunkManager, "Message18", 0, 2, 2, 1);
+    testChunkManagerSearch(chunkManager, "Message1", 1, 2, 2, 1);
+    testChunkManagerSearch(chunkManager, "Message25", 1, 2, 2, 1);
   }
 
   @Test
@@ -972,9 +997,9 @@ public class IndexingChunkManagerTest {
     assertThat(getCount(ROLLOVERS_FAILED, metricsRegistry)).isEqualTo(0);
     checkMetadata(3, 2, 1, 2, 1);
     // TODO: Test commit and refresh count
-    testChunkManagerSearch(chunkManager, "Message1", 1, 2, 2);
-    testChunkManagerSearch(chunkManager, "Message11", 1, 2, 2);
-    testChunkManagerSearch(chunkManager, "Message21", 0, 2, 2);
+    testChunkManagerSearch(chunkManager, "Message1", 1, 2, 2, 0);
+    testChunkManagerSearch(chunkManager, "Message11", 1, 2, 2, 0);
+    testChunkManagerSearch(chunkManager, "Message21", 0, 2, 2, 0);
 
     for (Trace.Span m : messages.subList(11, 25)) {
       chunkManager.addMessage(m, m.toString().length(), TEST_KAFKA_PARTITION_ID, offset);
@@ -988,9 +1013,9 @@ public class IndexingChunkManagerTest {
     assertThat(getCount(ROLLOVERS_INITIATED, metricsRegistry)).isEqualTo(2);
     assertThat(getCount(ROLLOVERS_FAILED, metricsRegistry)).isEqualTo(0);
     checkMetadata(5, 3, 2, 3, 1);
-    testChunkManagerSearch(chunkManager, "Message1", 1, 3, 3);
-    testChunkManagerSearch(chunkManager, "Message11", 1, 3, 3);
-    testChunkManagerSearch(chunkManager, "Message21", 1, 3, 3);
+    testChunkManagerSearch(chunkManager, "Message1", 1, 3, 3, 0);
+    testChunkManagerSearch(chunkManager, "Message11", 1, 3, 3, 0);
+    testChunkManagerSearch(chunkManager, "Message21", 1, 3, 3, 0);
 
     // Close the log searcher on chunks.
     chunkManager
@@ -1000,9 +1025,9 @@ public class IndexingChunkManagerTest {
                 ((ReadWriteChunk<LogMessage>) chunk)
                     .setLogSearcher(new AlreadyClosedLogIndexSearcherImpl()));
 
-    testChunkManagerSearch(chunkManager, "Message1", 0, 3, 0);
-    testChunkManagerSearch(chunkManager, "Message11", 0, 3, 0);
-    testChunkManagerSearch(chunkManager, "Message21", 0, 3, 0);
+    testChunkManagerSearch(chunkManager, "Message1", 0, 0, 0, 3);
+    testChunkManagerSearch(chunkManager, "Message11", 0, 0, 0, 3);
+    testChunkManagerSearch(chunkManager, "Message21", 0, 0, 0, 3);
 
     // Query interface throws search exceptions.
     chunkManager
@@ -1252,9 +1277,9 @@ public class IndexingChunkManagerTest {
 
     // The stores are closed so temporarily re-create them so we can query the data in ZK.
     SearchMetadataStore searchMetadataStore =
-        new SearchMetadataStore(curatorFramework, zkConfig, metricsRegistry, false);
+        new SearchMetadataStore(curatorFramework, metadataStoreConfig, metricsRegistry, false);
     SnapshotMetadataStore snapshotMetadataStore =
-        new SnapshotMetadataStore(curatorFramework, zkConfig, metricsRegistry);
+        new SnapshotMetadataStore(curatorFramework, metadataStoreConfig, metricsRegistry);
     assertThat(AstraMetadataTestUtils.listSyncUncached(searchMetadataStore)).isEmpty();
     List<SnapshotMetadata> snapshots =
         AstraMetadataTestUtils.listSyncUncached(snapshotMetadataStore);
@@ -1306,9 +1331,9 @@ public class IndexingChunkManagerTest {
     // The stores are closed so temporarily re-create them so we can query the data in ZK.
     // All ephemeral data is ZK is deleted and no data or metadata is persisted.
     SearchMetadataStore searchMetadataStore =
-        new SearchMetadataStore(curatorFramework, zkConfig, metricsRegistry, false);
+        new SearchMetadataStore(curatorFramework, metadataStoreConfig, metricsRegistry, false);
     SnapshotMetadataStore snapshotMetadataStore =
-        new SnapshotMetadataStore(curatorFramework, zkConfig, metricsRegistry);
+        new SnapshotMetadataStore(curatorFramework, metadataStoreConfig, metricsRegistry);
     assertThat(AstraMetadataTestUtils.listSyncUncached(searchMetadataStore)).isEmpty();
     assertThat(AstraMetadataTestUtils.listSyncUncached(snapshotMetadataStore)).isEmpty();
     searchMetadataStore.close();
