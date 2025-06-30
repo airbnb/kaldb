@@ -196,7 +196,8 @@ public class ElasticsearchApiServiceTest {
             "parent_id",
             "service_name",
             "stringproperty",
-            "trace_id");
+            "trace_id",
+            "binaryproperty");
 
     // Verify all required keys are retained
     assertThat(map.keySet()).containsAll(requiredKeys);
@@ -303,7 +304,8 @@ public class ElasticsearchApiServiceTest {
             "service_name",
             "stringproperty",
             "trace_id",
-            "username");
+            "username",
+            "binaryproperty");
 
     // Verify all required keys are retained
     assertThat(map.keySet()).containsAll(requiredKeys);
