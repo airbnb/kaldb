@@ -657,29 +657,44 @@ public class ReadOnlyChunkImplTest {
 
   @Test
   public void shouldFailIfDownloadedFilesDoNotMatchS3List() throws Exception {
-    AstraConfigs.AstraConfig config = makeCacheConfig();
+    AstraConfigs.AstraConfig AstraConfig = makeCacheConfig();
     AstraConfigs.ZookeeperConfig zkConfig =
         AstraConfigs.ZookeeperConfig.newBuilder()
             .setZkConnectString(testingServer.getConnectString())
-            .setZkPathPrefix("shouldFailIfDownloadedFilesDoNotMatchS3List")
+            .setZkPathPrefix("shouldHandleChunkLivecycle")
             .setZkSessionTimeoutMs(1000)
             .setZkConnectionTimeoutMs(1000)
             .setSleepBetweenRetriesMs(1000)
+            .setZkCacheInitTimeoutMs(1000)
             .build();
 
     AsyncCuratorFramework curatorFramework = CuratorBuilder.build(meterRegistry, zkConfig);
-    ReplicaMetadataStore replicaMetadataStore = new ReplicaMetadataStore(curatorFramework);
-    SnapshotMetadataStore snapshotMetadataStore = new SnapshotMetadataStore(curatorFramework);
-    SearchMetadataStore searchMetadataStore = new SearchMetadataStore(curatorFramework, true);
-    CacheSlotMetadataStore cacheSlotMetadataStore = new CacheSlotMetadataStore(curatorFramework);
+    ReplicaMetadataStore replicaMetadataStore =
+        new ReplicaMetadataStore(curatorFramework, zkConfig, meterRegistry);
+    SnapshotMetadataStore snapshotMetadataStore =
+        new SnapshotMetadataStore(curatorFramework, zkConfig, meterRegistry);
+    SearchMetadataStore searchMetadataStore =
+        new SearchMetadataStore(curatorFramework, zkConfig, meterRegistry, true);
+    CacheSlotMetadataStore cacheSlotMetadataStore =
+        new CacheSlotMetadataStore(curatorFramework, zkConfig, meterRegistry);
+    CacheNodeAssignmentStore cacheNodeAssignmentStore =
+        new CacheNodeAssignmentStore(curatorFramework, zkConfig, meterRegistry);
+    CacheNodeMetadataStore cacheNodeMetadataStore =
+        new CacheNodeMetadataStore(curatorFramework, zkConfig, meterRegistry);
 
-    String snapshotId = "broken-download-snapshot";
-    String replicaId = "replica-broken";
+    String replicaId = "foo";
+    String snapshotId = "boo";
+    String assignmentId = "dog";
+    String cacheNodeId = "baz";
+    String replicaSet = "cat";
 
-    // Write a complete snapshot to S3
-    initializeZkSnapshot(curatorFramework, snapshotId, 0);
-    initializeZkReplica(curatorFramework, replicaId, snapshotId);
+    // setup Zk, BlobFs so data can be loaded
+    initializeZkReplica(curatorFramework, zkConfig, replicaId, snapshotId);
+    initializeZkSnapshot(curatorFramework, zkConfig, snapshotId, 0);
     initializeBlobStorageWithIndex(snapshotId, false);
+    initializeCacheNodeAssignment(
+        cacheNodeAssignmentStore, assignmentId, snapshotId, cacheNodeId, replicaSet, replicaId);
+    initializeCacheNode(cacheNodeMetadataStore, cacheNodeId, "some-host.name", 1, replicaSet, true);
 
     // Spy the blob store and override download to simulate missing file
     BlobStore spyBlobStore = org.mockito.Mockito.spy(blobStore);
@@ -697,31 +712,41 @@ public class ReadOnlyChunkImplTest {
         .when(spyBlobStore)
         .download(any(), any());
 
-    ReadOnlyChunkImpl<LogMessage> chunk =
+    SearchContext searchContext =
+        SearchContext.fromConfig(AstraConfig.getCacheConfig().getServerConfig());
+    ReadOnlyChunkImpl<LogMessage> readOnlyChunk =
         new ReadOnlyChunkImpl<>(
             curatorFramework,
             meterRegistry,
             spyBlobStore,
-            SearchContext.fromConfig(config.getCacheConfig().getServerConfig()),
-            config.getS3Config().getS3Bucket(),
-            config.getCacheConfig().getDataDirectory(),
-            config.getCacheConfig().getReplicaSet(),
+            searchContext,
+            AstraConfig.getS3Config().getS3Bucket(),
+            AstraConfig.getCacheConfig().getDataDirectory(),
+            AstraConfig.getCacheConfig().getReplicaSet(),
             cacheSlotMetadataStore,
             replicaMetadataStore,
             snapshotMetadataStore,
-            searchMetadataStore);
+            searchMetadataStore,
+            cacheNodeAssignmentStore,
+            cacheNodeAssignmentStore.getSync(cacheNodeId, assignmentId),
+            snapshotMetadataStore.findSync(snapshotId),
+            cacheNodeMetadataStore);
 
     // Wait for chunk to register as FREE
     await()
         .until(
-            () -> chunk.getChunkMetadataState() == Metadata.CacheSlotMetadata.CacheSlotState.FREE);
+            () ->
+                readOnlyChunk.getChunkMetadataState()
+                    == Metadata.CacheSlotMetadata.CacheSlotState.FREE);
 
-    assignReplicaToChunk(cacheSlotMetadataStore, replicaId, chunk);
+    assignReplicaToChunk(cacheSlotMetadataStore, replicaId, readOnlyChunk);
 
     // Assert that the chunk was released due to mismatched file count
     await()
         .until(
-            () -> chunk.getChunkMetadataState() == Metadata.CacheSlotMetadata.CacheSlotState.FREE);
+            () ->
+                readOnlyChunk.getChunkMetadataState()
+                    == Metadata.CacheSlotMetadata.CacheSlotState.FREE);
 
     assertThat(searchMetadataStore.listSync()).isEmpty();
 
