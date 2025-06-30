@@ -62,6 +62,7 @@ public class ObjectMapperTest {
   private BlobStore blobStore;
   private TestingServer localZkServer;
   private AsyncCuratorFramework curatorFramework;
+  private AstraConfigs.ZookeeperConfig zkConfig;
 
   @BeforeEach
   public void setUp() throws Exception {
@@ -71,7 +72,7 @@ public class ObjectMapperTest {
     localZkServer = new TestingServer();
     localZkServer.start();
 
-    AstraConfigs.ZookeeperConfig zkConfig =
+    zkConfig =
         AstraConfigs.ZookeeperConfig.newBuilder()
             .setZkConnectString(localZkServer.getConnectString())
             .setZkPathPrefix(ZK_PATH_PREFIX)
@@ -110,7 +111,8 @@ public class ObjectMapperTest {
             listeningExecutorService,
             curatorFramework,
             searchContext,
-            AstraConfigUtil.makeIndexerConfig(TEST_PORT, 1000, 100));
+            AstraConfigUtil.makeIndexerConfig(TEST_PORT, 1000, 100),
+            zkConfig);
     chunkManager.startAsync();
     chunkManager.awaitRunning(DEFAULT_START_STOP_DURATION);
   }
