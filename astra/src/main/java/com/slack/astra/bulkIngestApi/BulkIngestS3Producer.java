@@ -15,8 +15,13 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
-
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.core.async.AsyncRequestBody;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.*;
+import java.util.zip.GZIPOutputStream;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadLocalRandom;
@@ -28,78 +33,28 @@ import static com.slack.astra.metadata.dataset.DatasetMetadata.MATCH_ALL_SERVICE
 import static com.slack.astra.metadata.dataset.DatasetMetadata.MATCH_STAR_SERVICE;
 import static com.slack.astra.server.ManagerApiGrpc.MAX_TIME;
 
-public abstract class BulkIngestS3Producer extends AbstractExecutionThreadService {
+public class BulkIngestS3Producer extends BulkIngestProducer {
     private static final Logger LOG = LoggerFactory.getLogger(BulkIngestS3Producer.class);
 
-    protected final DatasetMetadataStore datasetMetadataStore;
-    private final AstraMetadataStoreChangeListener<DatasetMetadata> datasetListener =
-            (_) -> cacheSortedDataset();
-    protected List<DatasetMetadata> throughputSortedDatasets;
-
-    private final BlockingQueue<BulkIngestRequest> pendingRequests;
-
-    private final Integer producerSleepMs;
-    public static final String FAILED_SET_RESPONSE_COUNTER =
-            "bulk_ingest_producer_failed_set_response";
-    private final Counter failedSetResponseCounter;
-    public static final String STALL_COUNTER = "bulk_ingest_producer_stall_counter";
-    private final Counter stallCounter;
-
     private final KafkaProducer<String, byte[]> kafkaProducer;
-    private final S3AsyncClient s3Client;
-    private String walBucket;
-    private final String kafkaTopic;
 
-    public static final String KAFKA_RESTART_COUNTER = "bulk_ingest_producer_kafka_restart_timer";
-
-    private final Timer kafkaRestartTimer;
-
-    public static final String BATCH_SIZE_GAUGE = "bulk_ingest_producer_batch_size";
-    private final AtomicInteger batchSizeGauge;
-
-    protected final MeterRegistry meterRegistry;
-
-    protected static final Set<String> OVERRIDABLE_CONFIGS =
-            Set.of(
-                    ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG);
+    protected final String walBucket;
+    protected final String kafkaTopic;
 
     public BulkIngestS3Producer(
             final DatasetMetadataStore datasetMetadataStore,
             final AstraConfigs.PreprocessorConfig preprocessorConfig,
             final MeterRegistry meterRegistry,
             S3AsyncClient s3Client,
-            KafkaProducer<String, byte[]> kafkaProducer,
-            String kafkaTopic) {
+            KafkaProducer<String, byte[]> kafkaProducer){
+        super(datasetMetadataStore, preprocessorConfig, meterRegistry, s3Client);
 
-        this.meterRegistry = meterRegistry;
-        this.datasetMetadataStore = datasetMetadataStore;
-        this.pendingRequests = new LinkedBlockingQueue<>();
-
-        this.s3Client = s3Client;
+        // Initialize S3Producer specific fields
         this.kafkaProducer = kafkaProducer;
-        /* this.walBucket =  this.walBucket = preprocessorConfig.hasWalBucket()
-                ? preprocessorConfig.getWalBucket()
-               : preprocessorConfig.getS3Config().getS3Bucket(); */
-        this.kafkaTopic = preprocessorConfig.getKafkaConfig().getKafkaTopic();
-
-        this.producerSleepMs =
-                Integer.parseInt(System.getProperty("astra.bulkIngest.producerSleepMs", "50"));
-
-        this.failedSetResponseCounter = meterRegistry.counter(FAILED_SET_RESPONSE_COUNTER);
-        this.stallCounter = meterRegistry.counter(STALL_COUNTER);
-        this.kafkaRestartTimer = meterRegistry.timer(KAFKA_RESTART_COUNTER);
-        this.batchSizeGauge = meterRegistry.gauge(BATCH_SIZE_GAUGE, new AtomicInteger(0));
+        this.walBucket = preprocessorConfig.getS3Config().getS3Bucket();
+        this.kafkaTopic = preprocessorConfig.getKafkaConfig().getKafkaTopic(); ;
 
     }
-
-    public BulkIngestRequest submitRequest(Map<String, List<Trace.Span>> inputDocs) {
-        BulkIngestRequest request = new BulkIngestRequest(inputDocs);
-        pendingRequests.add(request);
-        return request;
-    }
-
-    @Override
-    protected void startUp() throws Exception { }
 
     @Override
     protected void run() throws Exception {
@@ -133,13 +88,8 @@ public abstract class BulkIngestS3Producer extends AbstractExecutionThreadServic
         }
 
     }
-    @Override
-    protected void shutDown() throws Exception {
-    datasetMetadataStore.removeListener(datasetListener);
-    shutdownProducer(); // Call abstract method
-   }
 
-    private BulkIngestResponse processRequest(BulkIngestRequest request) throws Exception {
+    protected BulkIngestResponse processRequest(BulkIngestRequest request) throws Exception {
         // Implement the logic to process the
         Map<String, List<Trace.Span>> indexDocs = request.getInputDocs();
         int totalDocs = indexDocs.values().stream().mapToInt(List::size).sum();
@@ -165,57 +115,107 @@ public abstract class BulkIngestS3Producer extends AbstractExecutionThreadServic
             return new BulkIngestResponse(0, 0, "No provisioned dataset for index");
         }
 
-        //serializeandcompress
-        //createobjectkey
-        //putreq then upload object to S3
+        //Serialize and compress
+        byte[] compressedData = serializeAndCompress(indexDocs);
+
+        //Create object key
+        String objectKey = String.format("%s/%d-%s.gz", index, Instant.now().toEpochMilli(), UUID.randomUUID());
+
+
+        //put req then upload object to S3
+
+        PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                .bucket(walBucket)
+                .key(objectKey)
+                .build();
+
+        s3Client.putObject(
+                putObjectRequest,
+                AsyncRequestBody.fromBytes(compressedData))
+            .get();
+        LOG.debug("Uploaded {} spans ({} bytes compressed) to S3 at key {}",
+                spans.size(), compressedData.length, objectKey);
 
         //prepare pointer message
-        //send to kafka topic
 
-
-
-
+        //send notification to kafka topic
 
         return new BulkIngestResponse(0, 0, "Success");
     }
 
-    private void cacheSortedDataset() {
+    protected void shutDown() throws Exception {
+        super.shutDown();
     }
 
 
+    //Serializes and compresses a map of spans for efficient storage.
 
-    private int getPartition(String index) {
-        for (DatasetMetadata datasetMetadata : throughputSortedDatasets) {
-            String serviceNamePattern = datasetMetadata.getServiceNamePattern();
+    private byte[] serializeAndCompress(Map<String, List<Trace.Span>> indexDocs) throws IOException {
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
+             GZIPOutputStream gzipOut = new GZIPOutputStream(baos)) {
 
-            if (serviceNamePattern.equals(MATCH_ALL_SERVICE)
-                    || serviceNamePattern.equals(MATCH_STAR_SERVICE)
-                    || index.equals(serviceNamePattern)) {
-                List<Integer> partitions = getActivePartitionList(datasetMetadata);
-                return partitions.get(ThreadLocalRandom.current().nextInt(partitions.size()));
+            // Serialize the batch
+            for (Map.Entry<String, List<Trace.Span>> entry : indexDocs.entrySet()) {
+                String index = entry.getKey();
+                writeString(gzipOut, index);
+
+                // Write number of spans
+                writeInt(gzipOut, entry.getValue().size());
+
+                // Write each span
+                for (Trace.Span span : entry.getValue()) {
+                    byte[] spanBytes = span.toByteArray();
+                    writeInt(gzipOut, spanBytes.length);
+                    gzipOut.write(spanBytes);
+                }
+            }
+            gzipOut.finish();
+            return baos.toByteArray();
+        }
+    }
+
+    //Writes a string to the output stream with its length prefix.
+
+    private void writeString(OutputStream out, String str) throws IOException {
+        byte[] bytes = str.getBytes(StandardCharsets.UTF_8);
+        writeInt(out, bytes.length);
+        out.write(bytes);
+    }
+
+    //Writes an integer to the output stream as 4 bytes.
+
+    private void writeInt(OutputStream out, int value) throws IOException {
+        out.write((value >>> 24) & 0xFF);
+        out.write((value >>> 16) & 0xFF);
+        out.write((value >>> 8) & 0xFF);
+        out.write(value & 0xFF);
+    }
+
+
+    //For decompression - to be used in indexers
+
+    public static Map<String, List<Trace.Span>> decompressAndDeserialize(byte[] compressedData) throws IOException {
+        Map<String, List<Trace.Span>> result = new HashMap<>();
+
+        try (ByteArrayInputStream bais = new ByteArrayInputStream(compressedData);
+             GZIPInputStream gzipIn = new GZIPInputStream(bais)) {
+
+            while (gzipIn.available() > 0) {
+                String index = readString(gzipIn);
+                int spanCount = readInt(gzipIn);
+
+                List<Trace.Span> spans = new ArrayList<>();
+                for (int i = 0; i < spanCount; i++) {
+                    int spanLength = readInt(gzipIn);
+                    byte[] spanBytes = new byte[spanLength];
+                    gzipIn.read(spanBytes);
+                    spans.add(Trace.Span.parseFrom(spanBytes));
+                }
+
+                result.put(index, spans);
             }
         }
-        return -1;
+
+        return result;
     }
-
-    private static List<Integer> getActivePartitionList(DatasetMetadata datasetMetadata) {
-        Optional<DatasetPartitionMetadata> datasetPartitionMetadata =
-                datasetMetadata.getPartitionConfigs().stream()
-                        .filter(partitionMetadata -> partitionMetadata.getEndTimeEpochMs() == MAX_TIME)
-                        .findFirst();
-
-        if (datasetPartitionMetadata.isEmpty()) {
-            return Collections.emptyList();
-        }
-        return datasetPartitionMetadata.get().getPartitions().stream()
-                .map(Integer::parseInt)
-                .collect(Collectors.toUnmodifiableList());
-    }
-
-//  protected Map<BulkIngestRequest, BulkIngestResponse> produceDocuments(List<BulkIngestRequest> requests) {
-//    // Modify to call abstract method produceDocumentsBatch()
-//  }
-//  private static List<Integer> getActivePartitionList(DatasetMetadata datasetMetadata) { }
-//
-//  }
 }
