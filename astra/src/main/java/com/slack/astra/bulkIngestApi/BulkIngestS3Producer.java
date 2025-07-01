@@ -101,45 +101,48 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
 
         for (Map.Entry<String, List<Trace.Span>> entry : indexDocs.entrySet()) {
             String index = entry.getKey();
-
+            List<Trace.Span> spans = entry.getValue();
             int partition = getPartition(index);
 
             if (partition < 0) {
                 LOG.warn("index=" + index + " does not have a provisioned dataset associated with it");
 
             }
+
+
+            if (indexDocs.isEmpty()) {
+                // All docs were for unknown datasets
+                return new BulkIngestResponse(0, 0, "No provisioned dataset for index");
+            }
+
+            //Serialize and compress
+            byte[] compressedData = serializeAndCompress(indexDocs);
+
+            //Create object key
+            String objectKey = String.format("%s/%d-%s.gz", index, Instant.now().toEpochMilli(), UUID.randomUUID());
+
+
+            //put req then upload object to S3
+
+            PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                    .bucket(walBucket)
+                    .key(objectKey)
+                    .build();
+
+            s3Client.putObject(
+                            putObjectRequest,
+                            AsyncRequestBody.fromBytes(compressedData))
+                    .get();
+            LOG.debug("Uploaded {} spans ({} bytes compressed) to S3 at key {}",
+                    spans.size(), compressedData.length, objectKey);
+
+            //prepare pointer message
+
+            String pointerJson = String.format(
+                    "{\"s3Bucket\": \"%s\", \"s3Key\": %s, \"docCount\": \"%d\"}", walBucket, objectKey, spans.size());
+
+            //todo - send notification to kafka topic
         }
-
-        if (indexDocs.isEmpty()) {
-            // All docs were for unknown datasets
-            return new BulkIngestResponse(0, 0, "No provisioned dataset for index");
-        }
-
-        //Serialize and compress
-        byte[] compressedData = serializeAndCompress(indexDocs);
-
-        //Create object key
-        String objectKey = String.format("%s/%d-%s.gz", index, Instant.now().toEpochMilli(), UUID.randomUUID());
-
-
-        //put req then upload object to S3
-
-        PutObjectRequest putObjectRequest = PutObjectRequest.builder()
-                .bucket(walBucket)
-                .key(objectKey)
-                .build();
-
-        s3Client.putObject(
-                putObjectRequest,
-                AsyncRequestBody.fromBytes(compressedData))
-            .get();
-        LOG.debug("Uploaded {} spans ({} bytes compressed) to S3 at key {}",
-                spans.size(), compressedData.length, objectKey);
-
-        // todo - prepare pointer message
-
-        //todo - send notification to kafka topic
-
         return new BulkIngestResponse(0, 0, "Success");
     }
 
