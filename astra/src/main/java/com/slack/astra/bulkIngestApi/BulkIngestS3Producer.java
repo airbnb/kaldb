@@ -55,7 +55,7 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
         this.kafkaTopic = preprocessorConfig.getKafkaConfig().getKafkaTopic(); ;
 
     }
-
+    //todo - remove this from here and put it in the producer class
     @Override
     protected void run() throws Exception {
         while (isRunning()) {
@@ -136,9 +136,9 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
         LOG.debug("Uploaded {} spans ({} bytes compressed) to S3 at key {}",
                 spans.size(), compressedData.length, objectKey);
 
-        //prepare pointer message
+        // todo - prepare pointer message
 
-        //send notification to kafka topic
+        //todo - send notification to kafka topic
 
         return new BulkIngestResponse(0, 0, "Success");
     }
