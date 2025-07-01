@@ -190,32 +190,4 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
         out.write((value >>> 8) & 0xFF);
         out.write(value & 0xFF);
     }
-
-
-    //For decompression - to be used in indexers
-
-    public static Map<String, List<Trace.Span>> decompressAndDeserialize(byte[] compressedData) throws IOException {
-        Map<String, List<Trace.Span>> result = new HashMap<>();
-
-        try (ByteArrayInputStream bais = new ByteArrayInputStream(compressedData);
-             GZIPInputStream gzipIn = new GZIPInputStream(bais)) {
-
-            while (gzipIn.available() > 0) {
-                String index = readString(gzipIn);
-                int spanCount = readInt(gzipIn);
-
-                List<Trace.Span> spans = new ArrayList<>();
-                for (int i = 0; i < spanCount; i++) {
-                    int spanLength = readInt(gzipIn);
-                    byte[] spanBytes = new byte[spanLength];
-                    gzipIn.read(spanBytes);
-                    spans.add(Trace.Span.parseFrom(spanBytes));
-                }
-
-                result.put(index, spans);
-            }
-        }
-
-        return result;
-    }
 }
