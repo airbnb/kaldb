@@ -15,6 +15,7 @@ import software.amazon.awssdk.core.async.AsyncRequestBody;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.UUID;
 import java.util.*;
 import java.util.zip.GZIPOutputStream;
 
@@ -86,6 +87,26 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
             return new BulkIngestResponse(0, 0, "");
         }
 
+        //Serialize and compress
+        byte[] compressedData = serializeAndCompress(indexDocs);
+
+        //Create object key
+        String objectKey = String.format("wal/batch-%d-%s.gz", Instant.now().toEpochMilli(), UUID.randomUUID());
+
+        //put req then upload object to S3
+
+        PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                .bucket(walBucket)
+                .key(objectKey)
+                .build();
+
+        s3Client.putObject(
+                        putObjectRequest,
+                        AsyncRequestBody.fromBytes(compressedData))
+                        .get();
+        LOG.debug("Uploaded {} spans ({} bytes compressed) to S3 at key {}",
+                totalDocs, compressedData.length, objectKey);
+
         for (Map.Entry<String, List<Trace.Span>> indexDoc : indexDocs.entrySet()) {
             String index = indexDoc.getKey();
             List<Trace.Span> spans = indexDoc.getValue();
@@ -93,61 +114,29 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
 
             if (partition < 0) {
                 LOG.warn("index=" + index + " does not have a provisioned dataset associated with it");
+                continue; // Skip this index if no partition is found
             }
-
-            if (indexDocs.isEmpty()) {
-                // All docs were for unknown datasets
-                return new BulkIngestResponse(0, 0, "No provisioned dataset for index");
-            }
-
-            //Serialize and compress
-            byte[] compressedData = serializeAndCompress(indexDocs);
-
-            //Create object key
-            String objectKey = String.format("%s/%d-%s.gz", index, Instant.now().toEpochMilli(), UUID.randomUUID());
-
-            //put req then upload object to S3
-
-            PutObjectRequest putObjectRequest = PutObjectRequest.builder()
-                    .bucket(walBucket)
-                    .key(objectKey)
-                    .build();
-
-            s3Client.putObject(
-                            putObjectRequest,
-                            AsyncRequestBody.fromBytes(compressedData))
-                    .get();
-            LOG.debug("Uploaded {} spans ({} bytes compressed) to S3 at key {}",
-                    spans.size(), compressedData.length, objectKey);
-
             //prepare pointer message
-
             String pointerJson = String.format(
-                    "{\"s3Bucket\": \"%s\", \"s3Key\": \"%s\", \"docCount\": \"%d\"}", walBucket, objectKey, spans.size());
+                    "{\"s3Bucket\": \"%s\", \"s3Key\": \"%s\", \"docCount\": %d}", walBucket, objectKey, spans.size());
 
-            //send notification to kafka topic
-            for (String idx : indexDocs.keySet()) {
-                int idxpartition = getPartition(idx);
-                byte[] pointerBytes = pointerJson.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            byte[] pointerBytes = pointerJson.getBytes(java.nio.charset.StandardCharsets.UTF_8);
 
-                checkArgument(idxpartition >= 0, "No provisioned dataset for index: " + idx);
+            ProducerRecord<String, byte[]> producerRecord = new ProducerRecord<>
+                    (kafkaTopic, partition, index, pointerBytes);
 
-                ProducerRecord<String, byte[]> producerRecord = new ProducerRecord<>
-                        (kafkaTopic, idxpartition, index, pointerBytes);
+            try
+            {
+                RecordMetadata recordMetadata = kafkaProducer.send(producerRecord).get();
+                LOG.debug("Sent WAL pointer for index {} to Kafka topic {} partition {} offset {}",
+                        index, kafkaTopic, recordMetadata.partition(), recordMetadata.offset());
 
-                try
-                {
-                    RecordMetadata recordMetadata = kafkaProducer.send(producerRecord).get();
-                    LOG.debug("Sent WAL pointer for index {} to Kafka topic {} partition {} offset {}",
-                            idx, kafkaConfig.getKafkaTopic(), recordMetadata.partition(), recordMetadata.offset());
-
-                } catch (Exception e) {
-                    LOG.error("Failed to send WAL pointer for index {} to Kafka", idx, e);
-                    throw new RuntimeException("Failed to send WAL pointer to Kafka", e);
-                }
+            } catch (Exception e) {
+                LOG.error("Failed to send WAL pointer for index {} to Kafka", index, e);
+                throw new RuntimeException("Failed to send WAL pointer to Kafka", e);
             }
         }
-        return new BulkIngestResponse(0, 0, "Success");
+        return new BulkIngestResponse(totalDocs, 0, "Success");
     }
 
 
