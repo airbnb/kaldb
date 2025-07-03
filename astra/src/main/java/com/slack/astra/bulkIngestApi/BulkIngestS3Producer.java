@@ -1,17 +1,12 @@
 package com.slack.astra.bulkIngestApi;
 
-import com.google.common.util.concurrent.AbstractExecutionThreadService;
-import com.slack.astra.metadata.core.AstraMetadataStoreChangeListener;
-import com.slack.astra.metadata.dataset.DatasetMetadata;
 import com.slack.astra.metadata.dataset.DatasetMetadataStore;
-import com.slack.astra.metadata.dataset.DatasetPartitionMetadata;
 import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.service.murron.trace.Trace;
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Timer;
 import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
@@ -22,16 +17,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.*;
 import java.util.zip.GZIPOutputStream;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 import static com.google.common.base.Preconditions.checkArgument;
-import static com.slack.astra.metadata.dataset.DatasetMetadata.MATCH_ALL_SERVICE;
-import static com.slack.astra.metadata.dataset.DatasetMetadata.MATCH_STAR_SERVICE;
-import static com.slack.astra.server.ManagerApiGrpc.MAX_TIME;
 
 public class BulkIngestS3Producer extends BulkIngestProducer {
     private static final Logger LOG = LoggerFactory.getLogger(BulkIngestS3Producer.class);
@@ -46,15 +33,15 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
             final AstraConfigs.PreprocessorConfig preprocessorConfig,
             final MeterRegistry meterRegistry,
             S3AsyncClient s3Client,
-            KafkaProducer<String, byte[]> kafkaProducer){
+            KafkaProducer<String, byte[]> kafkaProducer) {
         super(datasetMetadataStore, preprocessorConfig, meterRegistry, s3Client);
 
         // Initialize S3Producer specific fields
         this.kafkaProducer = kafkaProducer;
         this.walBucket = preprocessorConfig.getS3Config().getS3Bucket();
-        this.kafkaTopic = preprocessorConfig.getKafkaConfig().getKafkaTopic(); ;
-
+        this.kafkaTopic = preprocessorConfig.getKafkaConfig().getKafkaTopic();
     }
+
     //todo - remove this from here and put it in the producer class
     @Override
     protected void run() throws Exception {
@@ -99,16 +86,14 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
             return new BulkIngestResponse(0, 0, "");
         }
 
-        for (Map.Entry<String, List<Trace.Span>> entry : indexDocs.entrySet()) {
-            String index = entry.getKey();
-            List<Trace.Span> spans = entry.getValue();
+        for (Map.Entry<String, List<Trace.Span>> indexDoc : indexDocs.entrySet()) {
+            String index = indexDoc.getKey();
+            List<Trace.Span> spans = indexDoc.getValue();
             int partition = getPartition(index);
 
             if (partition < 0) {
                 LOG.warn("index=" + index + " does not have a provisioned dataset associated with it");
-
             }
-
 
             if (indexDocs.isEmpty()) {
                 // All docs were for unknown datasets
@@ -120,7 +105,6 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
 
             //Create object key
             String objectKey = String.format("%s/%d-%s.gz", index, Instant.now().toEpochMilli(), UUID.randomUUID());
-
 
             //put req then upload object to S3
 
@@ -141,10 +125,31 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
             String pointerJson = String.format(
                     "{\"s3Bucket\": \"%s\", \"s3Key\": %s, \"docCount\": \"%d\"}", walBucket, objectKey, spans.size());
 
-            //todo - send notification to kafka topic
+            //send notification to kafka topic
+            for (String idx : indexDocs.keySet()) {
+                int idxpartition = getPartition(idx);
+                byte[] pointerBytes = pointerJson.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+                checkArgument(idxpartition >= 0, "No provisioned dataset for index: " + idx);
+
+                ProducerRecord<String, byte[]> producerRecord = new ProducerRecord<>
+                        (kafkaConfig.getKafkaTopic(), idxpartition, index, pointerBytes);
+
+                try
+                {
+                    RecordMetadata recordMetadata = kafkaProducer.send(producerRecord).get();
+                    LOG.debug("Sent WAL pointer for index {} to Kafka topic {} partition {} offset {}",
+                            idx, kafkaConfig.getKafkaTopic(), recordMetadata.partition(), recordMetadata.offset());
+
+                } catch (Exception e) {
+                    LOG.error("Failed to send WAL pointer for index {} to Kafka", idx, e);
+                    throw new RuntimeException("Failed to send WAL pointer to Kafka", e);
+                }
+            }
         }
         return new BulkIngestResponse(0, 0, "Success");
     }
+
 
     protected void shutDown() throws Exception {
         super.shutDown();

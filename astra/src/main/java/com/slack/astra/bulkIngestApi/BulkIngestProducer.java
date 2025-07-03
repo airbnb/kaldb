@@ -53,7 +53,7 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
 
     private KafkaClientMetrics kafkaMetrics;
 
-    private final AstraConfigs.KafkaConfig kafkaConfig;
+    protected final AstraConfigs.KafkaConfig kafkaConfig;
 
     private final DatasetMetadataStore datasetMetadataStore;
     private final AstraMetadataStoreChangeListener<DatasetMetadata> datasetListener =
