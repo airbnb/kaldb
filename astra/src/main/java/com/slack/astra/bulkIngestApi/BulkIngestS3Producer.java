@@ -123,7 +123,7 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
             //prepare pointer message
 
             String pointerJson = String.format(
-                    "{\"s3Bucket\": \"%s\", \"s3Key\": %s, \"docCount\": \"%d\"}", walBucket, objectKey, spans.size());
+                    "{\"s3Bucket\": \"%s\", \"s3Key\": \"%s\", \"docCount\": \"%d\"}", walBucket, objectKey, spans.size());
 
             //send notification to kafka topic
             for (String idx : indexDocs.keySet()) {
@@ -133,7 +133,7 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
                 checkArgument(idxpartition >= 0, "No provisioned dataset for index: " + idx);
 
                 ProducerRecord<String, byte[]> producerRecord = new ProducerRecord<>
-                        (kafkaConfig.getKafkaTopic(), idxpartition, index, pointerBytes);
+                        (kafkaTopic, idxpartition, index, pointerBytes);
 
                 try
                 {

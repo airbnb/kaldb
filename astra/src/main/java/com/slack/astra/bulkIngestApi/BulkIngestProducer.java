@@ -46,7 +46,7 @@ import software.amazon.awssdk.services.s3.S3AsyncClient;
 
 public abstract class BulkIngestProducer extends AbstractExecutionThreadService {
 
-    private static final Logger LOG = LoggerFactory.getLogger(BulkIngestKafkaProducer.class);
+    private static final Logger LOG = LoggerFactory.getLogger(BulkIngestProducer.class);
     private final boolean useKafkaTransactions;
 
     private KafkaProducer<String, byte[]> kafkaProducer;
