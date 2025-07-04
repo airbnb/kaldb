@@ -270,8 +270,8 @@ public class ZipkinServiceTest {
           String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), directoryDownloaded);
 
       File[] filesDownloaded = directoryDownloaded.toFile().listFiles();
-      assertThat(Objects.requireNonNull(filesDownloaded).length).isEqualTo(1);
-      Path uploadedFile = filesDownloaded[0].toPath();
+      assertThat(Objects.requireNonNull(filesDownloaded).length).isEqualTo(2);
+      Path uploadedFile = filesDownloaded[1].toPath();
       assertThat(uploadedFile.toString()).endsWith("traceData.json.gz");
       String returnData = ZipkinService.decompressJsonData(Files.readAllBytes(uploadedFile));
       assertNotNull(returnData, "Decompressed data should not be null");
