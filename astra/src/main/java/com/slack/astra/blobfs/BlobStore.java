@@ -16,6 +16,8 @@ import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.model.Delete;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
 import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Publisher;
@@ -220,6 +222,24 @@ public class BlobStore {
           .get();
       return deleted.get();
     } catch (InterruptedException | ExecutionException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  /**
+   * Gets metadata for a file in the object store by S3 key (full path in the bucket).
+   *
+   * @param key The S3 object key (e.g., "prefix/filename")
+   * @return HeadObjectResponse containing metadata for the file
+   * @throws RuntimeException Thrown when error is considered generally non-retryable
+   */
+  public HeadObjectResponse getFileMetadata(String key) {
+    assert key != null && !key.isEmpty();
+    try {
+      return s3AsyncClient
+          .headObject(HeadObjectRequest.builder().bucket(bucketName).key(key).build())
+          .get();
+    } catch (ExecutionException | InterruptedException e) {
       throw new RuntimeException(e);
     }
   }
