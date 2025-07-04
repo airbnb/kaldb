@@ -137,8 +137,8 @@ public class ZipkinService {
   // returning LogWireMessage instead of LogMessage
   // If we return LogMessage the caller then needs to call getSource which is a deep copy of the
   // object. To return LogWireMessage we do a JSON parse
-  static List<LogWireMessage> searchResultToLogWireMessage(
-          AstraSearch.SearchResult searchResult) throws IOException {
+  static List<LogWireMessage> searchResultToLogWireMessage(AstraSearch.SearchResult searchResult)
+      throws IOException {
     List<ByteString> hitsByteList = searchResult.getHitsList().asByteStringList();
     List<LogWireMessage> messages = new ArrayList<>(hitsByteList.size());
     for (ByteString byteString : hitsByteList) {
@@ -178,6 +178,7 @@ public class ZipkinService {
       AstraQueryServiceBase searcher,
       BlobStore blobStore,
       int defaultMaxSpans,
+      int defaultLookbackMins,
       long defaultDataFreshnessInMinutes) {
     this.searcher = searcher;
     this.blobStore = blobStore;
@@ -317,7 +318,8 @@ public class ZipkinService {
       long currentTime = Instant.now().toEpochMilli();
 
       HeadObjectResponse response =
-          blobStore.getFileMetadata(String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId));
+          blobStore.getFileMetadata(
+              String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId));
       long lastModified = response.lastModified().toEpochMilli();
       if (currentTime - lastModified < dataFreshnessInMinutes * 60 * 1000) {
         return null; // Data is still getting updated, check on cache and live nodes

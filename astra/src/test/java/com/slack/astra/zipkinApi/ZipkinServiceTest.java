@@ -1,5 +1,6 @@
 package com.slack.astra.zipkinApi;
 
+import static com.slack.astra.zipkinApi.ZipkinService.TRACE_CACHE_PREFIX;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -13,7 +14,6 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static com.slack.astra.zipkinApi.ZipkinService.TRACE_CACHE_PREFIX;
 
 import brave.Span;
 import brave.Tracer;
@@ -77,7 +77,11 @@ public class ZipkinServiceTest {
     zipkinService =
         spy(
             new ZipkinService(
-                searcher, mockBlobStore, defaultMaxSpans, defaultLookbackMins, defaultDataFreshnessInMinutes));
+                searcher,
+                mockBlobStore,
+                defaultMaxSpans,
+                defaultLookbackMins,
+                defaultDataFreshnessInMinutes));
     // Build mockSearchResult
     ObjectMapper objectMapper = new ObjectMapper();
     JsonNode jsonNode =
@@ -212,7 +216,8 @@ public class ZipkinServiceTest {
       verify(mockBlobStore).upload(Mockito.anyString(), Mockito.any(Path.class));
 
       Path directoryDownloaded = Files.createTempDirectory(traceId);
-      mockBlobStore.download(String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), directoryDownloaded);
+      mockBlobStore.download(
+          String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), directoryDownloaded);
 
       File[] filesDownloaded = directoryDownloaded.toFile().listFiles();
       assertThat(Objects.requireNonNull(filesDownloaded).length).isEqualTo(1);
@@ -224,7 +229,8 @@ public class ZipkinServiceTest {
   }
 
   @Test
-  public void testGetTraceByTraceId_respectUserRequest_respectDataFreshness_skip_search() throws Exception {
+  public void testGetTraceByTraceId_respectUserRequest_respectDataFreshness_skip_search()
+      throws Exception {
     try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
       // Mocking Tracing and Span
       Tracer mockTracer = mock(Tracer.class);
@@ -235,8 +241,7 @@ public class ZipkinServiceTest {
 
       String traceId = "test_trace_4";
 
-      Path filePath =
-          Paths.get(Resources.getResource("zipkinApi/traceData.json").toURI());
+      Path filePath = Paths.get(Resources.getResource("zipkinApi/traceData.json").toURI());
 
       byte[] data = ZipkinService.compressJsonData(Files.readString(filePath));
       Path tempDir = Files.createTempDirectory(traceId);
@@ -251,18 +256,18 @@ public class ZipkinServiceTest {
       long dataFreshnessInMinutes = 0;
 
       zipkinService.getTraceByTraceId(
-              traceId,
-              Optional.empty(),
-              Optional.empty(),
-              Optional.of(maxSpansParam),
-              Optional.of(userRequest),
-              Optional.of(dataFreshnessInMinutes)
-              );
+          traceId,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of(maxSpansParam),
+          Optional.of(userRequest),
+          Optional.of(dataFreshnessInMinutes));
 
       verify(mockBlobStore).download(Mockito.anyString(), Mockito.any(Path.class));
 
       Path directoryDownloaded = Files.createTempDirectory(traceId);
-      mockBlobStore.download(String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), directoryDownloaded);
+      mockBlobStore.download(
+          String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), directoryDownloaded);
 
       File[] filesDownloaded = directoryDownloaded.toFile().listFiles();
       assertThat(Objects.requireNonNull(filesDownloaded).length).isEqualTo(1);
@@ -274,7 +279,8 @@ public class ZipkinServiceTest {
   }
 
   @Test
-  public void testGetTraceByTraceId_respectUserRequest_respectDataFreshness_perform_search() throws Exception {
+  public void testGetTraceByTraceId_respectUserRequest_respectDataFreshness_perform_search()
+      throws Exception {
     try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
       // Mocking Tracing and Span
       Tracer mockTracer = mock(Tracer.class);
@@ -285,8 +291,7 @@ public class ZipkinServiceTest {
 
       String traceId = "test_trace_5";
 
-      Path filePath =
-              Paths.get(Resources.getResource("zipkinApi/traceData.json").toURI());
+      Path filePath = Paths.get(Resources.getResource("zipkinApi/traceData.json").toURI());
 
       byte[] data = ZipkinService.compressJsonData(Files.readString(filePath));
       Path tempDir = Files.createTempDirectory(traceId);
@@ -303,20 +308,20 @@ public class ZipkinServiceTest {
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
 
       zipkinService.getTraceByTraceId(
-              traceId,
-              Optional.empty(),
-              Optional.empty(),
-              Optional.of(maxSpansParam),
-              Optional.of(userRequest),
-              Optional.of(dataFreshnessInMinutes)
-      );
+          traceId,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of(maxSpansParam),
+          Optional.of(userRequest),
+          Optional.of(dataFreshnessInMinutes));
 
       verify(mockBlobStore).getFileMetadata(Mockito.anyString());
       verify(mockBlobStore, never()).download(Mockito.anyString(), Mockito.any(Path.class));
       verify(mockBlobStore, times(2)).upload(Mockito.anyString(), Mockito.any(Path.class));
 
       Path directoryDownloaded = Files.createTempDirectory(traceId);
-      mockBlobStore.download(String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), directoryDownloaded);
+      mockBlobStore.download(
+          String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), directoryDownloaded);
 
       File[] filesDownloaded = directoryDownloaded.toFile().listFiles();
       assertThat(Objects.requireNonNull(filesDownloaded).length).isEqualTo(1);
@@ -451,7 +456,8 @@ public class ZipkinServiceTest {
 
     // Assert
     Path directoryDownloaded = Files.createTempDirectory(traceId);
-    mockBlobStore.download(String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), directoryDownloaded);
+    mockBlobStore.download(
+        String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), directoryDownloaded);
     File[] filesDownloaded = directoryDownloaded.toFile().listFiles();
     assertThat(Objects.requireNonNull(filesDownloaded).length).isEqualTo(1);
 
