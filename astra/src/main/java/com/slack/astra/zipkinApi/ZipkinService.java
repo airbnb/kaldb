@@ -16,14 +16,20 @@ import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.server.annotation.Blocking;
 import com.linecorp.armeria.server.annotation.Default;
 import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Header;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Path;
+import com.slack.astra.blobfs.BlobStore;
 import com.slack.astra.logstore.LogMessage;
 import com.slack.astra.logstore.LogWireMessage;
 import com.slack.astra.proto.service.AstraSearch;
 import com.slack.astra.server.AstraQueryServiceBase;
 import com.slack.astra.util.JsonUtil;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -33,9 +39,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 
 @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
 /**
@@ -128,8 +137,8 @@ public class ZipkinService {
   // returning LogWireMessage instead of LogMessage
   // If we return LogMessage the caller then needs to call getSource which is a deep copy of the
   // object. To return LogWireMessage we do a JSON parse
-  private static List<LogWireMessage> searchResultToLogWireMessage(
-      AstraSearch.SearchResult searchResult) throws IOException {
+  static List<LogWireMessage> searchResultToLogWireMessage(AstraSearch.SearchResult searchResult)
+      throws IOException {
     List<ByteString> hitsByteList = searchResult.getHitsList().asByteStringList();
     List<LogWireMessage> messages = new ArrayList<>(hitsByteList.size());
     for (ByteString byteString : hitsByteList) {
@@ -149,7 +158,13 @@ public class ZipkinService {
   private final int defaultMaxSpans;
   private final int defaultLookbackMins;
 
+  private final long defaultDataFreshnessInMinutes;
+
   private final AstraQueryServiceBase searcher;
+
+  private final BlobStore blobStore;
+
+  public static final String TRACE_CACHE_PREFIX = "traceCacheData";
 
   private static final ObjectMapper objectMapper =
       JsonMapper.builder()
@@ -160,10 +175,16 @@ public class ZipkinService {
           .build();
 
   public ZipkinService(
-      AstraQueryServiceBase searcher, int defaultMaxSpans, int defaultLookbackMins) {
+      AstraQueryServiceBase searcher,
+      BlobStore blobStore,
+      int defaultMaxSpans,
+      int defaultLookbackMins,
+      long defaultDataFreshnessInMinutes) {
     this.searcher = searcher;
+    this.blobStore = blobStore;
     this.defaultMaxSpans = defaultMaxSpans;
     this.defaultLookbackMins = defaultLookbackMins;
+    this.defaultDataFreshnessInMinutes = defaultDataFreshnessInMinutes;
   }
 
   @Get
@@ -201,9 +222,25 @@ public class ZipkinService {
       @Param("traceId") String traceId,
       @Param("startTimeEpochMs") Optional<Long> startTimeEpochMs,
       @Param("endTimeEpochMs") Optional<Long> endTimeEpochMs,
-      @Param("maxSpans") Optional<Integer> maxSpans)
+      @Param("maxSpans") Optional<Integer> maxSpans,
+      @Header("X-User-Request") Optional<Boolean> userRequest,
+      @Header("X-Data-Freshness-In-Minutes") Optional<Long> dataFreshnessInMinutes)
       throws IOException {
 
+    // Log the custom header userRequest value if present
+    if (userRequest.isPresent()) {
+      LOG.info("Received custom header X-User-Request: {}", userRequest.get());
+      // try to retrieve trace data from S3; check timestamp before using S3 for data freshness
+      long dataFreshnessInMinutesValue =
+          dataFreshnessInMinutes.orElse(
+              this.defaultDataFreshnessInMinutes); // default to 15 minutes if not provided
+      String traceData = retrieveDataFromS3(traceId, dataFreshnessInMinutesValue);
+      // if found, return the data
+      if (traceData != null) {
+        LOG.info("Trace data retrieved from S3 for traceId={}", traceId);
+        return HttpResponse.of(HttpStatus.OK, MediaType.ANY_APPLICATION_TYPE, traceData);
+      }
+    }
     JSONObject traceObject = new JSONObject();
     traceObject.put("trace_id", traceId);
     JSONObject queryJson = new JSONObject();
@@ -224,6 +261,8 @@ public class ZipkinService {
     span.tag("startTimeEpochMs", String.valueOf(startTime));
     span.tag("endTimeEpochMs", String.valueOf(endTime));
     span.tag("howMany", String.valueOf(howMany));
+    // Add custom header to span tags if present
+    userRequest.ifPresent(headerValue -> span.tag("userRequest", headerValue.toString()));
 
     // TODO: when MAX_SPANS is hit the results will look weird because the index is sorted in
     // reverse timestamp and the spans returned will be the tail. We should support sort in the
@@ -242,6 +281,93 @@ public class ZipkinService {
     List<LogWireMessage> messages = searchResultToLogWireMessage(searchResult);
     String output = convertLogWireMessageToZipkinSpan(messages);
 
+    if (userRequest.isPresent() && userRequest.get() && !output.isEmpty()) {
+      // Save the trace data to S3 if the custom header is present
+      saveDataToS3(traceId, output);
+    }
     return HttpResponse.of(HttpStatus.OK, MediaType.JSON_UTF_8, output);
+  }
+
+  @VisibleForTesting
+  protected static byte[] compressJsonData(String jsonData) throws IOException {
+    ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+    try (GZIPOutputStream gzipOutputStream = new GZIPOutputStream(byteArrayOutputStream)) {
+      gzipOutputStream.write(jsonData.getBytes(StandardCharsets.UTF_8));
+    }
+    return byteArrayOutputStream.toByteArray();
+  }
+
+  @VisibleForTesting
+  protected static String decompressJsonData(byte[] compressedData) {
+    assert compressedData != null && compressedData.length > 0;
+
+    try (GZIPInputStream gzipInputStream =
+        new GZIPInputStream(new ByteArrayInputStream(compressedData))) {
+      return new String(gzipInputStream.readAllBytes(), StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      LOG.error("Error decompressing JSON data", e);
+      throw new RuntimeException("Failed to decompress JSON data", e);
+    }
+  }
+
+  protected String retrieveDataFromS3(String traceId, long dataFreshnessInMinutes) {
+    assert traceId != null && !traceId.isEmpty();
+
+    try {
+      // If data is fresh skip S3 retrieval
+      long currentTime = Instant.now().toEpochMilli();
+
+      HeadObjectResponse response =
+          blobStore.getFileMetadata(
+              String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId));
+      long lastModified = response.lastModified().toEpochMilli();
+      if (currentTime - lastModified < dataFreshnessInMinutes * 60 * 1000) {
+        return null; // Data is still getting updated, check on cache and live nodes
+      }
+
+      // Retrieve the compressed trace data from S3
+      java.nio.file.Path tempDir = Files.createTempDirectory("");
+      blobStore.download(String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), tempDir);
+
+      // Decompress the JSON data
+      byte[] compressedData = Files.readAllBytes(tempDir.resolve("traceData.json.gz"));
+      String jsonData = decompressJsonData(compressedData);
+
+      LOG.info("Retrieved and decompressed trace data from S3 for traceId={}", traceId);
+      // Process the jsonData as needed
+      return jsonData;
+
+    } catch (Exception e) {
+      LOG.error("Error retrieving trace data from S3 for traceId={}", traceId, e);
+    }
+    return null;
+  }
+
+  protected void saveDataToS3(String traceId, String output) {
+    assert traceId != null && !traceId.isEmpty();
+    assert output != null && !output.isEmpty();
+
+    try {
+      // Compress the JSON data using GZIP
+      byte[] compressedData = compressJsonData(output);
+
+      // Create a temporary directory to store the trace data
+      java.nio.file.Path tempDir = Files.createTempDirectory(traceId);
+      java.nio.file.Path traceFile = tempDir.resolve("traceData.json.gz");
+      Files.write(traceFile, compressedData);
+
+      // Upload the compressed trace data to S3
+      blobStore.upload(String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), tempDir);
+
+      // Clean up the temporary directory
+      Files.deleteIfExists(traceFile);
+      Files.deleteIfExists(tempDir);
+
+      LOG.info("Compressed trace data saved to S3 for traceId={}", traceId);
+
+    } catch (Exception e) {
+      LOG.error("Error saving trace data to S3 for traceId={}", traceId, e);
+      throw new RuntimeException("Failed to save trace data to S3", e);
+    }
   }
 }

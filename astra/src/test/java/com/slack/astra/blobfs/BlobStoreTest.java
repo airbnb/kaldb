@@ -16,6 +16,7 @@ import java.util.concurrent.ExecutionException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.ListObjectsRequest;
 
 class BlobStoreTest {
@@ -214,5 +215,24 @@ class BlobStoreTest {
     String chunkId = UUID.randomUUID().toString();
 
     assertThat(blobStore.listFiles(chunkId).size()).isEqualTo(0);
+  }
+
+  @Test
+  void testGetFileMetadata() throws IOException {
+    BlobStore blobStore = new BlobStore(s3Client, TEST_BUCKET);
+    String chunkId = "traceCacheData";
+    String traceId = "trace_123";
+
+    Path directoryUpload = Files.createTempDirectory(traceId);
+    Path file = directoryUpload.resolve(traceId + ".json");
+    Files.write(file, "test".getBytes());
+    blobStore.upload(String.format("%s/%s", chunkId, traceId), directoryUpload);
+
+    HeadObjectResponse response =
+        blobStore.getFileMetadata(String.format("%s/%s/%s.json", chunkId, traceId, traceId));
+    assertThat(response.contentLength()).isEqualTo(4);
+    assertThat(response.lastModified()).isNotNull();
+    assertThat(response.eTag()).isNotNull();
+    assertThat(response.metadata()).isNotNull();
   }
 }

@@ -226,8 +226,10 @@ public class Astra {
               .withAnnotatedService(
                   new ZipkinService(
                       astraDistributedQueryService,
+                      blobStore,
                       astraConfig.getQueryConfig().getZipkinDefaultMaxSpans(),
-                      astraConfig.getQueryConfig().getZipkinDefaultLookbackMins()))
+                      astraConfig.getQueryConfig().getZipkinDefaultLookbackMins(),
+                      astraConfig.getQueryConfig().getZipkinDefaultDataFreshnessMins()))
               .withGrpcService(astraDistributedQueryService)
               .build();
       services.add(armeriaService);
