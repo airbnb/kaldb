@@ -3,6 +3,7 @@ package com.slack.astra.bulkIngestApi;
 import com.slack.astra.metadata.dataset.DatasetMetadataStore;
 import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.service.murron.trace.Trace;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -25,7 +26,7 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
     private static final Logger LOG = LoggerFactory.getLogger(BulkIngestS3Producer.class);
 
     private final KafkaProducer<String, byte[]> kafkaProducer;
-
+    private final Counter failedSetResponseCounter;
     protected final String walBucket;
     protected final String kafkaTopic;
 
@@ -41,44 +42,41 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
         this.kafkaProducer = kafkaProducer;
         this.walBucket = preprocessorConfig.getS3Config().getS3Bucket();
         this.kafkaTopic = preprocessorConfig.getKafkaConfig().getKafkaTopic();
+        this.failedSetResponseCounter = meterRegistry.counter(FAILED_SET_RESPONSE_COUNTER);
     }
 
-    /* todo - remove this from here and put it in the producer class
-    @Override
-    protected void run() throws Exception {
-        while (isRunning()) {
-            List<BulkIngestRequest> batch = new ArrayList<>();
-            pendingRequests.drainTo(batch);
+    protected Map<BulkIngestRequest, BulkIngestResponse> produceDocuments(List<BulkIngestRequest> requests){
 
-            if (batch.isEmpty()) {
-                try {
-                    stallCounter.increment();
-                    Thread.sleep(producerSleepMs);
-                } catch (InterruptedException e) {
-                    return; // Exit if interrupted
+        Map<BulkIngestRequest, BulkIngestResponse> responseMap = new HashMap<>();
+        try {
+            for (BulkIngestRequest request : requests) {
+                responseMap.put(request, processRequest(request));
+            }
+            for (Map.Entry<BulkIngestRequest, BulkIngestResponse> entry : responseMap.entrySet()) {
+                BulkIngestRequest key = entry.getKey();
+                BulkIngestResponse value = entry.getValue();
+                if (!key.setResponse(value)) {
+                    LOG.warn("Failed to add result to the bulk ingest request, consumer thread went away?");
+                    failedSetResponseCounter.increment();
                 }
-            } else {
-                for (BulkIngestRequest req : batch) {
-                    BulkIngestResponse resp;
-                    try {
-                        resp = processRequest(req);
-                    } catch (Exception e) {
-                        LOG.error("WAL batch processing failed", e);
-                        int failedDocs = req.getInputDocs().values().stream().mapToInt(List::size).sum();
-                        resp = new BulkIngestResponse(0, failedDocs, "Error: " + e.getMessage());
-                    }
-                    // Set the response (unblocks BulkIngestApi thread waiting on getResponse()):
-                    if (!req.setResponse(resp)) {
-                        LOG.warn("Failed to deliver response to BulkIngestRequest (Possibly timed out)");
-                    }
-                }
+            }
+        } catch (Exception e) {
+            LOG.error("Failed to write batch to kafka", e);
+            for (BulkIngestRequest request : requests) {
+                responseMap.put(
+                        request,
+                        new BulkIngestResponse(
+                                0,
+                                request.getInputDocs().values().stream().mapToInt(List::size).sum(),
+                                e.getMessage()));
             }
         }
 
-    } */
+        return responseMap;
+    }
+
 
     protected BulkIngestResponse processRequest(BulkIngestRequest request) throws Exception {
-
 
         Map<String, List<Trace.Span>> indexDocs = request.getInputDocs();
         int totalDocs = indexDocs.values().stream().mapToInt(List::size).sum();
