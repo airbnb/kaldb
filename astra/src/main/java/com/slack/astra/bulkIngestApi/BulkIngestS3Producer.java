@@ -23,10 +23,8 @@ import java.util.zip.GZIPOutputStream;
 import static com.google.common.base.Preconditions.checkArgument;
 
 public class BulkIngestS3Producer extends BulkIngestProducer {
-    private static final Logger LOG = LoggerFactory.getLogger(BulkIngestS3Producer.class);
 
-    private final KafkaProducer<String, byte[]> kafkaProducer;
-    private final Counter failedSetResponseCounter;
+    private static final Logger LOG = LoggerFactory.getLogger(BulkIngestS3Producer.class);
     protected final String walBucket;
     protected final String kafkaTopic;
 
@@ -34,17 +32,15 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
             final DatasetMetadataStore datasetMetadataStore,
             final AstraConfigs.PreprocessorConfig preprocessorConfig,
             final MeterRegistry meterRegistry,
-            S3AsyncClient s3Client,
-            KafkaProducer<String, byte[]> kafkaProducer) {
+            S3AsyncClient s3Client) {
+
         super(datasetMetadataStore, preprocessorConfig, meterRegistry, s3Client);
 
         // Initialize S3Producer specific fields
-        this.kafkaProducer = kafkaProducer;
         this.walBucket = preprocessorConfig.getS3Config().getS3Bucket();
         this.kafkaTopic = preprocessorConfig.getKafkaConfig().getKafkaTopic();
-        this.failedSetResponseCounter = meterRegistry.counter(FAILED_SET_RESPONSE_COUNTER);
     }
-
+    @Override
     protected Map<BulkIngestRequest, BulkIngestResponse> produceDocuments(List<BulkIngestRequest> requests){
 
         Map<BulkIngestRequest, BulkIngestResponse> responseMap = new HashMap<>();
@@ -61,7 +57,7 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
                 }
             }
         } catch (Exception e) {
-            LOG.error("Failed to write batch to kafka", e);
+            LOG.error("Failed to write batch to S3/kafka", e);
             for (BulkIngestRequest request : requests) {
                 responseMap.put(
                         request,
@@ -124,9 +120,8 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
             ProducerRecord<String, byte[]> producerRecord = new ProducerRecord<>
                     (kafkaTopic, partition, index, pointerBytes);
 
-            try
-            {
-                RecordMetadata recordMetadata = kafkaProducer.send(producerRecord).get();
+            try {
+                RecordMetadata recordMetadata = this.kafkaProducer.send(producerRecord).get();
                 LOG.debug("Sent WAL pointer for index {} to Kafka topic {} partition {} offset {}",
                         index, kafkaTopic, recordMetadata.partition(), recordMetadata.offset());
 
