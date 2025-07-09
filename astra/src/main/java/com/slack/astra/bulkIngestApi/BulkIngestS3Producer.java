@@ -43,7 +43,7 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
         this.kafkaTopic = preprocessorConfig.getKafkaConfig().getKafkaTopic();
     }
 
-    //todo - remove this from here and put it in the producer class
+    /* todo - remove this from here and put it in the producer class
     @Override
     protected void run() throws Exception {
         while (isRunning()) {
@@ -75,10 +75,11 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
             }
         }
 
-    }
+    } */
 
     protected BulkIngestResponse processRequest(BulkIngestRequest request) throws Exception {
-        // Implement the logic to process the
+
+
         Map<String, List<Trace.Span>> indexDocs = request.getInputDocs();
         int totalDocs = indexDocs.values().stream().mapToInt(List::size).sum();
 

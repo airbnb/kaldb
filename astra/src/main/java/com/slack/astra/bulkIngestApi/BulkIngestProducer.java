@@ -179,7 +179,9 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
                     return;
                 }
             } else {
-                //processRequest(requests);
+                //flag
+                //producerdocuments(request) //kafka
+                //processRequest(requests);  //s3
             }
         }
     }
