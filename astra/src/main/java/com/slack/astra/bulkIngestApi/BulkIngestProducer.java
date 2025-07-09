@@ -179,9 +179,7 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
                     return;
                 }
             } else {
-                //flag
-                //producerdocuments(request) //kafka
-                //processRequest(requests);  //s3
+                produceDocuments(requests);
             }
         }
     }
@@ -202,7 +200,33 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
         return request;
     }
 
-    protected abstract BulkIngestResponse processRequest(BulkIngestRequest request) throws Exception;
+    private KafkaProducer<String, byte[]> createKafkaTransactionProducer(String transactionId) {
+        Properties props = new Properties();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaConfig.getKafkaBootStrapServers());
+        props.put(
+                ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,
+                "org.apache.kafka.common.serialization.StringSerializer");
+        props.put(
+                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
+                "org.apache.kafka.common.serialization.ByteArraySerializer");
+        if (useKafkaTransactions) {
+            props.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, transactionId);
+        }
+
+        // don't override the properties that we have already set explicitly using named properties
+        for (Map.Entry<String, String> additionalProp :
+                kafkaConfig.getAdditionalPropsMap().entrySet()) {
+            props =
+                    KafkaUtils.maybeOverrideProps(
+                            props,
+                            additionalProp.getKey(),
+                            additionalProp.getValue(),
+                            OVERRIDABLE_CONFIGS.contains(additionalProp.getKey()));
+        }
+        return new KafkaProducer<>(props);
+    }
+
+    protected abstract Map<BulkIngestRequest, BulkIngestResponse> produceDocuments(List<BulkIngestRequest> requests);
 
     protected int getPartition(String index) {
         for (DatasetMetadata datasetMetadata : throughputSortedDatasets) {
