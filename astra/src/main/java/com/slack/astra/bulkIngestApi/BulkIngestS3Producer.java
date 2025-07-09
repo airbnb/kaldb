@@ -11,6 +11,7 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.core.async.AsyncRequestBody;
 import java.io.*;
@@ -67,7 +68,6 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
                                 e.getMessage()));
             }
         }
-
         return responseMap;
     }
 
@@ -126,7 +126,12 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
                         index, kafkaTopic, recordMetadata.partition(), recordMetadata.offset());
 
             } catch (Exception e) {
-                LOG.error("Failed to send WAL pointer for index {} to Kafka", index, e);
+                LOG.error("Failed to send WAL pointer for index {} to Kafka - deleting S3 object {}", index, objectKey, e);
+                DeleteObjectRequest deleteRequest = DeleteObjectRequest.builder()
+                        .bucket(walBucket)
+                        .key(objectKey)
+                        .build();
+                s3Client.deleteObject(deleteRequest).join();
                 throw new RuntimeException("Failed to send WAL pointer to Kafka", e);
             }
         }
@@ -135,6 +140,9 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
 
 
     protected void shutDown() throws Exception {
+        if (s3Client != null) {
+            s3Client.close();
+        }
         super.shutDown();
     }
 
