@@ -49,7 +49,7 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
     private static final Logger LOG = LoggerFactory.getLogger(BulkIngestProducer.class);
     private final boolean useKafkaTransactions;
 
-    private KafkaProducer<String, byte[]> kafkaProducer;
+    protected KafkaProducer<String, byte[]> kafkaProducer;
 
     private KafkaClientMetrics kafkaMetrics;
 
@@ -67,7 +67,7 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
 
     public static final String FAILED_SET_RESPONSE_COUNTER =
             "bulk_ingest_producer_failed_set_response";
-    private final Counter failedSetResponseCounter;
+    protected final Counter failedSetResponseCounter;
     public static final String STALL_COUNTER = "bulk_ingest_producer_stall_counter";
     private final Counter stallCounter;
 
@@ -119,7 +119,7 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
         startKafkaProducer();
     }
 
-    private void startKafkaProducer() {
+    protected void startKafkaProducer() {
 
         this.kafkaProducer = createKafkaTransactionProducer(UUID.randomUUID().toString());
         this.kafkaMetrics = new KafkaClientMetrics(kafkaProducer);
@@ -200,7 +200,7 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
         return request;
     }
 
-    private KafkaProducer<String, byte[]> createKafkaTransactionProducer(String transactionId) {
+    protected KafkaProducer<String, byte[]> createKafkaTransactionProducer(String transactionId) {
         Properties props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaConfig.getKafkaBootStrapServers());
         props.put(
