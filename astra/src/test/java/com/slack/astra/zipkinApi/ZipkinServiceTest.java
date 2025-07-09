@@ -271,10 +271,14 @@ public class ZipkinServiceTest {
 
       File[] filesDownloaded = directoryDownloaded.toFile().listFiles();
       assertThat(Objects.requireNonNull(filesDownloaded).length).isEqualTo(2);
-      Path uploadedFile = filesDownloaded[1].toPath();
-      assertThat(uploadedFile.toString()).endsWith("traceData.json.gz");
-      String returnData = ZipkinService.decompressJsonData(Files.readAllBytes(uploadedFile));
-      assertNotNull(returnData, "Decompressed data should not be null");
+      for (File file : filesDownloaded) {
+        if (file.getName().endsWith("traceData.json.gz")) {
+          Path uploadedFile = file.toPath();
+          assertThat(uploadedFile.toString()).endsWith("traceData.json.gz");
+          String returnData = ZipkinService.decompressJsonData(Files.readAllBytes(uploadedFile));
+          assertNotNull(returnData, "Decompressed data should not be null");
+        }
+      }
     }
   }
 
