@@ -194,7 +194,9 @@ public class BlobStore {
     }
     return filesList;
   }
-
+  public S3AsyncClient getS3AsyncClient() {
+    return s3AsyncClient;
+  }
   /**
    * Deletes a chunk off of object storage by chunk id. If object was not found returns false.
    *

@@ -7,6 +7,8 @@ import com.slack.astra.blobfs.BlobStore;
 import com.slack.astra.blobfs.S3AsyncUtil;
 import com.slack.astra.bulkIngestApi.BulkIngestApi;
 import com.slack.astra.bulkIngestApi.BulkIngestKafkaProducer;
+import com.slack.astra.bulkIngestApi.BulkIngestProducer;
+import com.slack.astra.bulkIngestApi.BulkIngestS3Producer;
 import com.slack.astra.bulkIngestApi.DatasetRateLimitingService;
 import com.slack.astra.chunkManager.CachingChunkManager;
 import com.slack.astra.chunkManager.IndexingChunkManager;
@@ -65,6 +67,8 @@ import org.apache.logging.log4j.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
+
+import static com.google.common.base.Preconditions.checkArgument;
 
 /**
  * Main class of Astra that sets up the basic infra needed for all the other end points like an a
@@ -427,6 +431,29 @@ public class Astra {
       BulkIngestKafkaProducer bulkIngestKafkaProducer =
           new BulkIngestKafkaProducer(datasetMetadataStore, preprocessorConfig, meterRegistry);
       services.add(bulkIngestKafkaProducer);
+      if (preprocessorConfig.getUseS3Wal()) {
+        checkArgument(
+                preprocessorConfig.hasS3Config(),
+                "S3 configuration must be provided when using S3 WAL");
+        checkArgument(
+            !preprocessorConfig.getS3Config().getS3Bucket().isEmpty(),
+            "S3 bucket must be provided when using S3 WAL");
+      }
+
+
+      BulkIngestProducer bulkIngestProducer;
+      if (preprocessorConfig.getUseS3Wal()) {
+        LOG.info("Using S3 WAL producer");
+        bulkIngestProducer =
+            new BulkIngestS3Producer(
+                datasetMetadataStore, preprocessorConfig, meterRegistry, blobStore.getS3AsyncClient());
+      } else {
+        LOG.info("Using Kafka WAL producer");
+        bulkIngestProducer =
+            new BulkIngestKafkaProducer(datasetMetadataStore, preprocessorConfig, meterRegistry);
+      }
+      services.add(bulkIngestProducer);
+
       DatasetRateLimitingService datasetRateLimitingService =
           new DatasetRateLimitingService(datasetMetadataStore, preprocessorConfig, meterRegistry);
       services.add(datasetRateLimitingService);
@@ -443,9 +470,10 @@ public class Astra {
         LOG.info("No schema file provided, using default schema");
       }
       schema = ReservedFields.addPredefinedFields(schema);
+
       BulkIngestApi openSearchBulkApiService =
           new BulkIngestApi(
-              bulkIngestKafkaProducer,
+              bulkIngestProducer,
               datasetRateLimitingService,
               meterRegistry,
               preprocessorConfig.getRateLimitExceededErrorCode(),

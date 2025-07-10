@@ -1,6 +1,5 @@
 package com.slack.astra.bulkIngestApi;
 
-
 import com.slack.astra.metadata.dataset.DatasetMetadataStore;
 import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.service.murron.trace.Trace;
@@ -47,8 +46,6 @@ public class BulkIngestKafkaProducer extends BulkIngestProducer {
     // consumer sets isolation.level as "read_committed"
     // see "zombie fencing" https://www.confluent.io/blog/transactions-apache-kafka/
     super.startKafkaProducer(); // This calls parent's kafka setup
-    this.kafkaMetrics = new KafkaClientMetrics(kafkaProducer);
-    this.kafkaMetrics.bindTo(meterRegistry);
     if (useKafkaTransactions) {
       this.kafkaProducer.initTransactions();
     }
@@ -188,7 +185,8 @@ public class BulkIngestKafkaProducer extends BulkIngestProducer {
       // we will limit producing documents 1 thread at a time
       for (Trace.Span doc : indexDoc.getValue()) {
         ProducerRecord<String, byte[]> producerRecord =
-            new ProducerRecord<>(kafkaConfig.getKafkaTopic(), partition, index, doc.toByteArray());
+            new ProducerRecord<>(
+                super.kafkaConfig.getKafkaTopic(), partition, index, doc.toByteArray());
 
         // we intentionally suppress FutureReturnValueIgnored here in errorprone - this is because
         // we wrap this in a transaction, which is responsible for flushing all of the pending
