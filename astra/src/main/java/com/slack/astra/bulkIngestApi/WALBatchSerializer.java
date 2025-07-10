@@ -4,7 +4,6 @@ import com.slack.astra.proto.wal.WalProtos;
 import com.slack.service.murron.trace.Trace;
 import java.io.*;
 import java.util.*;
-import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 public class WALBatchSerializer {

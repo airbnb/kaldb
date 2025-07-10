@@ -122,7 +122,7 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
     }
   }
 
-  private void stopKafkaProducer() {
+  protected  void stopKafkaProducer() {
     try {
       if (this.kafkaProducer != null) {
         this.kafkaProducer.close(Duration.ZERO);
@@ -136,7 +136,7 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
     }
   }
 
-  private void restartKafkaProducer() {
+  protected void restartKafkaProducer() {
     Timer.Sample restartTimer = Timer.start(meterRegistry);
     stopKafkaProducer();
     startKafkaProducer();
@@ -144,7 +144,7 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
     restartTimer.stop(kafkaRestartTimer);
   }
 
-  private void cacheSortedDataset() {
+  protected  void cacheSortedDataset() {
 
     this.throughputSortedDatasets =
         datasetMetadataStore.listSync().stream()
@@ -236,7 +236,7 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
     return -1;
   }
 
-  private static List<Integer> getActivePartitionList(DatasetMetadata datasetMetadata) {
+  protected static List<Integer> getActivePartitionList(DatasetMetadata datasetMetadata) {
     Optional<DatasetPartitionMetadata> datasetPartitionMetadata =
         datasetMetadata.getPartitionConfigs().stream()
             .filter(partitionMetadata -> partitionMetadata.getEndTimeEpochMs() == MAX_TIME)
