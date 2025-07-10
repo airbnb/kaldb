@@ -4,6 +4,7 @@ import brave.Tracing;
 import brave.context.log4j2.ThreadContextScopeDecorator;
 import brave.handler.MutableSpan;
 import brave.handler.SpanHandler;
+import brave.http.HttpTracing;
 import brave.propagation.TraceContext;
 import brave.sampler.Sampler;
 import com.google.common.util.concurrent.AbstractIdleService;
@@ -163,6 +164,7 @@ public class ArmeriaService extends AbstractIdleService {
     }
 
     public ArmeriaService build() {
+      //HttpTracing.newBuilder()
       Tracing.Builder tracingBuilder =
           Tracing.newBuilder()
               .localServiceName(serviceName)
@@ -172,7 +174,8 @@ public class ArmeriaService extends AbstractIdleService {
                       .addScopeDecorator(ThreadContextScopeDecorator.get())
                       .build());
       spanHandlers.forEach(tracingBuilder::addSpanHandler);
-      serverBuilder.decorator(BraveService.newDecorator(tracingBuilder.build()));
+      Tracing tracing = tracingBuilder.build();
+      serverBuilder.decorator(BraveService.newDecorator(HttpTracing.newBuilder(tracing).build()));
 
       return new ArmeriaService(serverBuilder.build(), serviceName);
     }

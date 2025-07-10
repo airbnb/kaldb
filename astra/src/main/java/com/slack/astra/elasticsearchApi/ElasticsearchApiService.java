@@ -1,6 +1,7 @@
 package com.slack.astra.elasticsearchApi;
 
 import brave.ScopedSpan;
+import brave.Tracer;
 import brave.Tracing;
 import brave.propagation.CurrentTraceContext;
 import brave.propagation.TraceContext;
@@ -103,13 +104,19 @@ public class ElasticsearchApiService {
               .toList();
 
       scope.join();
+      ScopedSpan span = Tracing.currentTracer().startScopedSpan("ElasticsearchApiService.multisearch.createResponseMetadata");
+
       SearchResponseMetadata responseMetadata =
           new SearchResponseMetadata(
               0,
               requestSubtasks.stream().map(StructuredTaskScope.Subtask::get).toList(),
               Map.of("traceId", getTraceId()));
+      span.finish();
+      ScopedSpan spanJson = Tracing.currentTracer().startScopedSpan("ElasticsearchApiService.multisearch.JsonUtil.writeAsString");
+      String content = JsonUtil.writeAsString(responseMetadata);
+      spanJson.finish();
       return HttpResponse.of(
-          HttpStatus.OK, MediaType.JSON_UTF_8, JsonUtil.writeAsString(responseMetadata));
+          HttpStatus.OK, MediaType.JSON_UTF_8, content);
     }
   }
 
