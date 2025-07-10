@@ -21,7 +21,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -35,225 +34,219 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.common.errors.AuthorizationException;
-import org.apache.kafka.common.errors.OutOfOrderSequenceException;
-import org.apache.kafka.common.errors.ProducerFencedException;
-import org.apache.kafka.common.errors.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 
 public abstract class BulkIngestProducer extends AbstractExecutionThreadService {
 
-    private static final Logger LOG = LoggerFactory.getLogger(BulkIngestProducer.class);
-    private final boolean useKafkaTransactions;
+  private static final Logger LOG = LoggerFactory.getLogger(BulkIngestProducer.class);
+  private final boolean useKafkaTransactions;
 
-    protected KafkaProducer<String, byte[]> kafkaProducer;
+  protected KafkaProducer<String, byte[]> kafkaProducer;
 
-    private KafkaClientMetrics kafkaMetrics;
+  private KafkaClientMetrics kafkaMetrics;
 
-    protected final AstraConfigs.KafkaConfig kafkaConfig;
+  protected final AstraConfigs.KafkaConfig kafkaConfig;
 
-    private final DatasetMetadataStore datasetMetadataStore;
-    private final AstraMetadataStoreChangeListener<DatasetMetadata> datasetListener =
-            (_) -> cacheSortedDataset();
+  private final DatasetMetadataStore datasetMetadataStore;
+  private final AstraMetadataStoreChangeListener<DatasetMetadata> datasetListener =
+      (_) -> cacheSortedDataset();
 
-    protected List<DatasetMetadata> throughputSortedDatasets;
+  protected List<DatasetMetadata> throughputSortedDatasets;
 
-    private final BlockingQueue<BulkIngestRequest> pendingRequests;
+  private final BlockingQueue<BulkIngestRequest> pendingRequests;
 
-    private final Integer producerSleepMs;
+  private final Integer producerSleepMs;
 
-    public static final String FAILED_SET_RESPONSE_COUNTER =
-            "bulk_ingest_producer_failed_set_response";
-    protected final Counter failedSetResponseCounter;
-    public static final String STALL_COUNTER = "bulk_ingest_producer_stall_counter";
-    private final Counter stallCounter;
+  public static final String FAILED_SET_RESPONSE_COUNTER =
+      "bulk_ingest_producer_failed_set_response";
+  protected final Counter failedSetResponseCounter;
+  public static final String STALL_COUNTER = "bulk_ingest_producer_stall_counter";
+  private final Counter stallCounter;
 
-    protected final S3AsyncClient s3Client;
-    private String walBucket;
+  protected final S3AsyncClient s3Client;
+  private String walBucket;
 
-    public static final String KAFKA_RESTART_COUNTER = "bulk_ingest_producer_kafka_restart_timer";
-    private final Timer kafkaRestartTimer;
+  public static final String KAFKA_RESTART_COUNTER = "bulk_ingest_producer_kafka_restart_timer";
+  private final Timer kafkaRestartTimer;
 
-    public static final String BATCH_SIZE_GAUGE = "bulk_ingest_producer_batch_size";
-    private final AtomicInteger batchSizeGauge;
+  public static final String BATCH_SIZE_GAUGE = "bulk_ingest_producer_batch_size";
+  private final AtomicInteger batchSizeGauge;
 
-    private final MeterRegistry meterRegistry;
+  protected final MeterRegistry meterRegistry;
 
-    private static final Set<String> OVERRIDABLE_CONFIGS =
-            Set.of(
-                    ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG);
+  private static final Set<String> OVERRIDABLE_CONFIGS =
+      Set.of(
+          ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG);
 
+  public BulkIngestProducer(
+      final DatasetMetadataStore datasetMetadataStore,
+      final AstraConfigs.PreprocessorConfig preprocessorConfig,
+      final MeterRegistry meterRegistry,
+      S3AsyncClient s3Client) {
 
-    public BulkIngestProducer(
-            final DatasetMetadataStore datasetMetadataStore,
-            final AstraConfigs.PreprocessorConfig preprocessorConfig,
-            final MeterRegistry meterRegistry,
-            S3AsyncClient s3Client) {
+    this.kafkaConfig = preprocessorConfig.getKafkaConfig();
 
-        this.kafkaConfig = preprocessorConfig.getKafkaConfig();
+    checkArgument(
+        !kafkaConfig.getKafkaBootStrapServers().isEmpty(),
+        "Kafka bootstrapServers must be provided");
+    checkArgument(!kafkaConfig.getKafkaTopic().isEmpty(), "Kafka topic must be provided");
 
-        checkArgument(
-                !kafkaConfig.getKafkaBootStrapServers().isEmpty(),
-                "Kafka bootstrapServers must be provided");
-        checkArgument(!kafkaConfig.getKafkaTopic().isEmpty(), "Kafka topic must be provided");
+    this.meterRegistry = meterRegistry;
+    this.datasetMetadataStore = datasetMetadataStore;
+    this.pendingRequests = new LinkedBlockingQueue<>();
 
-        this.meterRegistry = meterRegistry;
-        this.datasetMetadataStore = datasetMetadataStore;
-        this.pendingRequests = new LinkedBlockingQueue<>();
+    this.producerSleepMs =
+        Integer.parseInt(System.getProperty("astra.bulkIngest.producerSleepMs", "50"));
 
-        this.producerSleepMs =
-                Integer.parseInt(System.getProperty("astra.bulkIngest.producerSleepMs", "50"));
+    this.useKafkaTransactions =
+        Boolean.parseBoolean(System.getProperty("astra.bulkIngest.useKafkaTransactions", "false"));
 
-        this.useKafkaTransactions =
-                Boolean.parseBoolean(System.getProperty("astra.bulkIngest.useKafkaTransactions", "false"));
+    this.s3Client = s3Client;
+    this.failedSetResponseCounter = meterRegistry.counter(FAILED_SET_RESPONSE_COUNTER);
+    this.stallCounter = meterRegistry.counter(STALL_COUNTER);
+    this.kafkaRestartTimer = meterRegistry.timer(KAFKA_RESTART_COUNTER);
+    this.batchSizeGauge = meterRegistry.gauge(BATCH_SIZE_GAUGE, new AtomicInteger(0));
 
-        this.s3Client = s3Client;
-        this.failedSetResponseCounter = meterRegistry.counter(FAILED_SET_RESPONSE_COUNTER);
-        this.stallCounter = meterRegistry.counter(STALL_COUNTER);
-        this.kafkaRestartTimer = meterRegistry.timer(KAFKA_RESTART_COUNTER);
-        this.batchSizeGauge = meterRegistry.gauge(BATCH_SIZE_GAUGE, new AtomicInteger(0));
+    startKafkaProducer();
+  }
 
-        startKafkaProducer();
+  protected void startKafkaProducer() {
+
+    this.kafkaProducer = createKafkaTransactionProducer(UUID.randomUUID().toString());
+    this.kafkaMetrics = new KafkaClientMetrics(kafkaProducer);
+    this.kafkaMetrics.bindTo(meterRegistry);
+    if (useKafkaTransactions) {
+      this.kafkaProducer.initTransactions();
     }
+  }
 
-    protected void startKafkaProducer() {
+  private void stopKafkaProducer() {
+    try {
+      if (this.kafkaProducer != null) {
+        this.kafkaProducer.close(Duration.ZERO);
+      }
 
-        this.kafkaProducer = createKafkaTransactionProducer(UUID.randomUUID().toString());
-        this.kafkaMetrics = new KafkaClientMetrics(kafkaProducer);
-        this.kafkaMetrics.bindTo(meterRegistry);
-        if (useKafkaTransactions) {
-            this.kafkaProducer.initTransactions();
-        }
+      if (this.kafkaMetrics != null) {
+        this.kafkaMetrics.close();
+      }
+    } catch (Exception e) {
+      LOG.error("Error attempting to stop the Kafka producer", e);
     }
+  }
 
-    private void stopKafkaProducer() {
+  private void restartKafkaProducer() {
+    Timer.Sample restartTimer = Timer.start(meterRegistry);
+    stopKafkaProducer();
+    startKafkaProducer();
+    LOG.info("Restarted the kafka producer");
+    restartTimer.stop(kafkaRestartTimer);
+  }
+
+  private void cacheSortedDataset() {
+
+    this.throughputSortedDatasets =
+        datasetMetadataStore.listSync().stream()
+            .sorted(Comparator.comparingLong(DatasetMetadata::getThroughputBytes).reversed())
+            .toList();
+  }
+
+  @Override
+  protected void startUp() throws Exception {
+    cacheSortedDataset();
+    datasetMetadataStore.addListener(datasetListener);
+  }
+
+  @Override
+  protected void run() throws Exception {
+    while (isRunning()) {
+      List<BulkIngestRequest> requests = new ArrayList<>();
+      pendingRequests.drainTo(requests);
+      batchSizeGauge.set(requests.size());
+      if (requests.isEmpty()) {
         try {
-            if (this.kafkaProducer != null) {
-                this.kafkaProducer.close(Duration.ZERO);
-            }
-
-            if (this.kafkaMetrics != null) {
-                this.kafkaMetrics.close();
-            }
-        } catch (Exception e) {
-            LOG.error("Error attempting to stop the Kafka producer", e);
+          stallCounter.increment();
+          Thread.sleep(producerSleepMs);
+        } catch (InterruptedException e) {
+          return;
         }
+      } else {
+        produceDocuments(requests);
+      }
+    }
+  }
+
+  @Override
+  protected void shutDown() throws Exception {
+    datasetMetadataStore.removeListener(datasetListener);
+
+    kafkaProducer.close();
+    if (kafkaMetrics != null) {
+      kafkaMetrics.close();
+    }
+  }
+
+  public BulkIngestRequest submitRequest(Map<String, List<Trace.Span>> inputDocs) {
+    BulkIngestRequest request = new BulkIngestRequest(inputDocs);
+    pendingRequests.add(request);
+    return request;
+  }
+
+  protected KafkaProducer<String, byte[]> createKafkaTransactionProducer(String transactionId) {
+    Properties props = new Properties();
+    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaConfig.getKafkaBootStrapServers());
+    props.put(
+        ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,
+        "org.apache.kafka.common.serialization.StringSerializer");
+    props.put(
+        ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
+        "org.apache.kafka.common.serialization.ByteArraySerializer");
+    if (useKafkaTransactions) {
+      props.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, transactionId);
     }
 
-    private void restartKafkaProducer() {
-        Timer.Sample restartTimer = Timer.start(meterRegistry);
-        stopKafkaProducer();
-        startKafkaProducer();
-        LOG.info("Restarted the kafka producer");
-        restartTimer.stop(kafkaRestartTimer);
+    // don't override the properties that we have already set explicitly using named properties
+    for (Map.Entry<String, String> additionalProp :
+        kafkaConfig.getAdditionalPropsMap().entrySet()) {
+      props =
+          KafkaUtils.maybeOverrideProps(
+              props,
+              additionalProp.getKey(),
+              additionalProp.getValue(),
+              OVERRIDABLE_CONFIGS.contains(additionalProp.getKey()));
     }
+    return new KafkaProducer<>(props);
+  }
 
-    private void cacheSortedDataset() {
+  protected abstract Map<BulkIngestRequest, BulkIngestResponse> produceDocuments(
+      List<BulkIngestRequest> requests);
 
-        this.throughputSortedDatasets =
-                datasetMetadataStore.listSync().stream()
-                        .sorted(Comparator.comparingLong(DatasetMetadata::getThroughputBytes).reversed())
-                        .toList();
+  protected int getPartition(String index) {
+    for (DatasetMetadata datasetMetadata : throughputSortedDatasets) {
+      String serviceNamePattern = datasetMetadata.getServiceNamePattern();
+
+      if (serviceNamePattern.equals(MATCH_ALL_SERVICE)
+          || serviceNamePattern.equals(MATCH_STAR_SERVICE)
+          || index.equals(serviceNamePattern)) {
+        List<Integer> partitions = getActivePartitionList(datasetMetadata);
+        return partitions.get(ThreadLocalRandom.current().nextInt(partitions.size()));
+      }
     }
+    return -1;
+  }
 
-    @Override
-    protected void startUp() throws Exception {
-        cacheSortedDataset();
-        datasetMetadataStore.addListener(datasetListener);
+  private static List<Integer> getActivePartitionList(DatasetMetadata datasetMetadata) {
+    Optional<DatasetPartitionMetadata> datasetPartitionMetadata =
+        datasetMetadata.getPartitionConfigs().stream()
+            .filter(partitionMetadata -> partitionMetadata.getEndTimeEpochMs() == MAX_TIME)
+            .findFirst();
+
+    if (datasetPartitionMetadata.isEmpty()) {
+      return Collections.emptyList();
     }
-
-    @Override
-    protected void run() throws Exception {
-        while (isRunning()) {
-            List<BulkIngestRequest> requests = new ArrayList<>();
-            pendingRequests.drainTo(requests);
-            batchSizeGauge.set(requests.size());
-            if (requests.isEmpty()) {
-                try {
-                    stallCounter.increment();
-                    Thread.sleep(producerSleepMs);
-                } catch (InterruptedException e) {
-                    return;
-                }
-            } else {
-                produceDocuments(requests);
-            }
-        }
-    }
-
-    @Override
-    protected void shutDown() throws Exception {
-        datasetMetadataStore.removeListener(datasetListener);
-
-        kafkaProducer.close();
-        if (kafkaMetrics != null) {
-            kafkaMetrics.close();
-        }
-    }
-
-    public BulkIngestRequest submitRequest(Map<String, List<Trace.Span>> inputDocs) {
-        BulkIngestRequest request = new BulkIngestRequest(inputDocs);
-        pendingRequests.add(request);
-        return request;
-    }
-
-    protected KafkaProducer<String, byte[]> createKafkaTransactionProducer(String transactionId) {
-        Properties props = new Properties();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaConfig.getKafkaBootStrapServers());
-        props.put(
-                ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,
-                "org.apache.kafka.common.serialization.StringSerializer");
-        props.put(
-                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
-                "org.apache.kafka.common.serialization.ByteArraySerializer");
-        if (useKafkaTransactions) {
-            props.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, transactionId);
-        }
-
-        // don't override the properties that we have already set explicitly using named properties
-        for (Map.Entry<String, String> additionalProp :
-                kafkaConfig.getAdditionalPropsMap().entrySet()) {
-            props =
-                    KafkaUtils.maybeOverrideProps(
-                            props,
-                            additionalProp.getKey(),
-                            additionalProp.getValue(),
-                            OVERRIDABLE_CONFIGS.contains(additionalProp.getKey()));
-        }
-        return new KafkaProducer<>(props);
-    }
-
-    protected abstract Map<BulkIngestRequest, BulkIngestResponse> produceDocuments(List<BulkIngestRequest> requests);
-
-    protected int getPartition(String index) {
-        for (DatasetMetadata datasetMetadata : throughputSortedDatasets) {
-            String serviceNamePattern = datasetMetadata.getServiceNamePattern();
-
-            if (serviceNamePattern.equals(MATCH_ALL_SERVICE)
-                    || serviceNamePattern.equals(MATCH_STAR_SERVICE)
-                    || index.equals(serviceNamePattern)) {
-                List<Integer> partitions = getActivePartitionList(datasetMetadata);
-                return partitions.get(ThreadLocalRandom.current().nextInt(partitions.size()));
-            }
-        }
-        return -1;
-    }
-
-    private static List<Integer> getActivePartitionList(DatasetMetadata datasetMetadata) {
-        Optional<DatasetPartitionMetadata> datasetPartitionMetadata =
-                datasetMetadata.getPartitionConfigs().stream()
-                        .filter(partitionMetadata -> partitionMetadata.getEndTimeEpochMs() == MAX_TIME)
-                        .findFirst();
-
-        if (datasetPartitionMetadata.isEmpty()) {
-            return Collections.emptyList();
-        }
-        return datasetPartitionMetadata.get().getPartitions().stream()
-                .map(Integer::parseInt)
-                .collect(Collectors.toUnmodifiableList());
-    }
-
+    return datasetPartitionMetadata.get().getPartitions().stream()
+        .map(Integer::parseInt)
+        .collect(Collectors.toUnmodifiableList());
+  }
 }
