@@ -277,6 +277,10 @@ message PreprocessorConfig {
 
   KafkaConfig kafka_config = 9;
 
+  // S3 WAL Config
+  bool use_s3_wal = 15;
+  S3Config s3_config = 16;
+
   // Make the rate limit exceeded error code configurable
   // We default to 400 to prioritize fresh logs and drop excess logs
   // Set this to 429 for clients to retry the request after a delay
