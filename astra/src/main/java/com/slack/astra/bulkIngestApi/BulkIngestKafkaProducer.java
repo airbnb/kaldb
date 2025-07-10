@@ -43,7 +43,7 @@ import org.apache.kafka.common.errors.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class BulkIngestKafkaProducer extends AbstractExecutionThreadService {
+public class BulkIngestKafkaProducer extends BulkIngestProducer {
   private static final Logger LOG = LoggerFactory.getLogger(BulkIngestKafkaProducer.class);
   private final boolean useKafkaTransactions;
 
@@ -83,9 +83,9 @@ public class BulkIngestKafkaProducer extends AbstractExecutionThreadService {
           ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG);
 
   public BulkIngestKafkaProducer(
-      final DatasetMetadataStore datasetMetadataStore,
-      final AstraConfigs.PreprocessorConfig preprocessorConfig,
-      final MeterRegistry meterRegistry) {
+          final DatasetMetadataStore datasetMetadataStore,
+          final AstraConfigs.PreprocessorConfig preprocessorConfig,
+          final MeterRegistry meterRegistry,) {
     this.kafkaConfig = preprocessorConfig.getKafkaConfig();
 
     checkArgument(
@@ -109,93 +109,6 @@ public class BulkIngestKafkaProducer extends AbstractExecutionThreadService {
     this.kafkaRestartTimer = meterRegistry.timer(KAFKA_RESTART_COUNTER);
     this.batchSizeGauge = meterRegistry.gauge(BATCH_SIZE_GAUGE, new AtomicInteger(0));
 
-    startKafkaProducer();
-  }
-
-  private void startKafkaProducer() {
-    // since we use a new transaction ID every time we start a preprocessor there can be some zombie
-    // transactions?
-    // I think they will remain in kafka till they expire. They should never be readable if the
-    // consumer sets isolation.level as "read_committed"
-    // see "zombie fencing" https://www.confluent.io/blog/transactions-apache-kafka/
-    this.kafkaProducer = createKafkaTransactionProducer(UUID.randomUUID().toString());
-    this.kafkaMetrics = new KafkaClientMetrics(kafkaProducer);
-    this.kafkaMetrics.bindTo(meterRegistry);
-    if (useKafkaTransactions) {
-      this.kafkaProducer.initTransactions();
-    }
-  }
-
-  private void stopKafkaProducer() {
-    try {
-      if (this.kafkaProducer != null) {
-        this.kafkaProducer.close(Duration.ZERO);
-      }
-
-      if (this.kafkaMetrics != null) {
-        this.kafkaMetrics.close();
-      }
-    } catch (Exception e) {
-      LOG.error("Error attempting to stop the Kafka producer", e);
-    }
-  }
-
-  private void restartKafkaProducer() {
-    Timer.Sample restartTimer = Timer.start(meterRegistry);
-    stopKafkaProducer();
-    startKafkaProducer();
-    LOG.info("Restarted the kafka producer");
-    restartTimer.stop(kafkaRestartTimer);
-  }
-
-  private void cacheSortedDataset() {
-    // we sort the datasets to rank from which dataset do we start matching candidate service names
-    // in the future we can change the ordering from sort to something else
-    this.throughputSortedDatasets =
-        datasetMetadataStore.listSync().stream()
-            .sorted(Comparator.comparingLong(DatasetMetadata::getThroughputBytes).reversed())
-            .toList();
-  }
-
-  @Override
-  protected void startUp() throws Exception {
-    cacheSortedDataset();
-    datasetMetadataStore.addListener(datasetListener);
-  }
-
-  @Override
-  protected void run() throws Exception {
-    while (isRunning()) {
-      List<BulkIngestRequest> requests = new ArrayList<>();
-      pendingRequests.drainTo(requests);
-      batchSizeGauge.set(requests.size());
-      if (requests.isEmpty()) {
-        try {
-          stallCounter.increment();
-          Thread.sleep(producerSleepMs);
-        } catch (InterruptedException e) {
-          return;
-        }
-      } else {
-        produceDocuments(requests);
-      }
-    }
-  }
-
-  @Override
-  protected void shutDown() throws Exception {
-    datasetMetadataStore.removeListener(datasetListener);
-
-    kafkaProducer.close();
-    if (kafkaMetrics != null) {
-      kafkaMetrics.close();
-    }
-  }
-
-  public BulkIngestRequest submitRequest(Map<String, List<Trace.Span>> inputDocs) {
-    BulkIngestRequest request = new BulkIngestRequest(inputDocs);
-    pendingRequests.add(request);
-    return request;
   }
 
   protected Map<BulkIngestRequest, BulkIngestResponse> produceDocuments(
