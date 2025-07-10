@@ -15,7 +15,6 @@ public class WALBatchSerializer {
         GZIPOutputStream gzipOut = new GZIPOutputStream(baos)) {
 
       for (Map.Entry<String, List<Trace.Span>> entry : indexDocs.entrySet()) {
-        // Use protobuf header - EXACTLY as your colleague suggested
         WalProtos.BatchHeader header =
             WalProtos.BatchHeader.newBuilder()
                 .setIndex(entry.getKey())
@@ -28,8 +27,8 @@ public class WALBatchSerializer {
 
         // Write each span - using protobuf methods
         for (Trace.Span span : entry.getValue()) {
-          writeInt(gzipOut, span.getSerializedSize()); // NOT toByteArray().length
-          span.writeTo(gzipOut); // NOT gzipOut.write(toByteArray())
+          writeInt(gzipOut, span.getSerializedSize());
+          span.writeTo(gzipOut);
         }
       }
       gzipOut.finish();
