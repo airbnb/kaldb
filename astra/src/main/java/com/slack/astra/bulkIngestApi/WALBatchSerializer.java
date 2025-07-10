@@ -2,8 +2,12 @@ package com.slack.astra.bulkIngestApi;
 
 import com.slack.astra.proto.wal.WalProtos;
 import com.slack.service.murron.trace.Trace;
-import java.io.*;
-import java.util.*;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.zip.GZIPOutputStream;
 
 public class WALBatchSerializer {

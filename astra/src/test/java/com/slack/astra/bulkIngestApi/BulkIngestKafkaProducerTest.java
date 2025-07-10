@@ -143,8 +143,7 @@ class BulkIngestKafkaProducerTest {
     // the same manner
     when(doc1.toByteArray()).thenThrow(TimeoutException.class);
 
-    assertThat(
-            MetricsUtil.getTimerCount(BulkIngestKafkaProducer.KAFKA_RESTART_COUNTER, meterRegistry))
+    assertThat(MetricsUtil.getTimerCount(BulkIngestProducer.KAFKA_RESTART_COUNTER, meterRegistry))
         .isEqualTo(0);
 
     BulkIngestRequest request = bulkIngestKafkaProducer.submitRequest(indexDocsError);
