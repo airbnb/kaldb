@@ -1,38 +1,15 @@
 package com.slack.astra.bulkIngestApi;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.slack.astra.metadata.dataset.DatasetMetadata.MATCH_ALL_SERVICE;
-import static com.slack.astra.metadata.dataset.DatasetMetadata.MATCH_STAR_SERVICE;
-import static com.slack.astra.server.ManagerApiGrpc.MAX_TIME;
 
-import com.google.common.util.concurrent.AbstractExecutionThreadService;
-import com.slack.astra.metadata.core.AstraMetadataStoreChangeListener;
-import com.slack.astra.metadata.dataset.DatasetMetadata;
 import com.slack.astra.metadata.dataset.DatasetMetadataStore;
-import com.slack.astra.metadata.dataset.DatasetPartitionMetadata;
 import com.slack.astra.proto.config.AstraConfigs;
-import com.slack.astra.writer.KafkaUtils;
 import com.slack.service.murron.trace.Trace;
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.binder.kafka.KafkaClientMetrics;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.Properties;
 import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -47,70 +24,37 @@ public class BulkIngestKafkaProducer extends BulkIngestProducer {
   private static final Logger LOG = LoggerFactory.getLogger(BulkIngestKafkaProducer.class);
   private final boolean useKafkaTransactions;
 
-  private KafkaProducer<String, byte[]> kafkaProducer;
-
   private KafkaClientMetrics kafkaMetrics;
-
-  private final AstraConfigs.KafkaConfig kafkaConfig;
-
-  private final DatasetMetadataStore datasetMetadataStore;
-  private final AstraMetadataStoreChangeListener<DatasetMetadata> datasetListener =
-      (_) -> cacheSortedDataset();
-
-  protected List<DatasetMetadata> throughputSortedDatasets;
-
-  private final BlockingQueue<BulkIngestRequest> pendingRequests;
-
-  private final Integer producerSleepMs;
-
-  public static final String FAILED_SET_RESPONSE_COUNTER =
-      "bulk_ingest_producer_failed_set_response";
-  private final Counter failedSetResponseCounter;
-  public static final String STALL_COUNTER = "bulk_ingest_producer_stall_counter";
-  private final Counter stallCounter;
-
-  public static final String KAFKA_RESTART_COUNTER = "bulk_ingest_producer_kafka_restart_timer";
-
-  private final Timer kafkaRestartTimer;
-
-  public static final String BATCH_SIZE_GAUGE = "bulk_ingest_producer_batch_size";
-  private final AtomicInteger batchSizeGauge;
-
-  private final MeterRegistry meterRegistry;
 
   private static final Set<String> OVERRIDABLE_CONFIGS =
       Set.of(
           ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG);
 
   public BulkIngestKafkaProducer(
-          final DatasetMetadataStore datasetMetadataStore,
-          final AstraConfigs.PreprocessorConfig preprocessorConfig,
-          final MeterRegistry meterRegistry,) {
-    this.kafkaConfig = preprocessorConfig.getKafkaConfig();
-
-    checkArgument(
-        !kafkaConfig.getKafkaBootStrapServers().isEmpty(),
-        "Kafka bootstrapServers must be provided");
-    checkArgument(!kafkaConfig.getKafkaTopic().isEmpty(), "Kafka topic must be provided");
-
-    this.meterRegistry = meterRegistry;
-    this.datasetMetadataStore = datasetMetadataStore;
-    this.pendingRequests = new LinkedBlockingQueue<>();
-
-    // todo - consider making this a configurable value or removing the config
-    this.producerSleepMs =
-        Integer.parseInt(System.getProperty("astra.bulkIngest.producerSleepMs", "50"));
-
+      final DatasetMetadataStore datasetMetadataStore,
+      final AstraConfigs.PreprocessorConfig preprocessorConfig,
+      final MeterRegistry meterRegistry) {
+    super(datasetMetadataStore, preprocessorConfig, meterRegistry, null);
     this.useKafkaTransactions =
         Boolean.parseBoolean(System.getProperty("astra.bulkIngest.useKafkaTransactions", "false"));
-
-    this.failedSetResponseCounter = meterRegistry.counter(FAILED_SET_RESPONSE_COUNTER);
-    this.stallCounter = meterRegistry.counter(STALL_COUNTER);
-    this.kafkaRestartTimer = meterRegistry.timer(KAFKA_RESTART_COUNTER);
-    this.batchSizeGauge = meterRegistry.gauge(BATCH_SIZE_GAUGE, new AtomicInteger(0));
-
   }
 
+  @Override
+  protected void startKafkaProducer() {
+    // since we use a new transaction ID every time we start a preprocessor there can be some zombie
+    // transactions?
+    // I think they will remain in kafka till they expire. They should never be readable if the
+    // consumer sets isolation.level as "read_committed"
+    // see "zombie fencing" https://www.confluent.io/blog/transactions-apache-kafka/
+    super.startKafkaProducer(); // This calls parent's kafka setup
+    this.kafkaMetrics = new KafkaClientMetrics(kafkaProducer);
+    this.kafkaMetrics.bindTo(meterRegistry);
+    if (useKafkaTransactions) {
+      this.kafkaProducer.initTransactions();
+    }
+  }
+
+  @Override
   protected Map<BulkIngestRequest, BulkIngestResponse> produceDocuments(
       List<BulkIngestRequest> requests) {
     if (useKafkaTransactions) {
@@ -254,61 +198,5 @@ public class BulkIngestKafkaProducer extends BulkIngestProducer {
     }
 
     return new BulkIngestResponse(totalDocs, 0, "");
-  }
-
-  private KafkaProducer<String, byte[]> createKafkaTransactionProducer(String transactionId) {
-    Properties props = new Properties();
-    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaConfig.getKafkaBootStrapServers());
-    props.put(
-        ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,
-        "org.apache.kafka.common.serialization.StringSerializer");
-    props.put(
-        ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
-        "org.apache.kafka.common.serialization.ByteArraySerializer");
-    if (useKafkaTransactions) {
-      props.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, transactionId);
-    }
-
-    // don't override the properties that we have already set explicitly using named properties
-    for (Map.Entry<String, String> additionalProp :
-        kafkaConfig.getAdditionalPropsMap().entrySet()) {
-      props =
-          KafkaUtils.maybeOverrideProps(
-              props,
-              additionalProp.getKey(),
-              additionalProp.getValue(),
-              OVERRIDABLE_CONFIGS.contains(additionalProp.getKey()));
-    }
-    return new KafkaProducer<>(props);
-  }
-
-  private int getPartition(String index) {
-    for (DatasetMetadata datasetMetadata : throughputSortedDatasets) {
-      String serviceNamePattern = datasetMetadata.getServiceNamePattern();
-
-      if (serviceNamePattern.equals(MATCH_ALL_SERVICE)
-          || serviceNamePattern.equals(MATCH_STAR_SERVICE)
-          || index.equals(serviceNamePattern)) {
-        List<Integer> partitions = getActivePartitionList(datasetMetadata);
-        return partitions.get(ThreadLocalRandom.current().nextInt(partitions.size()));
-      }
-    }
-    // We don't have a provisioned service for this index
-    return -1;
-  }
-
-  /** Gets the active list of partitions from the provided dataset metadata */
-  private static List<Integer> getActivePartitionList(DatasetMetadata datasetMetadata) {
-    Optional<DatasetPartitionMetadata> datasetPartitionMetadata =
-        datasetMetadata.getPartitionConfigs().stream()
-            .filter(partitionMetadata -> partitionMetadata.getEndTimeEpochMs() == MAX_TIME)
-            .findFirst();
-
-    if (datasetPartitionMetadata.isEmpty()) {
-      return Collections.emptyList();
-    }
-    return datasetPartitionMetadata.get().getPartitions().stream()
-        .map(Integer::parseInt)
-        .collect(Collectors.toUnmodifiableList());
   }
 }

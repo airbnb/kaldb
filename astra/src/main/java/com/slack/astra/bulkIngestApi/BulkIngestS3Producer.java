@@ -3,7 +3,6 @@ package com.slack.astra.bulkIngestApi;
 import com.slack.astra.metadata.dataset.DatasetMetadataStore;
 import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.astra.proto.wal.WalProtos;
-import com.slack.astra.bulkIngestApi.WALBatchSerializer;
 import com.slack.service.murron.trace.Trace;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -110,8 +109,11 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
       s3SpansUploadedCounter.increment(totalDocs);
       s3BytesUploadedCounter.increment(compressedData.length);
 
-      LOG.debug("Uploaded {} spans ({} bytes compressed) to S3 at key {}",
-          totalDocs, compressedData.length, objectKey);
+      LOG.debug(
+          "Uploaded {} spans ({} bytes compressed) to S3 at key {}",
+          totalDocs,
+          compressedData.length,
+          objectKey);
 
     } catch (Exception e) {
       LOG.error("Failed to upload to S3", e);
