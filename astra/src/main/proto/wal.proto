@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package slack.astra.wal;
+
+option java_package = "com.slack.astra.proto.wal";
+option java_outer_classname = "WalProtos";
+
+message S3WalPointer {
+  string s3_bucket = 1;
+  string s3_key = 2;
+  int32 doc_count = 3;
+  int64 timestamp_ms = 4;
+  string compression_type = 5;
+  // Future: checksum, uncompressed_size, etc.
+}
+
+message BatchHeader {
+  string index = 1;
+  uint32 span_count = 2;
+}
+
