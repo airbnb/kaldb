@@ -1,5 +1,7 @@
 package com.slack.astra.server;
 
+import static com.google.common.base.Preconditions.checkArgument;
+
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.Service;
 import com.google.common.util.concurrent.ServiceManager;
@@ -71,8 +73,6 @@ import org.apache.logging.log4j.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
-
-import static com.google.common.base.Preconditions.checkArgument;
 
 /**
  * Main class of Astra that sets up the basic infra needed for all the other end points like an a
@@ -506,20 +506,22 @@ public class Astra {
 
       if (preprocessorConfig.getUseS3Wal()) {
         checkArgument(
-                preprocessorConfig.hasS3Config(),
-                "S3 configuration must be provided when using S3 WAL");
+            preprocessorConfig.hasS3Config(),
+            "S3 configuration must be provided when using S3 WAL");
         checkArgument(
             !preprocessorConfig.getS3Config().getS3Bucket().isEmpty(),
             "S3 bucket must be provided when using S3 WAL");
       }
-
 
       BulkIngestProducer bulkIngestProducer;
       if (preprocessorConfig.getUseS3Wal()) {
         LOG.info("Using S3 WAL producer");
         bulkIngestProducer =
             new BulkIngestS3Producer(
-                datasetMetadataStore, preprocessorConfig, meterRegistry, blobStore.getS3AsyncClient());
+                datasetMetadataStore,
+                preprocessorConfig,
+                meterRegistry,
+                blobStore.getS3AsyncClient());
       } else {
         LOG.info("Using Kafka WAL producer");
         bulkIngestProducer =

@@ -4,7 +4,6 @@ import com.slack.astra.metadata.dataset.DatasetMetadataStore;
 import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.service.murron.trace.Trace;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.binder.kafka.KafkaClientMetrics;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,8 +21,6 @@ import org.slf4j.LoggerFactory;
 public class BulkIngestKafkaProducer extends BulkIngestProducer {
   private static final Logger LOG = LoggerFactory.getLogger(BulkIngestKafkaProducer.class);
   private final boolean useKafkaTransactions;
-
-  private KafkaClientMetrics kafkaMetrics;
 
   private static final Set<String> OVERRIDABLE_CONFIGS =
       Set.of(
@@ -46,9 +43,6 @@ public class BulkIngestKafkaProducer extends BulkIngestProducer {
     // consumer sets isolation.level as "read_committed"
     // see "zombie fencing" https://www.confluent.io/blog/transactions-apache-kafka/
     super.startKafkaProducer(); // This calls parent's kafka setup
-    if (useKafkaTransactions) {
-      this.kafkaProducer.initTransactions();
-    }
   }
 
   @Override
