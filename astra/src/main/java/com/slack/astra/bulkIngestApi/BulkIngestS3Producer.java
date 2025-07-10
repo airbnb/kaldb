@@ -105,10 +105,6 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
 
       s3Client.putObject(putObjectRequest, AsyncRequestBody.fromBytes(compressedData)).get();
 
-      s3UploadCounter.increment();
-      s3SpansUploadedCounter.increment(totalDocs);
-      s3BytesUploadedCounter.increment(compressedData.length);
-
       LOG.debug(
           "Uploaded {} spans ({} bytes compressed) to S3 at key {}",
           totalDocs,
@@ -167,9 +163,15 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
         throw new RuntimeException("Failed to send WAL pointer to Kafka", e);
       }
     }
+    // Increment metrics
+    s3UploadCounter.increment();
+    s3SpansUploadedCounter.increment(totalDocs);
+    s3BytesUploadedCounter.increment(compressedData.length);
+
     return new BulkIngestResponse(totalDocs, 0, "Success");
   }
 
+  @Override
   protected void shutDown() throws Exception {
     if (s3Client != null) {
       s3Client.close();

@@ -45,19 +45,19 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
 
   protected KafkaProducer<String, byte[]> kafkaProducer;
 
-  private KafkaClientMetrics kafkaMetrics;
+  protected KafkaClientMetrics kafkaMetrics;
 
   protected final AstraConfigs.KafkaConfig kafkaConfig;
 
-  private final DatasetMetadataStore datasetMetadataStore;
-  private final AstraMetadataStoreChangeListener<DatasetMetadata> datasetListener =
+  protected final DatasetMetadataStore datasetMetadataStore;
+  protected final AstraMetadataStoreChangeListener<DatasetMetadata> datasetListener =
       (_) -> cacheSortedDataset();
 
   protected List<DatasetMetadata> throughputSortedDatasets;
 
-  private final BlockingQueue<BulkIngestRequest> pendingRequests;
+  protected final BlockingQueue<BulkIngestRequest> pendingRequests;
 
-  private final Integer producerSleepMs;
+  protected final Integer producerSleepMs;
 
   public static final String FAILED_SET_RESPONSE_COUNTER =
       "bulk_ingest_producer_failed_set_response";
@@ -122,7 +122,7 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
     }
   }
 
-  protected  void stopKafkaProducer() {
+  protected void stopKafkaProducer() {
     try {
       if (this.kafkaProducer != null) {
         this.kafkaProducer.close(Duration.ZERO);
@@ -144,7 +144,7 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
     restartTimer.stop(kafkaRestartTimer);
   }
 
-  protected  void cacheSortedDataset() {
+  protected void cacheSortedDataset() {
 
     this.throughputSortedDatasets =
         datasetMetadataStore.listSync().stream()

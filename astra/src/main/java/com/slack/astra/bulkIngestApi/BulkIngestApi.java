@@ -25,7 +25,7 @@ import org.slf4j.LoggerFactory;
  */
 public class BulkIngestApi {
   private static final Logger LOG = LoggerFactory.getLogger(BulkIngestApi.class);
-  private final BulkIngestKafkaProducer bulkIngestKafkaProducer;
+  private final BulkIngestProducer bulkIngestProducer;
   private final DatasetRateLimitingService datasetRateLimitingService;
   private final MeterRegistry meterRegistry;
   private final Counter incomingByteTotal;
@@ -41,13 +41,13 @@ public class BulkIngestApi {
   private final Counter bulkIngestErrorCounter;
 
   public BulkIngestApi(
-      BulkIngestKafkaProducer bulkIngestKafkaProducer,
+      BulkIngestProducer bulkIngestProducer,
       DatasetRateLimitingService datasetRateLimitingService,
       MeterRegistry meterRegistry,
       int rateLimitExceededErrorCode,
       Schema.IngestSchema schema) {
 
-    this.bulkIngestKafkaProducer = bulkIngestKafkaProducer;
+    this.bulkIngestProducer = bulkIngestProducer;
     this.datasetRateLimitingService = datasetRateLimitingService;
     this.meterRegistry = meterRegistry;
     this.incomingByteTotal = meterRegistry.counter(BULK_INGEST_INCOMING_BYTE_TOTAL);
@@ -115,7 +115,7 @@ public class BulkIngestApi {
               () -> {
                 try {
                   BulkIngestResponse response =
-                      bulkIngestKafkaProducer.submitRequest(finalDocs).getResponse();
+                      bulkIngestProducer.submitRequest(finalDocs).getResponse();
                   future.complete(HttpResponse.ofJson(response));
                 } catch (InterruptedException e) {
                   LOG.error("Request failed ", e);
