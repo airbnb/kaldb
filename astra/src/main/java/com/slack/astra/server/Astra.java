@@ -146,7 +146,7 @@ public class Astra {
     BlobStore blobStore = new BlobStore(s3Client, astraConfig.getS3Config().getS3Bucket());
 
     Set<Service> services =
-        getServices(curatorFramework, astraConfig, blobStore, prometheusMeterRegistry);
+        getServices(curatorFramework, astraConfig, blobStore, prometheusMeterRegistry, s3Client);
     serviceManager = new ServiceManager(services);
     serviceManager.addListener(getServiceManagerListener(), MoreExecutors.directExecutor());
 
@@ -157,7 +157,8 @@ public class Astra {
       AsyncCuratorFramework curatorFramework,
       AstraConfigs.AstraConfig astraConfig,
       BlobStore blobStore,
-      PrometheusMeterRegistry meterRegistry)
+      PrometheusMeterRegistry meterRegistry,
+      S3AsyncClient s3Client)
       throws Exception {
     Set<Service> services = new HashSet<>();
 
@@ -431,24 +432,18 @@ public class Astra {
       BulkIngestKafkaProducer bulkIngestKafkaProducer =
           new BulkIngestKafkaProducer(datasetMetadataStore, preprocessorConfig, meterRegistry);
       services.add(bulkIngestKafkaProducer);
-      if (preprocessorConfig.getUseS3Wal()) {
-        checkArgument(
-            preprocessorConfig.hasS3Config(),
-            "S3 configuration must be provided when using S3 WAL");
-        checkArgument(
-            !preprocessorConfig.getS3Config().getS3Bucket().isEmpty(),
-            "S3 bucket must be provided when using S3 WAL");
-      }
-
       BulkIngestProducer bulkIngestProducer;
       if (preprocessorConfig.getUseS3Wal()) {
+        checkArgument(
+            preprocessorConfig.hasS3WalConfig(),
+            "S3 configuration must be provided when using S3 WAL");
+        checkArgument(
+            !preprocessorConfig.getS3WalConfig().getS3Bucket().isEmpty(),
+            "S3 bucket must be provided when using S3 WAL");
         LOG.info("Using S3 WAL producer");
         bulkIngestProducer =
             new BulkIngestS3Producer(
-                datasetMetadataStore,
-                preprocessorConfig,
-                meterRegistry,
-                blobStore.getS3AsyncClient());
+                datasetMetadataStore, preprocessorConfig, meterRegistry, s3Client);
       } else {
         LOG.info("Using Kafka WAL producer");
         bulkIngestProducer =
