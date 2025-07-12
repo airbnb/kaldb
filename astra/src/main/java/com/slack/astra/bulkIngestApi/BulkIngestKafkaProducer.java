@@ -7,9 +7,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.errors.AuthorizationException;
 import org.apache.kafka.common.errors.OutOfOrderSequenceException;
@@ -20,29 +18,12 @@ import org.slf4j.LoggerFactory;
 
 public class BulkIngestKafkaProducer extends BulkIngestProducer {
   private static final Logger LOG = LoggerFactory.getLogger(BulkIngestKafkaProducer.class);
-  private final boolean useKafkaTransactions;
-
-  private static final Set<String> OVERRIDABLE_CONFIGS =
-      Set.of(
-          ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG);
 
   public BulkIngestKafkaProducer(
       final DatasetMetadataStore datasetMetadataStore,
       final AstraConfigs.PreprocessorConfig preprocessorConfig,
       final MeterRegistry meterRegistry) {
     super(datasetMetadataStore, preprocessorConfig, meterRegistry, null);
-    this.useKafkaTransactions =
-        Boolean.parseBoolean(System.getProperty("astra.bulkIngest.useKafkaTransactions", "false"));
-  }
-
-  @Override
-  protected void startKafkaProducer() {
-    // since we use a new transaction ID every time we start a preprocessor there can be some zombie
-    // transactions?
-    // I think they will remain in kafka till they expire. They should never be readable if the
-    // consumer sets isolation.level as "read_committed"
-    // see "zombie fencing" https://www.confluent.io/blog/transactions-apache-kafka/
-    super.startKafkaProducer(); // This calls parent's kafka setup
   }
 
   @Override
@@ -179,8 +160,7 @@ public class BulkIngestKafkaProducer extends BulkIngestProducer {
       // we will limit producing documents 1 thread at a time
       for (Trace.Span doc : indexDoc.getValue()) {
         ProducerRecord<String, byte[]> producerRecord =
-            new ProducerRecord<>(
-                super.kafkaConfig.getKafkaTopic(), partition, index, doc.toByteArray());
+            new ProducerRecord<>(kafkaConfig.getKafkaTopic(), partition, index, doc.toByteArray());
 
         // we intentionally suppress FutureReturnValueIgnored here in errorprone - this is because
         // we wrap this in a transaction, which is responsible for flushing all of the pending
