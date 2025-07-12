@@ -41,7 +41,7 @@ import software.amazon.awssdk.services.s3.S3AsyncClient;
 public abstract class BulkIngestProducer extends AbstractExecutionThreadService {
 
   private static final Logger LOG = LoggerFactory.getLogger(BulkIngestProducer.class);
-  private final boolean useKafkaTransactions;
+  protected final boolean useKafkaTransactions;
 
   protected KafkaProducer<String, byte[]> kafkaProducer;
 
@@ -63,10 +63,7 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
       "bulk_ingest_producer_failed_set_response";
   protected final Counter failedSetResponseCounter;
   public static final String STALL_COUNTER = "bulk_ingest_producer_stall_counter";
-  private final Counter stallCounter;
-
-  protected final S3AsyncClient s3Client;
-  private String walBucket;
+  protected final Counter stallCounter;
 
   public static final String KAFKA_RESTART_COUNTER = "bulk_ingest_producer_kafka_restart_timer";
   private final Timer kafkaRestartTimer;
@@ -103,7 +100,6 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
     this.useKafkaTransactions =
         Boolean.parseBoolean(System.getProperty("astra.bulkIngest.useKafkaTransactions", "false"));
 
-    this.s3Client = s3Client;
     this.failedSetResponseCounter = meterRegistry.counter(FAILED_SET_RESPONSE_COUNTER);
     this.stallCounter = meterRegistry.counter(STALL_COUNTER);
     this.kafkaRestartTimer = meterRegistry.timer(KAFKA_RESTART_COUNTER);

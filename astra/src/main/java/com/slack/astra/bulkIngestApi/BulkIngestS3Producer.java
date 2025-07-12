@@ -25,9 +25,10 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 public class BulkIngestS3Producer extends BulkIngestProducer {
 
   private static final Logger LOG = LoggerFactory.getLogger(BulkIngestS3Producer.class);
-  protected final String walBucket;
   protected final String kafkaTopic;
 
+  protected final S3AsyncClient s3Client;
+  protected final String walBucket;
   private final Counter s3UploadCounter;
   private final Counter s3SpansUploadedCounter;
   private final Timer s3UploadTimer;
@@ -42,9 +43,9 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
     super(datasetMetadataStore, preprocessorConfig, meterRegistry, s3Client);
 
     // Initialize S3Producer specific fields
-    this.walBucket = preprocessorConfig.getS3Config().getS3Bucket();
+    this.s3Client = s3Client;
+    this.walBucket = preprocessorConfig.getS3WalConfig().getS3Bucket();
     this.kafkaTopic = preprocessorConfig.getKafkaConfig().getKafkaTopic();
-
     this.s3UploadCounter = meterRegistry.counter("s3_wal_uploads_total");
     this.s3SpansUploadedCounter = meterRegistry.counter("s3_wal_spans_uploaded_total");
     this.s3UploadTimer = meterRegistry.timer("s3_wal_upload_duration");

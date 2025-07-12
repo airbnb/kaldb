@@ -15,17 +15,25 @@ import com.slack.astra.metadata.dataset.DatasetMetadata;
 import com.slack.astra.metadata.dataset.DatasetMetadataStore;
 import com.slack.astra.metadata.dataset.DatasetPartitionMetadata;
 import com.slack.astra.proto.config.AstraConfigs;
+import com.slack.astra.proto.wal.WalProtos;
 import com.slack.astra.testlib.MetricsUtil;
 import com.slack.astra.testlib.TestKafkaServer;
 import com.slack.service.murron.trace.Trace;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.curator.test.TestingServer;
 import org.apache.curator.x.async.AsyncCuratorFramework;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -105,7 +113,7 @@ class BulkIngestS3ProducerTest {
     preprocessorConfig =
         AstraConfigs.PreprocessorConfig.newBuilder()
             .setKafkaConfig(kafkaConfig)
-            .setS3Config(s3Config)
+            .setS3WalConfig(s3Config)
             .setServerConfig(serverConfig)
             .setPreprocessorInstanceCount(1)
             .setRateLimiterMaxBurstSeconds(1)
@@ -155,7 +163,7 @@ class BulkIngestS3ProducerTest {
   }
 
   @Test
-  public void testS3Upload() throws Exception {
+  public void testS3UploadandKafkaNotification() throws Exception {
 
     Trace.Span doc1 = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("test1")).build();
     Map<String, List<Trace.Span>> indexDocs = Map.of(INDEX_NAME, List.of(doc1));
@@ -185,5 +193,44 @@ class BulkIngestS3ProducerTest {
     assertThat(MetricsUtil.getCount("s3_wal_uploads_total", meterRegistry)).isEqualTo(1);
     assertThat(MetricsUtil.getCount("s3_wal_spans_uploaded_total", meterRegistry)).isEqualTo(1);
     assertThat(MetricsUtil.getCount("s3_wal_bytes_uploaded_total", meterRegistry)).isGreaterThan(1);
+
+    KafkaConsumer<String, byte[]> kafkaConsumer = getTestKafkaConsumer();
+    ConsumerRecords<String, byte[]> records =
+        kafkaConsumer.poll(Duration.of(10, ChronoUnit.SECONDS));
+
+    assertThat(records.count()).isEqualTo(1);
+
+    for (ConsumerRecord<String, byte[]> record : records) {
+      // Parse the S3WalPointer from the message
+      WalProtos.S3WalPointer pointer = WalProtos.S3WalPointer.parseFrom(record.value());
+      assertThat(pointer.getS3Bucket()).isEqualTo(TEST_S3_BUCKET);
+      assertThat(pointer.getS3Key()).startsWith("wal/");
+      assertThat(pointer.getDocCount()).isEqualTo(1);
+      assertThat(pointer.getCompressionType()).isEqualTo("gzip");
+
+      // Verify the Kafka message key is the index name
+      assertThat(record.key()).isEqualTo(INDEX_NAME);
+    }
+    kafkaConsumer.close();
   }
+
+  private KafkaConsumer<String, byte[]> getTestKafkaConsumer() throws Exception {
+
+    Properties properties = kafkaServer.getBroker().consumerConfig();
+    properties.put(
+        ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
+        "org.apache.kafka.common.serialization.StringDeserializer");
+    properties.put(
+        ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
+        "org.apache.kafka.common.serialization.ByteArrayDeserializer");
+    properties.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 30000);
+    properties.put("isolation.level", "read_committed");
+    KafkaConsumer kafkaConsumer = new KafkaConsumer(properties);
+    kafkaConsumer.subscribe(List.of(DOWNSTREAM_TOPIC));
+
+    return kafkaConsumer;
+  }
+
+  @Test
+  public void testCompression_Decompression() throws Exception {}
 }
