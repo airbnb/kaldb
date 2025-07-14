@@ -2,12 +2,16 @@ package com.slack.astra.bulkIngestApi;
 
 import com.slack.astra.proto.wal.WalProtos;
 import com.slack.service.murron.trace.Trace;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 public class WALBatchSerializer {
@@ -41,8 +45,52 @@ public class WALBatchSerializer {
 
   public static Map<String, List<Trace.Span>> deserializeAndDecompress(byte[] compressedData)
       throws IOException {
-    // TODO: Implement for indexers
-    return new HashMap<>();
+
+    Map<String, List<Trace.Span>> result = new HashMap<>();
+
+    try (ByteArrayInputStream bais = new ByteArrayInputStream(compressedData);
+        GZIPInputStream gzipIn = new GZIPInputStream(bais)) {
+
+      while (gzipIn.available() > 0) {
+        try {
+          // Read header size
+          int headerSize = readInt(gzipIn);
+          if (headerSize <= 0) {
+            break; // No more headers to read
+          }
+          // Read header data
+          byte[] headerData = gzipIn.readNBytes(headerSize);
+          if (headerData.length != headerSize) {
+            throw new IOException("Failed to read complete header data");
+          }
+
+          WalProtos.BatchHeader header = WalProtos.BatchHeader.parseFrom(headerData);
+          String index = header.getIndex();
+          int spanCount = header.getSpanCount();
+
+          List<Trace.Span> spans = new ArrayList<>();
+          for (int i = 0; i < spanCount; i++) {
+            // Read span size (4 bytes)
+            int spanSize = readInt(gzipIn);
+            if (spanSize <= 0) break;
+
+            // Read span data
+            byte[] spanBytes = gzipIn.readNBytes(spanSize);
+            if (spanBytes.length != spanSize) break;
+
+            Trace.Span span = Trace.Span.parseFrom(spanBytes);
+            spans.add(span);
+          }
+
+          result.put(index, spans);
+
+        } catch (Exception e) {
+          // End of valid data
+          break;
+        }
+      }
+    }
+    return result;
   }
 
   private static void writeInt(OutputStream out, int value) throws IOException {
@@ -50,5 +98,18 @@ public class WALBatchSerializer {
     out.write((value >>> 16) & 0xFF);
     out.write((value >>> 8) & 0xFF);
     out.write(value & 0xFF);
+  }
+
+  private static int readInt(InputStream in) throws IOException {
+    int b1 = in.read();
+    int b2 = in.read();
+    int b3 = in.read();
+    int b4 = in.read();
+
+    if (b1 < 0 || b2 < 0 || b3 < 0 || b4 < 0) {
+      throw new IOException("Unexpected end of stream");
+    }
+
+    return (b1 << 24) | (b2 << 16) | (b3 << 8) | b4;
   }
 }

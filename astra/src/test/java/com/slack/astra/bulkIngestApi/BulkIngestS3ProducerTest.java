@@ -232,5 +232,55 @@ class BulkIngestS3ProducerTest {
   }
 
   @Test
-  public void testCompression_Decompression() throws Exception {}
+  public void testCompression() throws Exception {
+
+    // Test 1: Empty spans
+    Map<String, List<Trace.Span>> emptyspans = Map.of(INDEX_NAME, List.of());
+    byte[] emptyCompressedData = WALBatchSerializer.serializeAndCompress(emptyspans);
+    assertThat(emptyCompressedData.length).isGreaterThan(0);
+
+    // Test 2: Single span
+    Trace.Span singleSpan = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("test1")).build();
+    Map<String, List<Trace.Span>> singleSpanDocs = Map.of(INDEX_NAME, List.of(singleSpan));
+    byte[] singleSpanCompressedData = WALBatchSerializer.serializeAndCompress(singleSpanDocs);
+    assertThat(singleSpanCompressedData.length).isGreaterThan(0);
+
+    // Test 3: Multiple spans with repeated data
+    String repeatdata = "testdata".repeat(1000); // Create a large string to test compression
+
+    Trace.Span span1 = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("test1")).build();
+
+    Trace.Span span2 =
+        Trace.Span.newBuilder()
+            .setId(ByteString.copyFromUtf8("test2"))
+            .setTraceId(ByteString.copyFromUtf8(repeatdata))
+            .build();
+
+    Trace.Span span3 =
+        Trace.Span.newBuilder()
+            .setId(ByteString.copyFromUtf8("test3"))
+            .setTraceId(ByteString.copyFromUtf8(repeatdata))
+            .build();
+
+    // create a map with multiple spans
+    Map<String, List<Trace.Span>> indexDocs = Map.of(INDEX_NAME, List.of(span1, span2, span3));
+    byte[] compressedData = WALBatchSerializer.serializeAndCompress(indexDocs);
+
+    int uncompressedSize = 0;
+
+    // Calculate the uncompressed size
+    for (List<Trace.Span> spans : indexDocs.values()) {
+      for (Trace.Span span : spans) {
+        uncompressedSize += span.getSerializedSize();
+      }
+    }
+
+    // Verify that the compressed data is smaller than the uncompressed size
+    assertThat(compressedData.length).isLessThan(uncompressedSize);
+    LOG.debug(
+        "Compression ratio: {} -> {} bytes ({}% reduction)",
+        uncompressedSize,
+        compressedData.length,
+        ((uncompressedSize - compressedData.length) * 100) / uncompressedSize);
+  }
 }
