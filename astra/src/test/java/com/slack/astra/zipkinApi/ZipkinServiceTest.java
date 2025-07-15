@@ -11,7 +11,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -36,6 +35,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -195,23 +195,20 @@ public class ZipkinServiceTest {
       String traceId = "test_trace_3";
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
 
-      int maxSpansParam = 10000;
       boolean userRequest = true;
 
       zipkinService.getTraceByTraceId(
           traceId,
           Optional.empty(),
           Optional.empty(),
-          Optional.of(maxSpansParam),
+          Optional.empty(),
           Optional.of(userRequest),
           Optional.empty());
 
       verify(searcher)
           .doSearch(
               Mockito.argThat(
-                  request ->
-                      request.getHowMany() == maxSpansParam
-                          && request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
+                  request -> request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
 
       verify(mockBlobStore).upload(Mockito.anyString(), Mockito.any(Path.class));
 
@@ -229,8 +226,7 @@ public class ZipkinServiceTest {
   }
 
   @Test
-  public void testGetTraceByTraceId_respectUserRequest_respectDataFreshness_skip_search()
-      throws Exception {
+  public void testGetTraceByTraceId_respectUserRequest_skip_search() throws Exception {
     try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
       // Mocking Tracing and Span
       Tracer mockTracer = mock(Tracer.class);
@@ -251,34 +247,28 @@ public class ZipkinServiceTest {
       String path = String.format("%s/%s", TRACE_CACHE_PREFIX, traceId);
       mockBlobStore.upload(path, tempDir);
 
-      int maxSpansParam = 10000;
       boolean userRequest = true;
-      long dataFreshnessInMinutes = 0;
 
       zipkinService.getTraceByTraceId(
           traceId,
           Optional.empty(),
           Optional.empty(),
-          Optional.of(maxSpansParam),
+          Optional.empty(),
           Optional.of(userRequest),
-          Optional.of(dataFreshnessInMinutes));
+          Optional.empty());
 
       verify(mockBlobStore).download(Mockito.anyString(), Mockito.any(Path.class));
-
+      verify(searcher, never()).doSearch(Mockito.any());
       Path directoryDownloaded = Files.createTempDirectory(traceId);
       mockBlobStore.download(
           String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), directoryDownloaded);
 
       File[] filesDownloaded = directoryDownloaded.toFile().listFiles();
-      assertThat(Objects.requireNonNull(filesDownloaded).length).isEqualTo(2);
-      for (File file : filesDownloaded) {
-        if (file.getName().endsWith("traceData.json.gz")) {
-          Path uploadedFile = file.toPath();
-          assertThat(uploadedFile.toString()).endsWith("traceData.json.gz");
-          String returnData = ZipkinService.decompressJsonData(Files.readAllBytes(uploadedFile));
-          assertNotNull(returnData, "Decompressed data should not be null");
-        }
-      }
+      assertThat(Objects.requireNonNull(filesDownloaded).length).isEqualTo(1);
+      Path uploadedFile = filesDownloaded[0].toPath();
+      assertThat(uploadedFile.toString()).endsWith("traceData.json.gz");
+      String returnData = ZipkinService.decompressJsonData(Files.readAllBytes(uploadedFile));
+      assertNotNull(returnData, "Decompressed data should not be null");
     }
   }
 
@@ -295,19 +285,8 @@ public class ZipkinServiceTest {
 
       String traceId = "test_trace_5";
 
-      Path filePath = Paths.get(Resources.getResource("zipkinApi/traceData.json").toURI());
-
-      byte[] data = ZipkinService.compressJsonData(Files.readString(filePath));
-      Path tempDir = Files.createTempDirectory(traceId);
-      Path traceFile = tempDir.resolve("traceData.json.gz");
-      Files.write(traceFile, data);
-
-      String path = String.format("%s/%s", TRACE_CACHE_PREFIX, traceId);
-      mockBlobStore.upload(path, tempDir);
-
-      int maxSpansParam = 10000;
       boolean userRequest = true;
-      long dataFreshnessInMinutes = 5;
+      long dataFreshnessInSeconds = Instant.now().getEpochSecond() - Instant.parse("2024-10-31T20:48:33.560Z").getEpochSecond() + 100;
 
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
 
@@ -315,17 +294,64 @@ public class ZipkinServiceTest {
           traceId,
           Optional.empty(),
           Optional.empty(),
-          Optional.of(maxSpansParam),
+          Optional.empty(),
           Optional.of(userRequest),
-          Optional.of(dataFreshnessInMinutes));
+          Optional.of(dataFreshnessInSeconds));
 
-      verify(mockBlobStore).getFileMetadata(Mockito.anyString());
-      verify(mockBlobStore, never()).download(Mockito.anyString(), Mockito.any(Path.class));
-      verify(mockBlobStore, times(2)).upload(Mockito.anyString(), Mockito.any(Path.class));
+      verify(mockBlobStore).download(Mockito.anyString(), Mockito.any(Path.class));
+      verify(mockBlobStore, never()).upload(Mockito.anyString(), Mockito.any(Path.class));
+      verify(searcher)
+              .doSearch(
+                      Mockito.argThat(
+                              request -> request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
+
 
       Path directoryDownloaded = Files.createTempDirectory(traceId);
       mockBlobStore.download(
           String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), directoryDownloaded);
+
+      File[] filesDownloaded = directoryDownloaded.toFile().listFiles();
+      assertThat(Objects.requireNonNull(filesDownloaded).length).isEqualTo(0);
+    }
+  }
+
+  @Test
+  public void testGetTraceByTraceId_respectUserRequest_respectDataFreshness_perform_search_and_save()
+          throws Exception {
+    try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
+      // Mocking Tracing and Span
+      Tracer mockTracer = mock(Tracer.class);
+      Span mockSpan = mock(Span.class);
+
+      mockedTracing.when(Tracing::currentTracer).thenReturn(mockTracer);
+      when(mockTracer.currentSpan()).thenReturn(mockSpan);
+
+      String traceId = "test_trace_6";
+
+      boolean userRequest = true;
+      long dataFreshnessInSeconds = 100;
+
+      when(searcher.doSearch(any())).thenReturn(mockSearchResult);
+
+      zipkinService.getTraceByTraceId(
+              traceId,
+              Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
+              Optional.of(userRequest),
+              Optional.of(dataFreshnessInSeconds));
+
+      verify(mockBlobStore).download(Mockito.anyString(), Mockito.any(Path.class));
+      verify(searcher)
+              .doSearch(
+                      Mockito.argThat(
+                              request -> request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
+
+      verify(mockBlobStore).upload(Mockito.anyString(), Mockito.any(Path.class));
+
+      Path directoryDownloaded = Files.createTempDirectory(traceId);
+      mockBlobStore.download(
+              String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), directoryDownloaded);
 
       File[] filesDownloaded = directoryDownloaded.toFile().listFiles();
       assertThat(Objects.requireNonNull(filesDownloaded).length).isEqualTo(1);
@@ -416,7 +442,7 @@ public class ZipkinServiceTest {
     zipkinService.saveDataToS3(traceId, jsonData);
 
     // Act
-    String retrievedData = zipkinService.retrieveDataFromS3(traceId, 0);
+    String retrievedData = zipkinService.retrieveDataFromS3(traceId);
 
     // Assert
     assertNotNull(retrievedData, "Retrieved data should not be null");
@@ -427,7 +453,7 @@ public class ZipkinServiceTest {
   public void testRetrieveDataFromS3_nullTraceId_throwsException() {
     // Act & Assert
     try {
-      zipkinService.retrieveDataFromS3(null, 5);
+      zipkinService.retrieveDataFromS3(null);
       assertTrue(false, "Should have thrown an exception");
     } catch (AssertionError e) {
       // Expected - assertion should fail for null traceId
@@ -438,7 +464,7 @@ public class ZipkinServiceTest {
   public void testRetrieveDataFromS3_emptyTraceId_throwsException() {
     // Act & Assert
     try {
-      zipkinService.retrieveDataFromS3("", 5);
+      zipkinService.retrieveDataFromS3("");
       assertTrue(false, "Should have thrown an exception");
     } catch (AssertionError e) {
       // Expected - assertion should fail for empty traceId

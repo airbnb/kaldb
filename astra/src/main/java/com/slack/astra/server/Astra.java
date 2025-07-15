@@ -250,7 +250,7 @@ public class Astra {
                       blobStore,
                       astraConfig.getQueryConfig().getZipkinDefaultMaxSpans(),
                       astraConfig.getQueryConfig().getZipkinDefaultLookbackMins(),
-                      astraConfig.getQueryConfig().getZipkinDefaultDataFreshnessMins()))
+                      astraConfig.getQueryConfig().getZipkinDefaultDataFreshnessSecs()))
               .withGrpcService(astraDistributedQueryService)
               .build();
       services.add(armeriaService);

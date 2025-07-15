@@ -34,6 +34,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,7 +45,6 @@ import java.util.zip.GZIPOutputStream;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 
 @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
 /**
@@ -158,7 +158,7 @@ public class ZipkinService {
   private final int defaultMaxSpans;
   private static long LOOKBACK_MINS = 60 * 24 * 7;
 
-  private final long defaultDataFreshnessInMinutes;
+  private final long defaultDataFreshnessInSeconds;
 
   private final AstraQueryServiceBase searcher;
 
@@ -179,11 +179,11 @@ public class ZipkinService {
       BlobStore blobStore,
       int defaultMaxSpans,
       int defaultLookbackMins,
-      long defaultDataFreshnessInMinutes) {
+      long defaultDataFreshnessInSeconds) {
     this.searcher = searcher;
     this.blobStore = blobStore;
     this.defaultMaxSpans = defaultMaxSpans;
-    this.defaultDataFreshnessInMinutes = defaultDataFreshnessInMinutes;
+    this.defaultDataFreshnessInSeconds = defaultDataFreshnessInSeconds;
   }
 
   @Get
@@ -223,17 +223,15 @@ public class ZipkinService {
       @Param("endTimeEpochMs") Optional<Long> endTimeEpochMs,
       @Param("maxSpans") Optional<Integer> maxSpans,
       @Header("X-User-Request") Optional<Boolean> userRequest,
-      @Header("X-Data-Freshness-In-Minutes") Optional<Long> dataFreshnessInMinutes)
+      @Header("X-Data-Freshness-In-Seconds") Optional<Long> dataFreshnessInSeconds)
       throws IOException {
 
     // Log the custom header userRequest value if present
     if (userRequest.isPresent()) {
       LOG.info("Received custom header X-User-Request: {}", userRequest.get());
       // try to retrieve trace data from S3; check timestamp before using S3 for data freshness
-      long dataFreshnessInMinutesValue =
-          dataFreshnessInMinutes.orElse(
-              this.defaultDataFreshnessInMinutes); // default to 15 minutes if not provided
-      String traceData = retrieveDataFromS3(traceId, dataFreshnessInMinutesValue);
+
+      String traceData = retrieveDataFromS3(traceId);
       // if found, return the data
       if (traceData != null) {
         LOG.info("Trace data retrieved from S3 for traceId={}", traceId);
@@ -282,10 +280,28 @@ public class ZipkinService {
     String output = convertLogWireMessageToZipkinSpan(messages);
 
     if (userRequest.isPresent() && userRequest.get() && !output.isEmpty()) {
-      // Save the trace data to S3 if the custom header is present
-      saveDataToS3(traceId, output);
+      long dataFreshnessInSecondsValue =
+          dataFreshnessInSeconds.orElse(
+              this.defaultDataFreshnessInSeconds); // default to 15 minutes if not provided
+      // Check if no new spans in trace data, it can be saved
+      Instant latestSpanTimestamp = getLatestSpanTimestamp(messages);
+      Instant currentTime = Instant.now();
+      if (latestSpanTimestamp.isBefore(
+          currentTime.minus(dataFreshnessInSecondsValue, ChronoUnit.SECONDS))) {
+        LOG.info("No new incoming span in trace data, can be saved to S3 for traceId={}", traceId);
+        // Save the trace data to S3
+        saveDataToS3(traceId, output);
+      }
     }
     return HttpResponse.of(HttpStatus.OK, MediaType.JSON_UTF_8, output);
+  }
+
+  @VisibleForTesting
+  protected Instant getLatestSpanTimestamp(List<LogWireMessage> spanList) {
+    return spanList.stream()
+        .map(LogWireMessage::getTimestamp)
+        .max(Comparator.naturalOrder())
+        .orElse(null);
   }
 
   @VisibleForTesting
@@ -310,21 +326,10 @@ public class ZipkinService {
     }
   }
 
-  protected String retrieveDataFromS3(String traceId, long dataFreshnessInMinutes) {
+  protected String retrieveDataFromS3(String traceId) {
     assert traceId != null && !traceId.isEmpty();
 
     try {
-      // If data is fresh skip S3 retrieval
-      long currentTime = Instant.now().toEpochMilli();
-
-      HeadObjectResponse response =
-          blobStore.getFileMetadata(
-              String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId));
-      long lastModified = response.lastModified().toEpochMilli();
-      if (currentTime - lastModified < dataFreshnessInMinutes * 60 * 1000) {
-        return null; // Data is still getting updated, check on cache and live nodes
-      }
-
       // Retrieve the compressed trace data from S3
       java.nio.file.Path tempDir = Files.createTempDirectory("");
       blobStore.download(String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), tempDir);
@@ -339,8 +344,8 @@ public class ZipkinService {
 
     } catch (Exception e) {
       LOG.error("Error retrieving trace data from S3 for traceId={}", traceId, e);
+      return null;
     }
-    return null;
   }
 
   protected void saveDataToS3(String traceId, String output) {
