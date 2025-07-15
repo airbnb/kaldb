@@ -10,7 +10,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.astra.server.AstraConfig;
 import com.slack.astra.writer.KafkaUtils;
-import com.slack.astra.writer.LogMessageWriterImpl;
+import com.slack.astra.writer.MessageWriter;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.kafka.KafkaClientMetrics;
@@ -42,7 +42,7 @@ import org.slf4j.LoggerFactory;
 public class AstraKafkaConsumer {
   private static final Logger LOG = LoggerFactory.getLogger(AstraKafkaConsumer.class);
   public static final int KAFKA_POLL_TIMEOUT_MS = 250;
-  private final LogMessageWriterImpl logMessageWriterImpl;
+  private final MessageWriter messageWriter;
   private static final String[] REQUIRED_CONFIGS = {ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG};
 
   private static final Set<String> OVERRIDABLE_CONFIGS =
@@ -103,14 +103,14 @@ public class AstraKafkaConsumer {
 
   public AstraKafkaConsumer(
       AstraConfigs.KafkaConfig kafkaConfig,
-      LogMessageWriterImpl logMessageWriterImpl,
+      MessageWriter messageWriter,
       MeterRegistry meterRegistry) {
 
     topicPartition =
         getTopicPartition(kafkaConfig.getKafkaTopic(), kafkaConfig.getKafkaTopicPartition());
     recordsReceivedCounter = meterRegistry.counter(RECORDS_RECEIVED_COUNTER);
     recordsFailedCounter = meterRegistry.counter(RECORDS_FAILED_COUNTER);
-    this.logMessageWriterImpl = logMessageWriterImpl;
+    this.messageWriter = messageWriter;
 
     // Create kafka consumer
     Properties consumerProps = makeKafkaConsumerProps(kafkaConfig);
@@ -233,7 +233,7 @@ public class AstraKafkaConsumer {
       recordsReceivedCounter.increment(recordCount);
       int recordFailures = 0;
       for (ConsumerRecord<String, byte[]> record : records) {
-        if (!logMessageWriterImpl.insertRecord(record)) recordFailures++;
+        if (!messageWriter.insertRecord(record)) recordFailures++;
       }
       recordsFailedCounter.increment(recordFailures);
       LOG.debug(
@@ -321,7 +321,7 @@ public class AstraKafkaConsumer {
                     recordsFailedCounter.increment();
                   } else {
                     try {
-                      if (logMessageWriterImpl.insertRecord(record)) {
+                      if (messageWriter.insertRecord(record)) {
                         recordsReceivedCounter.increment();
                       } else {
                         recordsFailedCounter.increment();
