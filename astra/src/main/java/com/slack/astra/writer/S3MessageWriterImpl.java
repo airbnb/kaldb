@@ -25,12 +25,6 @@ import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 
-/**
- * S3MessageWriterImpl processes Kafka ConsumerRecords containing S3WalPointer messages.
- * It downloads compressed batches from S3, decompresses them, and pushes individual spans
- * to the ChunkManager. This implementation separates S3 WAL processing concerns from the
- * Kafka consumer and provides concurrent S3 download capabilities.
- */
 public class S3MessageWriterImpl implements MessageWriter {
     private static final Logger LOG = LoggerFactory.getLogger(S3MessageWriterImpl.class);
 
@@ -117,7 +111,6 @@ public class S3MessageWriterImpl implements MessageWriter {
                     GetObjectRequest getObjectRequest =
                             GetObjectRequest.builder().bucket(bucket).key(key).build();
 
-                    // Use instance method and handle CompletableFuture properly
                     ResponseBytes<GetObjectResponse> response =
                             s3Client.getObject(getObjectRequest, AsyncResponseTransformer.toBytes()).get();
 

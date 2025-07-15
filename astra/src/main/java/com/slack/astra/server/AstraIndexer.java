@@ -7,11 +7,14 @@ import com.google.common.util.concurrent.AbstractExecutionThreadService;
 import com.slack.astra.chunkManager.ChunkRollOverException;
 import com.slack.astra.chunkManager.IndexingChunkManager;
 import com.slack.astra.logstore.LogMessage;
+import com.slack.astra.logstore.Message;
 import com.slack.astra.metadata.recovery.RecoveryTaskMetadataStore;
 import com.slack.astra.metadata.snapshot.SnapshotMetadataStore;
 import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.astra.util.RuntimeHalterImpl;
 import com.slack.astra.writer.LogMessageWriterImpl;
+import com.slack.astra.writer.MessageWriter;
+import com.slack.astra.writer.S3MessageWriterImpl;
 import com.slack.astra.writer.kafka.AstraKafkaConsumer;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.io.IOException;
@@ -69,8 +72,28 @@ public class AstraIndexer extends AbstractExecutionThreadService {
     // Create a chunk manager
     this.chunkManager = chunkManager;
     // set up indexing pipelne
-    LogMessageWriterImpl logMessageWriterImpl = new LogMessageWriterImpl(chunkManager);
-    this.kafkaConsumer = new AstraKafkaConsumer(kafkaConfig, logMessageWriterImpl, meterRegistry);
+    MessageWriter messageWriter;
+
+    if (preprocessorConfig != null && preprocessorConfig.getUseS3Wal()){
+      messageWriter = new S3MessageWriterImpl(
+          chunkManager, s3Client, meterRegistry);
+    } else {
+      messageWriter = new LogMessageWriterImpl(chunkManager);
+    }
+
+    this.kafkaConsumer = new AstraKafkaConsumer(kafkaConfig, messageWriter, meterRegistry);
+  }
+
+  public AstraIndexer(
+          IndexingChunkManager<LogMessage> chunkManager,
+          AsyncCuratorFramework curatorFramework,
+          AstraConfigs.MetadataStoreConfig metadataStoreConfig,
+          AstraConfigs.IndexerConfig indexerConfig,
+          AstraConfigs.KafkaConfig kafkaConfig,
+          MeterRegistry meterRegistry) {
+
+    this(chunkManager, curatorFramework, metadataStoreConfig, indexerConfig,
+            kafkaConfig, meterRegistry, null, null);
   }
 
   @Override
