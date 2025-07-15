@@ -18,6 +18,7 @@ import java.io.IOException;
 import org.apache.curator.x.async.AsyncCuratorFramework;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import software.amazon.awssdk.services.s3.S3AsyncClient;
 
 /**
  * AstraIndexer creates an indexer to index the log data. The indexer also exposes a search api to
@@ -57,7 +58,10 @@ public class AstraIndexer extends AbstractExecutionThreadService {
       AstraConfigs.MetadataStoreConfig metadataStoreConfig,
       AstraConfigs.IndexerConfig indexerConfig,
       AstraConfigs.KafkaConfig kafkaConfig,
-      MeterRegistry meterRegistry) {
+      MeterRegistry meterRegistry,
+      AstraConfigs.PreprocessorConfig preprocessorConfig, // Add this
+      S3AsyncClient s3Client) {
+
     checkNotNull(chunkManager, "Chunk manager can't be null");
     this.curatorFramework = curatorFramework;
     this.metadataStoreConfig = metadataStoreConfig;
