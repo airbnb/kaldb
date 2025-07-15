@@ -286,7 +286,10 @@ public class ZipkinServiceTest {
       String traceId = "test_trace_5";
 
       boolean userRequest = true;
-      long dataFreshnessInSeconds = Instant.now().getEpochSecond() - Instant.parse("2024-10-31T20:48:33.560Z").getEpochSecond() + 100;
+      long dataFreshnessInSeconds =
+          Instant.now().getEpochSecond()
+              - Instant.parse("2024-10-31T20:48:33.560Z").getEpochSecond()
+              + 100;
 
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
 
@@ -301,10 +304,9 @@ public class ZipkinServiceTest {
       verify(mockBlobStore).download(Mockito.anyString(), Mockito.any(Path.class));
       verify(mockBlobStore, never()).upload(Mockito.anyString(), Mockito.any(Path.class));
       verify(searcher)
-              .doSearch(
-                      Mockito.argThat(
-                              request -> request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
-
+          .doSearch(
+              Mockito.argThat(
+                  request -> request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
 
       Path directoryDownloaded = Files.createTempDirectory(traceId);
       mockBlobStore.download(
@@ -316,7 +318,8 @@ public class ZipkinServiceTest {
   }
 
   @Test
-  public void testGetTraceByTraceId_respectUserRequest_respectDataFreshness_perform_search_and_save()
+  public void
+      testGetTraceByTraceId_respectUserRequest_respectDataFreshness_perform_search_and_save()
           throws Exception {
     try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
       // Mocking Tracing and Span
@@ -334,24 +337,24 @@ public class ZipkinServiceTest {
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
 
       zipkinService.getTraceByTraceId(
-              traceId,
-              Optional.empty(),
-              Optional.empty(),
-              Optional.empty(),
-              Optional.of(userRequest),
-              Optional.of(dataFreshnessInSeconds));
+          traceId,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of(userRequest),
+          Optional.of(dataFreshnessInSeconds));
 
       verify(mockBlobStore).download(Mockito.anyString(), Mockito.any(Path.class));
       verify(searcher)
-              .doSearch(
-                      Mockito.argThat(
-                              request -> request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
+          .doSearch(
+              Mockito.argThat(
+                  request -> request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
 
       verify(mockBlobStore).upload(Mockito.anyString(), Mockito.any(Path.class));
 
       Path directoryDownloaded = Files.createTempDirectory(traceId);
       mockBlobStore.download(
-              String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), directoryDownloaded);
+          String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), directoryDownloaded);
 
       File[] filesDownloaded = directoryDownloaded.toFile().listFiles();
       assertThat(Objects.requireNonNull(filesDownloaded).length).isEqualTo(1);
