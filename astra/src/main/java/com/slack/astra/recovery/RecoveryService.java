@@ -40,6 +40,7 @@ import org.apache.kafka.clients.admin.OffsetSpec;
 import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import software.amazon.awssdk.services.s3.S3AsyncClient;
 
 /**
  * The recovery service is intended to be executed on a recovery node, and is responsible for
@@ -85,6 +86,9 @@ public class RecoveryService extends AbstractIdleService {
   private final Timer recoveryTaskTimerFailure;
   private SearchMetadataStore searchMetadataStore;
 
+  protected final S3AsyncClient s3Client;
+  final AstraConfigs.PreprocessorConfig preprocessorConfig;
+
   private final AstraMetadataStoreChangeListener<RecoveryNodeMetadata> recoveryNodeListener =
       this::recoveryNodeListener;
 
@@ -92,13 +96,18 @@ public class RecoveryService extends AbstractIdleService {
       AstraConfigs.AstraConfig AstraConfig,
       AsyncCuratorFramework curatorFramework,
       MeterRegistry meterRegistry,
-      BlobStore blobStore) {
+      BlobStore blobStore,
+      AstraConfigs.PreprocessorConfig preprocessorConfig,
+      S3AsyncClient s3Client) {
+
     this.curatorFramework = curatorFramework;
     this.searchContext =
         SearchContext.fromConfig(AstraConfig.getRecoveryConfig().getServerConfig());
     this.meterRegistry = meterRegistry;
     this.blobStore = blobStore;
     this.AstraConfig = AstraConfig;
+    this.preprocessorConfig = preprocessorConfig;
+    this.s3Client = s3Client;
 
     adminClient =
         AdminClient.create(
@@ -129,6 +138,15 @@ public class RecoveryService extends AbstractIdleService {
         meterRegistry.counter(RECORDS_NO_LONGER_AVAILABLE, meterTags);
     recoveryTaskTimerSuccess = meterRegistry.timer(RECOVERY_TASK_TIMER, "successful", "true");
     recoveryTaskTimerFailure = meterRegistry.timer(RECOVERY_TASK_TIMER, "successful", "false");
+  }
+
+  public RecoveryService(
+          AstraConfigs.AstraConfig AstraConfig,
+          AsyncCuratorFramework curatorFramework,
+          MeterRegistry meterRegistry,
+          BlobStore blobStore) {
+
+    this(AstraConfig, curatorFramework, meterRegistry, blobStore, null, null);
   }
 
   @Override

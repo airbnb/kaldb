@@ -195,7 +195,9 @@ public class Astra {
               curatorFramework,
               astraConfig.getIndexerConfig(),
               astraConfig.getIndexerConfig().getKafkaConfig(),
-              meterRegistry);
+              meterRegistry,
+              astraConfig.getPreprocessorConfig(),
+              s3Client);
       services.add(indexer);
 
       AstraLocalQueryService<LogMessage> searcher =
@@ -421,7 +423,13 @@ public class Astra {
       services.add(armeriaService);
 
       RecoveryService recoveryService =
-          new RecoveryService(astraConfig, curatorFramework, meterRegistry, blobStore);
+          new RecoveryService(
+              astraConfig,
+              curatorFramework,
+              meterRegistry,
+              blobStore,
+              astraConfig.getPreprocessorConfig(),
+              s3Client);
       services.add(recoveryService);
     }
 
