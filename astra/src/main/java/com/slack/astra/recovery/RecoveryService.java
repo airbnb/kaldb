@@ -22,6 +22,8 @@ import com.slack.astra.metadata.snapshot.SnapshotMetadataStore;
 import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.astra.proto.metadata.Metadata;
 import com.slack.astra.writer.LogMessageWriterImpl;
+import com.slack.astra.writer.MessageWriter;
+import com.slack.astra.writer.S3MessageWriterImpl;
 import com.slack.astra.writer.kafka.AstraKafkaConsumer;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -334,13 +336,20 @@ public class RecoveryService extends AbstractIdleService {
                 blobStore);
 
         // Ingest data in parallel
-        LogMessageWriterImpl logMessageWriterImpl = new LogMessageWriterImpl(chunkManager);
+        MessageWriter messageWriter;
+
+        if (preprocessorConfig != null && preprocessorConfig.getUseS3Wal()){
+          messageWriter = new S3MessageWriterImpl(
+                  chunkManager, s3Client, meterRegistry);
+        } else {
+          messageWriter = new LogMessageWriterImpl(chunkManager);
+        }
         AstraKafkaConsumer kafkaConsumer =
             new AstraKafkaConsumer(
                 makeKafkaConfig(
                     AstraConfig.getRecoveryConfig().getKafkaConfig(),
                     validatedRecoveryTask.partitionId),
-                logMessageWriterImpl,
+                messageWriter,
                 meterRegistry);
 
         kafkaConsumer.prepConsumerForConsumption(validatedRecoveryTask.startOffset);
