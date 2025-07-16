@@ -126,6 +126,12 @@ message SearchRequest {
         Value min_interval = 1;
         // Exact number of buckets required
         Value num_buckets = 2;
+
+        // matching the names used by the OpenSearch. TODO Maybe I could rename the above fields as they appear unused
+        // upper bound of buckets
+        Value buckets = 3;
+        // lower bound of bucket size
+        Value minimum_interval = 4;
       }
 
       // Unique fields specific to the terms aggregation request
