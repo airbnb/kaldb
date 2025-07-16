@@ -175,8 +175,7 @@ public class CachingChunkManager<T> extends ChunkManagerBase<T> {
   }
 
   @Override
-  public void addMessage(
-      Trace.Span message, long msgSize, String kafkaPartitionId, long offset, boolean local_insert)
+  public void addMessage(Trace.Span message, long msgSize, String kafkaPartitionId, long offset)
       throws IOException {
     throw new UnsupportedOperationException(
         "Adding messages is not supported on a caching chunk manager");

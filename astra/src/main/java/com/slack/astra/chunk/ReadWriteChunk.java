@@ -139,8 +139,7 @@ public abstract class ReadWriteChunk<T> implements Chunk<T> {
   }
 
   /** Index the message in the logstore and update the chunk data time range. */
-  public void addMessage(
-      Trace.Span message, String kafkaPartitionId, long offset, boolean local_update) {
+  public void addMessage(Trace.Span message, String kafkaPartitionId, long offset) {
     if (!this.kafkaPartitionId.equals(kafkaPartitionId)) {
       throw new IllegalArgumentException(
           "All messages for this chunk should belong to partition: "
@@ -159,9 +158,7 @@ public abstract class ReadWriteChunk<T> implements Chunk<T> {
       }
       chunkInfo.updateDataTimeRange(timestamp.toEpochMilli());
 
-      if (local_update) {
-        chunkInfo.updateMaxOffset(offset);
-      }
+      chunkInfo.updateMaxOffset(offset);
     } else {
       throw new IllegalStateException(String.format("Chunk %s is read only", chunkInfo));
     }

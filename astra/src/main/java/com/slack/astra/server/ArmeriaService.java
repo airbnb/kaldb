@@ -164,7 +164,7 @@ public class ArmeriaService extends AbstractIdleService {
     }
 
     public ArmeriaService build() {
-      //HttpTracing.newBuilder()
+      // HttpTracing.newBuilder()
       Tracing.Builder tracingBuilder =
           Tracing.newBuilder()
               .localServiceName(serviceName)

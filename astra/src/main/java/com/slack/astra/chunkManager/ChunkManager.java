@@ -9,8 +9,7 @@ import java.time.Duration;
 import java.util.Map;
 
 public interface ChunkManager<T> {
-  void addMessage(
-      Trace.Span message, long msgSize, String kafkaPartitionId, long offset, boolean local_update)
+  void addMessage(Trace.Span message, long msgSize, String kafkaPartitionId, long offset)
       throws IOException;
 
   SearchResult<T> query(SearchQuery query, Duration queryTimeout);

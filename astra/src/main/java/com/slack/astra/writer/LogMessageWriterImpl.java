@@ -63,8 +63,7 @@ public class LogMessageWriterImpl implements MessageWriter {
         Trace.Span.parseFrom(record.value()),
         record.serializedValueSize(),
         String.valueOf(record.partition()),
-        record.offset(),
-        false);
+        record.offset());
     return true;
   }
 }

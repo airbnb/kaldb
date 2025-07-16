@@ -169,7 +169,7 @@ public class RecoveryChunkManagerTest {
     int offset = 1;
     for (Trace.Span m : messages) {
       final int msgSize = m.toString().length();
-      chunkManager.addMessage(m, msgSize, TEST_KAFKA_PARTITION_ID, offset, false);
+      chunkManager.addMessage(m, msgSize, TEST_KAFKA_PARTITION_ID, offset);
       actualChunkSize += msgSize;
       offset++;
     }
@@ -223,8 +223,7 @@ public class RecoveryChunkManagerTest {
         messageWithHighOffset,
         messageWithHighOffset.toString().length(),
         TEST_KAFKA_PARTITION_ID,
-        veryHighOffset,
-        false);
+        veryHighOffset);
     assertThat(chunkManager.getActiveChunk().info().getMaxOffset()).isEqualTo(veryHighOffset);
     chunkManager.getActiveChunk().commit();
     assertThat(
@@ -254,8 +253,7 @@ public class RecoveryChunkManagerTest {
         messageWithLowerOffset,
         messageWithLowerOffset.toString().length(),
         TEST_KAFKA_PARTITION_ID,
-        lowerOffset,
-        false);
+        lowerOffset);
     assertThat(chunkManager.getActiveChunk().info().getMaxOffset()).isEqualTo(veryHighOffset);
     chunkManager.getActiveChunk().commit();
     assertThat(
@@ -284,8 +282,7 @@ public class RecoveryChunkManagerTest {
                     messageWithInvalidTopic,
                     messageWithInvalidTopic.toString().length(),
                     "differentKafkaTopic",
-                    lowerOffset + 1,
-                    false));
+                    lowerOffset + 1));
 
     // Get the count of the amount of indices so that we can confirm we've cleaned them up
     // after the rollover
@@ -314,8 +311,7 @@ public class RecoveryChunkManagerTest {
     // Can't add messages to current chunk after roll over.
     assertThatThrownBy(
             () ->
-                currentChunk.addMessage(
-                    SpanUtil.makeSpan(100000), TEST_KAFKA_PARTITION_ID, 100000, false))
+                currentChunk.addMessage(SpanUtil.makeSpan(100000), TEST_KAFKA_PARTITION_ID, 100000))
         .isInstanceOf(IllegalStateException.class);
 
     // Ensure data is cleaned up in the manager
@@ -372,7 +368,7 @@ public class RecoveryChunkManagerTest {
     // Add a valid message
     int offset = 1;
     Trace.Span msg1 = SpanUtil.makeSpan(1);
-    chunkManager.addMessage(msg1, msg1.toString().length(), TEST_KAFKA_PARTITION_ID, offset, false);
+    chunkManager.addMessage(msg1, msg1.toString().length(), TEST_KAFKA_PARTITION_ID, offset);
     offset++;
 
     // Add an invalid message
@@ -383,8 +379,7 @@ public class RecoveryChunkManagerTest {
             .setFieldType(Schema.SchemaFieldType.INTEGER)
             .build();
     Trace.Span msg100 = SpanUtil.makeSpan(100, "Message100", Instant.now(), List.of(conflictTag));
-    chunkManager.addMessage(
-        msg100, msg100.toString().length(), TEST_KAFKA_PARTITION_ID, offset, false);
+    chunkManager.addMessage(msg100, msg100.toString().length(), TEST_KAFKA_PARTITION_ID, offset);
     //noinspection UnusedAssignment
     offset++;
 
@@ -422,7 +417,7 @@ public class RecoveryChunkManagerTest {
 
     List<Trace.Span> messages = SpanUtil.makeSpansWithTimeDifference(1, 20, 1, Instant.now());
     for (Trace.Span m : messages) {
-      chunkManager.addMessage(m, m.toString().length(), TEST_KAFKA_PARTITION_ID, offset, false);
+      chunkManager.addMessage(m, m.toString().length(), TEST_KAFKA_PARTITION_ID, offset);
       offset++;
     }
 
@@ -441,7 +436,7 @@ public class RecoveryChunkManagerTest {
         .isThrownBy(
             () ->
                 chunkManager.addMessage(
-                    SpanUtil.makeSpan(1000), 100, TEST_KAFKA_PARTITION_ID, 1000, false));
+                    SpanUtil.makeSpan(1000), 100, TEST_KAFKA_PARTITION_ID, 1000));
 
     // Check metadata.
     List<SnapshotMetadata> snapshots =
@@ -464,7 +459,7 @@ public class RecoveryChunkManagerTest {
         .isThrownBy(
             () ->
                 chunkManager.addMessage(
-                    SpanUtil.makeSpan(1000), 100, TEST_KAFKA_PARTITION_ID, 1000, false));
+                    SpanUtil.makeSpan(1000), 100, TEST_KAFKA_PARTITION_ID, 1000));
 
     chunkManager.awaitTerminated(DEFAULT_START_STOP_DURATION);
     chunkManager = null;

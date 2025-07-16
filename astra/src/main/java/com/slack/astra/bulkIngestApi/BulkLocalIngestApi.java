@@ -83,7 +83,7 @@ public class BulkLocalIngestApi {
         BulkIngestResponse response = new BulkIngestResponse(0, 0, e.getMessage());
         future.complete(HttpResponse.ofJson(INTERNAL_SERVER_ERROR, response));
       }
-//      LOG.info("Parsed docs message: {}", docs);
+      //      LOG.info("Parsed docs message: {}", docs);
 
       // todo - our rate limiter doesn't have a way to acquire permits across multiple
       // datasets
@@ -116,7 +116,7 @@ public class BulkLocalIngestApi {
       for (Map.Entry<String, List<Trace.Span>> indexDocs : docs.entrySet()) {
         for (Trace.Span span : indexDocs.getValue()) {
           try {
-            chunkManager.addMessage(span, span.getSerializedSize(), String.valueOf(0), 12345, true);
+            chunkManager.addMessage(span, span.getSerializedSize(), String.valueOf(0), 12345);
             count += 1;
             //            return HttpResponse.of(future);
           } catch (Exception e) {
