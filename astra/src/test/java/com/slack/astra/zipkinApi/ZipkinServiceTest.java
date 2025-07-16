@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -31,7 +33,6 @@ import com.slack.astra.proto.service.AstraSearch;
 import com.slack.astra.server.AstraQueryServiceBase;
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -193,35 +194,40 @@ public class ZipkinServiceTest {
       when(mockTracer.currentSpan()).thenReturn(mockSpan);
 
       String traceId = "test_trace_3";
+      String traceFilePath = String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId);
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
 
       boolean userRequest = true;
 
-      zipkinService.getTraceByTraceId(
-          traceId,
-          Optional.empty(),
-          Optional.empty(),
-          Optional.empty(),
-          Optional.of(userRequest),
-          Optional.empty());
+      HttpResponse response =
+          zipkinService.getTraceByTraceId(
+              traceId,
+              Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
+              Optional.of(userRequest),
+              Optional.empty());
 
       verify(searcher)
           .doSearch(
               Mockito.argThat(
                   request -> request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
 
-      verify(mockBlobStore).upload(Mockito.anyString(), Mockito.any(Path.class));
+      verify(mockBlobStore).uploadJsonData(anyString(), anyString(), eq(true));
+      verify(mockBlobStore).copyFile(anyString(), eq(traceFilePath));
+      verify(mockBlobStore).deleteFile(anyString());
 
-      Path directoryDownloaded = Files.createTempDirectory(traceId);
-      mockBlobStore.download(
-          String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), directoryDownloaded);
+      assertNotNull(response, "Response should not be null");
+      response
+          .aggregate()
+          .thenAccept(
+              aggregatedResponse -> {
+                assertEquals(HttpStatus.OK, aggregatedResponse.status());
+                assertEquals(mockSearchResult.toString(), aggregatedResponse.contentUtf8());
+              });
 
-      File[] filesDownloaded = directoryDownloaded.toFile().listFiles();
-      assertThat(Objects.requireNonNull(filesDownloaded).length).isEqualTo(1);
-      Path uploadedFile = filesDownloaded[0].toPath();
-      assertThat(uploadedFile.toString()).endsWith("traceData.json.gz");
-      String data = ZipkinService.decompressJsonData(Files.readAllBytes(uploadedFile));
-      assertNotNull(data, "Decompressed data should not be null");
+      String returnData = mockBlobStore.readFileData(traceFilePath, true);
+      assertNotNull(returnData, "Decompressed data should not be null");
     }
   }
 
@@ -236,38 +242,35 @@ public class ZipkinServiceTest {
       when(mockTracer.currentSpan()).thenReturn(mockSpan);
 
       String traceId = "test_trace_4";
+      String traceFilePath = String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId);
 
       Path filePath = Paths.get(Resources.getResource("zipkinApi/traceData.json").toURI());
 
-      byte[] data = ZipkinService.compressJsonData(Files.readString(filePath));
-      Path tempDir = Files.createTempDirectory(traceId);
-      Path traceFile = tempDir.resolve("traceData.json.gz");
-      Files.write(traceFile, data);
-
-      String path = String.format("%s/%s", TRACE_CACHE_PREFIX, traceId);
-      mockBlobStore.upload(path, tempDir);
+      mockBlobStore.uploadJsonData(traceFilePath, Files.readString(filePath), true);
 
       boolean userRequest = true;
 
-      zipkinService.getTraceByTraceId(
-          traceId,
-          Optional.empty(),
-          Optional.empty(),
-          Optional.empty(),
-          Optional.of(userRequest),
-          Optional.empty());
+      HttpResponse response =
+          zipkinService.getTraceByTraceId(
+              traceId,
+              Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
+              Optional.of(userRequest),
+              Optional.empty());
 
-      verify(mockBlobStore).download(Mockito.anyString(), Mockito.any(Path.class));
+      verify(mockBlobStore).readFileData(eq(traceFilePath), eq(true));
       verify(searcher, never()).doSearch(Mockito.any());
-      Path directoryDownloaded = Files.createTempDirectory(traceId);
-      mockBlobStore.download(
-          String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), directoryDownloaded);
+      assertNotNull(response, "Response should not be null");
+      response
+          .aggregate()
+          .thenAccept(
+              aggregatedResponse -> {
+                assertEquals(HttpStatus.OK, aggregatedResponse.status());
+                assertEquals(mockSearchResult.toString(), aggregatedResponse.contentUtf8());
+              });
 
-      File[] filesDownloaded = directoryDownloaded.toFile().listFiles();
-      assertThat(Objects.requireNonNull(filesDownloaded).length).isEqualTo(1);
-      Path uploadedFile = filesDownloaded[0].toPath();
-      assertThat(uploadedFile.toString()).endsWith("traceData.json.gz");
-      String returnData = ZipkinService.decompressJsonData(Files.readAllBytes(uploadedFile));
+      String returnData = mockBlobStore.readFileData(traceFilePath, true);
       assertNotNull(returnData, "Decompressed data should not be null");
     }
   }
@@ -284,6 +287,7 @@ public class ZipkinServiceTest {
       when(mockTracer.currentSpan()).thenReturn(mockSpan);
 
       String traceId = "test_trace_5";
+      String traceFilePath = String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId);
 
       boolean userRequest = true;
       long dataFreshnessInSeconds =
@@ -293,20 +297,31 @@ public class ZipkinServiceTest {
 
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
 
-      zipkinService.getTraceByTraceId(
-          traceId,
-          Optional.empty(),
-          Optional.empty(),
-          Optional.empty(),
-          Optional.of(userRequest),
-          Optional.of(dataFreshnessInSeconds));
+      HttpResponse response =
+          zipkinService.getTraceByTraceId(
+              traceId,
+              Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
+              Optional.of(userRequest),
+              Optional.of(dataFreshnessInSeconds));
 
-      verify(mockBlobStore).download(Mockito.anyString(), Mockito.any(Path.class));
-      verify(mockBlobStore, never()).upload(Mockito.anyString(), Mockito.any(Path.class));
+      verify(mockBlobStore).readFileData(traceFilePath, true);
+      verify(mockBlobStore, never()).uploadJsonData(anyString(), anyString(), eq(true));
+      verify(mockBlobStore, never()).copyFile(anyString(), eq(traceFilePath));
+      verify(mockBlobStore, never()).deleteFile(anyString());
       verify(searcher)
           .doSearch(
               Mockito.argThat(
                   request -> request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
+      assertNotNull(response, "Response should not be null");
+      response
+          .aggregate()
+          .thenAccept(
+              aggregatedResponse -> {
+                assertEquals(HttpStatus.OK, aggregatedResponse.status());
+                assertEquals(mockSearchResult.toString(), aggregatedResponse.contentUtf8());
+              });
 
       Path directoryDownloaded = Files.createTempDirectory(traceId);
       mockBlobStore.download(
@@ -330,114 +345,47 @@ public class ZipkinServiceTest {
       when(mockTracer.currentSpan()).thenReturn(mockSpan);
 
       String traceId = "test_trace_6";
-
+      String traceFilePath = String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId);
       boolean userRequest = true;
       long dataFreshnessInSeconds = 100;
 
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
 
-      zipkinService.getTraceByTraceId(
-          traceId,
-          Optional.empty(),
-          Optional.empty(),
-          Optional.empty(),
-          Optional.of(userRequest),
-          Optional.of(dataFreshnessInSeconds));
+      HttpResponse response =
+          zipkinService.getTraceByTraceId(
+              traceId,
+              Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
+              Optional.of(userRequest),
+              Optional.of(dataFreshnessInSeconds));
 
-      verify(mockBlobStore).download(Mockito.anyString(), Mockito.any(Path.class));
+      verify(mockBlobStore).readFileData(traceFilePath, true);
       verify(searcher)
           .doSearch(
               Mockito.argThat(
                   request -> request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
 
-      verify(mockBlobStore).upload(Mockito.anyString(), Mockito.any(Path.class));
+      verify(mockBlobStore).uploadJsonData(anyString(), anyString(), eq(true));
+      verify(mockBlobStore).copyFile(anyString(), eq(traceFilePath));
+      verify(mockBlobStore).deleteFile(anyString());
+      assertNotNull(response, "Response should not be null");
+      response
+          .aggregate()
+          .thenAccept(
+              aggregatedResponse -> {
+                assertEquals(HttpStatus.OK, aggregatedResponse.status());
+                assertEquals(mockSearchResult.toString(), aggregatedResponse.contentUtf8());
+              });
 
-      Path directoryDownloaded = Files.createTempDirectory(traceId);
-      mockBlobStore.download(
-          String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), directoryDownloaded);
+      String returnData = mockBlobStore.readFileData(traceFilePath, true);
 
-      File[] filesDownloaded = directoryDownloaded.toFile().listFiles();
-      assertThat(Objects.requireNonNull(filesDownloaded).length).isEqualTo(1);
-      Path uploadedFile = filesDownloaded[0].toPath();
-      assertThat(uploadedFile.toString()).endsWith("traceData.json.gz");
-      String returnData = ZipkinService.decompressJsonData(Files.readAllBytes(uploadedFile));
       assertNotNull(returnData, "Decompressed data should not be null");
     }
   }
 
   @Test
-  public void testCompressJsonData() throws Exception {
-    // Arrange
-    String jsonData =
-        "[{\"id\":\"101\",\"traceId\":\"test_trace_789\",\"name\":\"test-span\",\"tags\":{\"key1\":\"value1\",\"key2\":\"value2\",\"key3\":\"value3\"}}]";
-
-    // Act
-    byte[] compressedData = ZipkinService.compressJsonData(jsonData);
-
-    // Assert
-    assertNotNull(compressedData, "Compressed data should not be null");
-    assertTrue(compressedData.length > 0, "Compressed data should not be empty");
-
-    // Verify compression actually reduced size
-    long originalSize = jsonData.getBytes(StandardCharsets.UTF_8).length;
-    assertTrue(
-        compressedData.length < originalSize, "Compressed data should be smaller than original");
-
-    // Verify we can decompress and get the original data
-    String decompressedData = ZipkinService.decompressJsonData(compressedData);
-    assertEquals(jsonData, decompressedData, "Decompressed data should match original");
-  }
-
-  @Test
-  public void testCompressJsonData_emptyString() throws Exception {
-    // Arrange
-    String jsonData = "";
-
-    // Act
-    byte[] compressedData = ZipkinService.compressJsonData(jsonData);
-
-    // Assert
-    assertNotNull(compressedData, "Compressed data should not be null");
-    assertTrue(compressedData.length > 0, "Compressed data should not be empty for empty string");
-
-    // Verify we can decompress and get the original data
-    String decompressedData = ZipkinService.decompressJsonData(compressedData);
-    assertEquals(
-        jsonData, decompressedData, "Decompressed data should match original empty string");
-  }
-
-  @Test
-  public void testDecompressJsonData() throws Exception {
-    // Arrange
-    String jsonData =
-        "[{\"id\":\"101\",\"traceId\":\"test_trace_789\",\"name\":\"test-span\",\"tags\":{\"key1\":\"value1\",\"key2\":\"value2\",\"key3\":\"value3\"}}]";
-    byte[] compressedData = ZipkinService.compressJsonData(jsonData);
-
-    // Act
-    String decompressedData = ZipkinService.decompressJsonData(compressedData);
-
-    // Assert
-    assertNotNull(decompressedData, "Decompressed data should not be null");
-    assertEquals(jsonData, decompressedData, "Decompressed data should match original");
-  }
-
-  @Test
-  public void testDecompressJsonData_emptyString() throws Exception {
-    // Arrange
-    String jsonData = "";
-    byte[] compressedData = ZipkinService.compressJsonData(jsonData);
-
-    // Act
-    String decompressedData = ZipkinService.decompressJsonData(compressedData);
-
-    // Assert
-    assertNotNull(decompressedData, "Decompressed data should not be null");
-    assertEquals(
-        jsonData, decompressedData, "Decompressed data should match original empty string");
-  }
-
-  @Test
-  public void testRetrieveDataFromS3() throws Exception {
+  public void testRetrieveDataFromS3() {
     // Arrange
     String traceId = "test_trace_123";
     String jsonData =
@@ -457,7 +405,7 @@ public class ZipkinServiceTest {
     // Act & Assert
     try {
       zipkinService.retrieveDataFromS3(null);
-      assertTrue(false, "Should have thrown an exception");
+      fail("Should have thrown an exception");
     } catch (AssertionError e) {
       // Expected - assertion should fail for null traceId
     }
@@ -468,14 +416,14 @@ public class ZipkinServiceTest {
     // Act & Assert
     try {
       zipkinService.retrieveDataFromS3("");
-      assertTrue(false, "Should have thrown an exception");
+      fail("Should have thrown an exception");
     } catch (AssertionError e) {
       // Expected - assertion should fail for empty traceId
     }
   }
 
   @Test
-  public void testSaveDataToS3() throws Exception {
+  public void testSaveDataToS3() {
     // Arrange
     String traceId = "test_trace_456";
     String jsonData =
@@ -485,26 +433,15 @@ public class ZipkinServiceTest {
     zipkinService.saveDataToS3(traceId, jsonData);
 
     // Assert
-    verify(mockBlobStore).upload(anyString(), any(Path.class));
+    verify(mockBlobStore).uploadJsonData(anyString(), anyString(), eq(true));
+    verify(mockBlobStore).copyFile(anyString(), anyString());
+    verify(mockBlobStore).deleteFile(anyString());
 
     // Assert
-    Path directoryDownloaded = Files.createTempDirectory(traceId);
-    mockBlobStore.download(
-        String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), directoryDownloaded);
-    File[] filesDownloaded = directoryDownloaded.toFile().listFiles();
-    assertThat(Objects.requireNonNull(filesDownloaded).length).isEqualTo(1);
-
-    Path uploadedFile = filesDownloaded[0].toPath();
-    assertThat(uploadedFile.toString()).endsWith("traceData.json.gz");
-
-    // Verify the file is actually compressed (smaller than original)
-    long compressedSize = Files.size(uploadedFile);
-    long originalSize = jsonData.getBytes(StandardCharsets.UTF_8).length;
-    assertTrue(compressedSize < originalSize, "Compressed file should be smaller than original");
-
-    // Verify we can decompress and get the original
-    String decompressedData = ZipkinService.decompressJsonData(Files.readAllBytes(uploadedFile));
-    assertEquals(jsonData, decompressedData, "Decompressed data should match original");
+    String fileData =
+        mockBlobStore.readFileData(
+            String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId), true);
+    assertEquals(jsonData, fileData, "Decompressed data should match original");
   }
 
   @Test

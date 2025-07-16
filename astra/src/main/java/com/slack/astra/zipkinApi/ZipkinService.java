@@ -25,11 +25,7 @@ import com.slack.astra.logstore.LogWireMessage;
 import com.slack.astra.proto.service.AstraSearch;
 import com.slack.astra.server.AstraQueryServiceBase;
 import com.slack.astra.util.JsonUtil;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -39,9 +35,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import java.util.zip.GZIPInputStream;
-import java.util.zip.GZIPOutputStream;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -304,39 +299,19 @@ public class ZipkinService {
         .orElse(null);
   }
 
-  @VisibleForTesting
-  protected static byte[] compressJsonData(String jsonData) throws IOException {
-    ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-    try (GZIPOutputStream gzipOutputStream = new GZIPOutputStream(byteArrayOutputStream)) {
-      gzipOutputStream.write(jsonData.getBytes(StandardCharsets.UTF_8));
-    }
-    return byteArrayOutputStream.toByteArray();
-  }
-
-  @VisibleForTesting
-  protected static String decompressJsonData(byte[] compressedData) {
-    assert compressedData != null && compressedData.length > 0;
-
-    try (GZIPInputStream gzipInputStream =
-        new GZIPInputStream(new ByteArrayInputStream(compressedData))) {
-      return new String(gzipInputStream.readAllBytes(), StandardCharsets.UTF_8);
-    } catch (IOException e) {
-      LOG.error("Error decompressing JSON data", e);
-      throw new RuntimeException("Failed to decompress JSON data", e);
-    }
-  }
-
   protected String retrieveDataFromS3(String traceId) {
     assert traceId != null && !traceId.isEmpty();
 
     try {
       // Retrieve the compressed trace data from S3
-      java.nio.file.Path tempDir = Files.createTempDirectory("");
-      blobStore.download(String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), tempDir);
+      String jsonData =
+          blobStore.readFileData(
+              String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId), true);
 
-      // Decompress the JSON data
-      byte[] compressedData = Files.readAllBytes(tempDir.resolve("traceData.json.gz"));
-      String jsonData = decompressJsonData(compressedData);
+      if (jsonData == null || jsonData.isEmpty()) {
+        LOG.warn("No trace data found in S3 for traceId={}", traceId);
+        return null;
+      }
 
       LOG.info("Retrieved and decompressed trace data from S3 for traceId={}", traceId);
       // Process the jsonData as needed
@@ -353,20 +328,15 @@ public class ZipkinService {
     assert output != null && !output.isEmpty();
 
     try {
-      // Compress the JSON data using GZIP
-      byte[] compressedData = compressJsonData(output);
-
-      // Create a temporary directory to store the trace data
-      java.nio.file.Path tempDir = Files.createTempDirectory(traceId);
-      java.nio.file.Path traceFile = tempDir.resolve("traceData.json.gz");
-      Files.write(traceFile, compressedData);
-
       // Upload the compressed trace data to S3
-      blobStore.upload(String.format("%s/%s", TRACE_CACHE_PREFIX, traceId), tempDir);
+      String srcLocation =
+          String.format("%s/%s-tmp/%s.json.gz", TRACE_CACHE_PREFIX, traceId, UUID.randomUUID());
+      blobStore.uploadJsonData(srcLocation, output, true);
 
-      // Clean up the temporary directory
-      Files.deleteIfExists(traceFile);
-      Files.deleteIfExists(tempDir);
+      blobStore.copyFile(
+          srcLocation, String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId));
+
+      blobStore.deleteFile(srcLocation);
 
       LOG.info("Compressed trace data saved to S3 for traceId={}", traceId);
 

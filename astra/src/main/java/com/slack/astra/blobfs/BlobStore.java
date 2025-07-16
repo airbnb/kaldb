@@ -3,23 +3,36 @@ package com.slack.astra.blobfs;
 import static software.amazon.awssdk.services.s3.model.ListObjectsV2Request.builder;
 
 import com.slack.astra.chunk.ReadWriteChunk;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.async.AsyncRequestBody;
+import software.amazon.awssdk.core.async.AsyncResponseTransformer;
 import software.amazon.awssdk.core.internal.async.ByteArrayAsyncResponseTransformer;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
+import software.amazon.awssdk.services.s3.model.CopyObjectRequest;
 import software.amazon.awssdk.services.s3.model.Delete;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
-import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Publisher;
 import software.amazon.awssdk.transfer.s3.S3TransferManager;
 import software.amazon.awssdk.transfer.s3.model.CompletedDirectoryDownload;
@@ -227,20 +240,125 @@ public class BlobStore {
   }
 
   /**
-   * Gets metadata for a file in the object store by S3 key (full path in the bucket).
+   * Compresses JSON data using GZIP.
    *
-   * @param key The S3 object key (e.g., "prefix/filename")
-   * @return HeadObjectResponse containing metadata for the file
-   * @throws RuntimeException Thrown when error is considered generally non-retryable
+   * @param jsonData The JSON data to compress
+   * @return The compressed byte array
+   * @throws IOException if compression fails
    */
-  public HeadObjectResponse getFileMetadata(String key) {
+  public static byte[] compressJsonData(String jsonData) throws IOException {
+    ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+    try (GZIPOutputStream gzipOutputStream = new GZIPOutputStream(byteArrayOutputStream)) {
+      gzipOutputStream.write(jsonData.getBytes(StandardCharsets.UTF_8));
+    }
+    return byteArrayOutputStream.toByteArray();
+  }
+
+  /**
+   * Uploads JSON data to the object store by S3 key (full path in the bucket).
+   *
+   * @param key The S3 key (full path in the bucket)
+   * @param jsonData The JSON data to upload
+   * @throws RuntimeException if compression fails or upload fails
+   */
+  public void uploadJsonData(String key, String jsonData, boolean gzip) throws RuntimeException {
+    assert key != null && !key.isEmpty();
+    assert jsonData != null && !jsonData.isEmpty();
+
+    PutObjectRequest request = PutObjectRequest.builder().bucket(bucketName).key(key).build();
+    try {
+      if (gzip) {
+        byte[] compressedData = compressJsonData(jsonData);
+        s3AsyncClient.putObject(request, AsyncRequestBody.fromBytes(compressedData)).get();
+      } else {
+        s3AsyncClient
+            .putObject(request, AsyncRequestBody.fromString(jsonData, StandardCharsets.UTF_8))
+            .get();
+      }
+    } catch (IOException | InterruptedException | ExecutionException e) {
+      throw new RuntimeException("Failed to upload JSON data", e);
+    }
+  }
+
+  /**
+   * Decompresses JSON data that has been compressed using GZIP.
+   *
+   * @param compressedData The compressed byte array
+   * @return The decompressed JSON data as a String
+   * @throws RuntimeException if decompression fails
+   */
+  public static String decompressJsonData(byte[] compressedData) {
+    assert compressedData != null && compressedData.length > 0;
+
+    try (GZIPInputStream gzipInputStream =
+        new GZIPInputStream(new ByteArrayInputStream(compressedData))) {
+      return new String(gzipInputStream.readAllBytes(), StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      LOG.error("Error decompressing JSON data", e);
+      throw new RuntimeException("Failed to decompress JSON data", e);
+    }
+  }
+
+  /**
+   * Reads the contents of a gzip file from the object store by S3 key (full path in the bucket).
+   *
+   * @param key full S3 path
+   * @param gzip whether the file is gzipped
+   * @return File content in string format
+   */
+  public String readFileData(String key, boolean gzip) throws RuntimeException {
+    assert key != null && !key.isEmpty();
+    CompletableFuture<ResponseInputStream<GetObjectResponse>> futureStream =
+        s3AsyncClient.getObject(
+            GetObjectRequest.builder().bucket(bucketName).key(key).build(),
+            AsyncResponseTransformer.toBlockingInputStream());
+    try (InputStream inputStream = futureStream.join()) {
+      if (gzip) {
+        return decompressJsonData(inputStream.readAllBytes());
+      }
+      return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  public void copyFile(String sourceKey, String destinationKey) throws RuntimeException {
+    assert sourceKey != null && !sourceKey.isEmpty();
+    assert destinationKey != null && !destinationKey.isEmpty();
+
+    CopyObjectRequest copyRequest =
+        CopyObjectRequest.builder()
+            .sourceBucket(bucketName)
+            .sourceKey(sourceKey)
+            .destinationBucket(bucketName)
+            .destinationKey(destinationKey)
+            .copySourceIfNoneMatch(
+                "*") // Ensures the copy only happens if the destination does not exist
+            .build();
+
+    try {
+      s3AsyncClient.copyObject(copyRequest).get();
+    } catch (ExecutionException | InterruptedException e) {
+      LOG.error("Failed to copy file from {} to {}", sourceKey, destinationKey, e);
+      throw new RuntimeException(
+          String.format("Failed to copy file from %s to %s", sourceKey, destinationKey), e);
+    }
+  }
+
+  /**
+   * Deletes a file from the object store by S3 key (full path in the bucket).
+   *
+   * @param key The S3 key (full path in the bucket)
+   * @throws RuntimeException if deletion fails
+   */
+  public void deleteFile(String key) {
     assert key != null && !key.isEmpty();
     try {
-      return s3AsyncClient
-          .headObject(HeadObjectRequest.builder().bucket(bucketName).key(key).build())
+      s3AsyncClient
+          .deleteObject(DeleteObjectRequest.builder().bucket(bucketName).key(key).build())
           .get();
-    } catch (ExecutionException | InterruptedException e) {
-      throw new RuntimeException(e);
+    } catch (InterruptedException | ExecutionException e) {
+      throw new RuntimeException("Failed to delete file from S3", e);
     }
   }
 }
