@@ -292,11 +292,6 @@ public class BulkIngestKafkaProducer extends AbstractExecutionThreadService {
       }
     }
 
-    extracted(responseMap);
-    return responseMap;
-  }
-
-  private void extracted(Map<BulkIngestRequest, BulkIngestResponse> responseMap) {
     for (Map.Entry<BulkIngestRequest, BulkIngestResponse> entry : responseMap.entrySet()) {
       BulkIngestRequest key = entry.getKey();
       BulkIngestResponse value = entry.getValue();
@@ -305,6 +300,7 @@ public class BulkIngestKafkaProducer extends AbstractExecutionThreadService {
         failedSetResponseCounter.increment();
       }
     }
+    return responseMap;
   }
 
   @SuppressWarnings("FutureReturnValueIgnored")
