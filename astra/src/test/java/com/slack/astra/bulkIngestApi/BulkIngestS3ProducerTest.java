@@ -180,9 +180,14 @@ class BulkIngestS3ProducerTest {
     // Verify that the S3 upload was called
     verify(mockBlobStore).uploadWalBatch(any(String.class), any(byte[].class));
 
-    assertThat(MetricsUtil.getCount("s3_wal_uploads_total", meterRegistry)).isEqualTo(1);
-    assertThat(MetricsUtil.getCount("s3_wal_spans_uploaded_total", meterRegistry)).isEqualTo(1);
-    assertThat(MetricsUtil.getCount("s3_wal_bytes_uploaded_total", meterRegistry)).isGreaterThan(1);
+    assertThat(MetricsUtil.getCount("bulk_ingest_producer_s3_wal_uploads_total", meterRegistry))
+        .isEqualTo(1);
+    assertThat(
+            MetricsUtil.getCount("bulk_ingest_producer_s3_wal_spans_uploaded_total", meterRegistry))
+        .isEqualTo(1);
+    assertThat(
+            MetricsUtil.getCount("bulk_ingest_producer_s3_wal_bytes_uploaded_total", meterRegistry))
+        .isGreaterThan(1);
 
     KafkaConsumer<String, byte[]> kafkaConsumer = getTestKafkaConsumer();
     ConsumerRecords<String, byte[]> records =
@@ -198,8 +203,8 @@ class BulkIngestS3ProducerTest {
       assertThat(pointer.getDocCount()).isEqualTo(1);
       assertThat(pointer.getCompressionType()).isEqualTo("gzip");
 
-      // Verify the Kafka message key is the index name
-      assertThat(record.key()).isEqualTo(INDEX_NAME);
+      // Verify the Kafka message key is null (partition-based routing)
+      assertThat(record.key()).isNull();
     }
     kafkaConsumer.close();
   }
