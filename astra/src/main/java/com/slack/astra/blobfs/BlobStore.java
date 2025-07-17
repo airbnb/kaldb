@@ -30,6 +30,7 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
@@ -359,6 +360,13 @@ public class BlobStore {
     }
   }
 
+  /**
+   * Checks if a file exists in the object store by S3 key (full path in the bucket).
+   *
+   * @param key The S3 key (full path in the bucket)
+   * @return true if the file exists, false otherwise
+   * @throws RuntimeException if checking fails
+   */
   public boolean fileExists(String key) {
     assert key != null && !key.isEmpty();
 
@@ -376,8 +384,23 @@ public class BlobStore {
       LOG.error("Error checking if file exists in S3: {}", key, e);
       throw new RuntimeException("Failed to check if S3 file exists", e);
     } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
       throw new RuntimeException("Interrupted while checking if S3 file exists", e);
+    }
+  }
+
+  public boolean pathExists(String prefix) {
+    ListObjectsV2Request listReq =
+        ListObjectsV2Request.builder()
+            .bucket(bucketName)
+            .prefix(prefix.endsWith("/") ? prefix : prefix + "/")
+            .maxKeys(1)
+            .build();
+
+    try {
+      ListObjectsV2Response listRes = s3AsyncClient.listObjectsV2(listReq).get();
+      return !listRes.contents().isEmpty();
+    } catch (ExecutionException | InterruptedException e) {
+      throw new RuntimeException("Failed to check if S3 path exists", e);
     }
   }
 

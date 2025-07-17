@@ -331,10 +331,14 @@ public class ZipkinService {
       String srcLocation =
           String.format("%s/%s-tmp/%s.json.gz", TRACE_CACHE_PREFIX, traceId, UUID.randomUUID());
       String dstLocation = String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId);
+
+      if (blobStore.pathExists("%s/%s-tmp".formatted(TRACE_CACHE_PREFIX, traceId))) {
+        LOG.info("Temporary location found in S3 for traceId={}", traceId);
+        return;
+      }
+
       blobStore.uploadJsonData(srcLocation, output, true);
-
       blobStore.copyFile(srcLocation, dstLocation);
-
       blobStore.deleteFile(srcLocation);
 
       LOG.info("Compressed trace data saved to S3 for traceId={}", traceId);
