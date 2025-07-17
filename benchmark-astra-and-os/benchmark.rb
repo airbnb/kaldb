@@ -28,9 +28,11 @@ def run_jq jq_query, out
   end.strip
 end
 
+ports = { "astra" => 8080, "os" => 9200 }
+
 curls = { "astra" => "curl -s --fail -H 'Content-Type: application/json' \
-  'http://localhost:8080/_msearch' --data-binary ",
-          "os" => "curl -s --fail -ku admin:$OS_PW 'https://localhost:9200/_msearch' \
+  'http://localhost:#{ports["astra"]}/_msearch' --data-binary ",
+          "os" => "curl -s --fail -ku admin:$OS_PW 'https://localhost:#{ports["os"]}/_msearch' \
   -H 'Content-Type: application/json' --data-binary "
 }
 
@@ -42,6 +44,13 @@ sizes = [0,50,100,250,500,1000,2000,3000,4000,5000,6000,7000,8000,9000,10_000,
          # 100_000, 200_000
 ]
 
+
+# things to pull out of the output
+# count of .responses[].hits.hits
+# total value of .responses[].hits.total.value
+# took, .responses[].took
+# responses[].error
+#
 
 # jq queries
 hits_hits_len = 'jq ".responses[].hits.hits | length"'
@@ -154,16 +163,26 @@ at_exit do
   puts "="*80
   # name, count, astra_ms, astrisk, astrisk_why, os_ms, os_asterisk, os_asterisk_why
   stats_group_by = stats[1..-1].group_by(&:first)
-  puts " "*60
+  puts "#{" "*56}size #{stats_group_by.values.first.map{|r|r[1]}.uniq.map(&:to_s).map{|i|i.sub(/000$/,'k').rjust 5}.join()}"
+
   stats_group_by.each do |name, rows|
-    puts "#{name.to_s.ljust 60} #{rows.map{|r|color_code(r[2].to_f/ r[5])}.join ''}"
+    rows = rows.group_by{|r|r[1]}.map {|count, rows| r = rows[0]; [r[0], r[1], rows.map{|x|x[2]}.sum.to_f/rows.size, r[3], r[4], rows.map{|x|x[5]}.sum.to_f/rows.size, r[6], r[7]]}.sort_by{|r|r[1]}
+    puts "#{name.to_s.ljust 60} #{rows.map{|r|color_code(r[2].to_f / r[5])}.join ''}"
   end
 end
 
 current_time = Time.now
 Dir.mkdir("output") unless Dir.exist?("output")
 Dir.mkdir("output/#{current_time.strftime "%Y-%m-%d-%H-%M-%S"}") unless Dir.exist?("output/#{current_time.strftime "%Y-%m-%d-%H-%M-%S"}")
-queries.to_a.each.with_index do |(name, (query,jq_query)), i|
+
+iterations = ARGV.first.to_i || 1
+iterations.times do |iteration|
+  puts
+  puts
+  puts "Iteration #{iteration+1}/#{iterations} at #{current_time.strftime "%Y-%m-%d %H:%M:%S"}"
+  puts "="*80
+  puts "="*80
+  queries.to_a.each.with_index do |(name, (query,jq_query)), i|
   puts
   puts "="*80
   puts "#{((i+1).to_s+"/#{queries.size}").ljust(7)} #{name.to_s.tr('_', ' ').capitalize} - #{query}"
@@ -171,7 +190,6 @@ queries.to_a.each.with_index do |(name, (query,jq_query)), i|
 
   sizes.each do |count|
     timings = subjects.map do |subject|
-      out = nil
       raw_out = nil
       failed = false
       fail_message = []
@@ -223,10 +241,9 @@ queries.to_a.each.with_index do |(name, (query,jq_query)), i|
     else
       puts
     end
-
   end
 end
-
+end
 
 Dir.mkdir("results") unless Dir.exist?("results")
 CSV.open("results/benchmark.#{Time.now.strftime "%Y-%m-%d-%H-%M-%S"}.csv", "w") do |csv|
