@@ -6,12 +6,10 @@ import com.slack.astra.chunk.ReadWriteChunk;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -24,16 +22,7 @@ import software.amazon.awssdk.core.async.AsyncRequestBody;
 import software.amazon.awssdk.core.async.AsyncResponseTransformer;
 import software.amazon.awssdk.core.internal.async.ByteArrayAsyncResponseTransformer;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
-import software.amazon.awssdk.services.s3.model.CopyObjectRequest;
-import software.amazon.awssdk.services.s3.model.Delete;
-import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
-import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectResponse;
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
-import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.model.*;
 import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Publisher;
 import software.amazon.awssdk.transfer.s3.S3TransferManager;
 import software.amazon.awssdk.transfer.s3.model.CompletedDirectoryDownload;
@@ -309,16 +298,19 @@ public class BlobStore {
    */
   public String readFileData(String key, boolean gzip) throws RuntimeException {
     assert key != null && !key.isEmpty();
-    CompletableFuture<ResponseInputStream<GetObjectResponse>> futureStream =
-        s3AsyncClient.getObject(
-            GetObjectRequest.builder().bucket(bucketName).key(key).build(),
-            AsyncResponseTransformer.toBlockingInputStream());
-    try (InputStream inputStream = futureStream.join()) {
+
+    try {
+      ResponseInputStream<GetObjectResponse> futureStream =
+          s3AsyncClient
+              .getObject(
+                  GetObjectRequest.builder().bucket(bucketName).key(key).build(),
+                  AsyncResponseTransformer.toBlockingInputStream())
+              .get();
       if (gzip) {
-        return decompressJsonData(inputStream.readAllBytes());
+        return decompressJsonData(futureStream.readAllBytes());
       }
-      return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
-    } catch (IOException e) {
+      return new String(futureStream.readAllBytes(), StandardCharsets.UTF_8);
+    } catch (IOException | ExecutionException | InterruptedException e) {
       throw new RuntimeException(e);
     }
   }
@@ -338,6 +330,26 @@ public class BlobStore {
 
     try {
       s3AsyncClient.copyObject(copyRequest).get();
+      // Confirm the file exists with retry (to handle eventual consistency)
+      final int maxRetries = 5;
+      final long delayMillis = 200L;
+      boolean exists = false;
+
+      for (int i = 0; i < maxRetries; i++) {
+        if (fileExists(destinationKey)) {
+          exists = true;
+          break;
+        }
+        Thread.sleep(delayMillis);
+      }
+      if (!exists) {
+        throw new RuntimeException(
+            String.format(
+                "Copy reported success but destination file not found after %s retries: %s",
+                maxRetries, destinationKey));
+      }
+
+      LOG.info("Copied {} to {} successfully", sourceKey, destinationKey);
     } catch (Exception e) {
       Throwable cause = e.getCause();
       if (cause instanceof S3Exception s3ex && s3ex.statusCode() == 304) {
@@ -348,6 +360,28 @@ public class BlobStore {
         throw new RuntimeException(
             String.format("Failed to copy file from %s to %s", sourceKey, destinationKey), e);
       }
+    }
+  }
+
+  public boolean fileExists(String key) {
+    assert key != null && !key.isEmpty();
+
+    HeadObjectRequest headRequest = HeadObjectRequest.builder().bucket(bucketName).key(key).build();
+
+    try {
+      s3AsyncClient.headObject(headRequest).get(); // blocks until complete
+      return true;
+    } catch (ExecutionException e) {
+      Throwable cause = e.getCause();
+      if (cause instanceof NoSuchKeyException
+          || (cause instanceof S3Exception s3ex && s3ex.statusCode() == 404)) {
+        return false; // Not found
+      }
+      LOG.error("Error checking if file exists in S3: {}", key, e);
+      throw new RuntimeException("Failed to check if S3 file exists", e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new RuntimeException("Interrupted while checking if S3 file exists", e);
     }
   }
 

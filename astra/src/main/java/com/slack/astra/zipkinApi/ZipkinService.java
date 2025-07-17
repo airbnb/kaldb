@@ -338,10 +338,10 @@ public class ZipkinService {
       // Upload the compressed trace data to S3
       String srcLocation =
           String.format("%s/%s-tmp/%s.json.gz", TRACE_CACHE_PREFIX, traceId, UUID.randomUUID());
+      String dstLocation = String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId);
       blobStore.uploadJsonData(srcLocation, output, true);
 
-      blobStore.copyFile(
-          srcLocation, String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId));
+      blobStore.copyFile(srcLocation, dstLocation);
 
       blobStore.deleteFile(srcLocation);
 
