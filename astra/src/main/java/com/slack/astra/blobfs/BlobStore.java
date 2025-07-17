@@ -337,47 +337,25 @@ public class BlobStore {
     assert sourceKey != null && !sourceKey.isEmpty();
     assert destinationKey != null && !destinationKey.isEmpty();
 
-    CopyObjectRequest copyRequest =
-        CopyObjectRequest.builder()
-            .sourceBucket(bucketName)
-            .sourceKey(sourceKey)
-            .destinationBucket(bucketName)
-            .destinationKey(destinationKey)
-            .copySourceIfNoneMatch("*") // Only copy if the destination does not already exist
-            .build();
+    if (!fileExists(destinationKey)) {
+      CopyObjectRequest copyRequest =
+          CopyObjectRequest.builder()
+              .sourceBucket(bucketName)
+              .sourceKey(sourceKey)
+              .destinationBucket(bucketName)
+              .destinationKey(destinationKey)
+              .build();
 
-    try {
-      s3AsyncClient.copyObject(copyRequest).get();
-      // Confirm the file exists with retry (to handle eventual consistency)
-      final int maxRetries = 5;
-      final long delayMillis = 200L;
-      boolean exists = false;
-
-      for (int i = 0; i < maxRetries; i++) {
-        if (fileExists(destinationKey)) {
-          exists = true;
-          break;
-        }
-        Thread.sleep(delayMillis);
-      }
-      if (!exists) {
-        throw new RuntimeException(
-            String.format(
-                "Copy reported success but destination file not found after %s retries: %s",
-                maxRetries, destinationKey));
-      }
-
-      LOG.info("Copied {} to {} successfully", sourceKey, destinationKey);
-    } catch (Exception e) {
-      Throwable cause = e.getCause();
-      if (cause instanceof S3Exception s3ex && s3ex.statusCode() == 304) {
-        // If the file already exists and is identical, we can ignore this error
-        LOG.info("File {} already exists and is identical to {}", destinationKey, sourceKey);
-      } else {
+      try {
+        s3AsyncClient.copyObject(copyRequest).get();
+        LOG.info("Copied {} to {} successfully", sourceKey, destinationKey);
+      } catch (ExecutionException | InterruptedException e) {
         LOG.error("Failed to copy file from {} to {}", sourceKey, destinationKey, e);
         throw new RuntimeException(
             String.format("Failed to copy file from %s to %s", sourceKey, destinationKey), e);
       }
+    } else {
+      LOG.info("File {} already exists, skipping copy", destinationKey);
     }
   }
 
