@@ -33,6 +33,7 @@ import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Publisher;
 import software.amazon.awssdk.transfer.s3.S3TransferManager;
 import software.amazon.awssdk.transfer.s3.model.CompletedDirectoryDownload;
@@ -332,14 +333,21 @@ public class BlobStore {
             .sourceKey(sourceKey)
             .destinationBucket(bucketName)
             .destinationKey(destinationKey)
+            .copySourceIfNoneMatch("*") // Only copy if the destination does not already exist
             .build();
 
     try {
       s3AsyncClient.copyObject(copyRequest).get();
-    } catch (ExecutionException | InterruptedException e) {
-      LOG.error("Failed to copy file from {} to {}", sourceKey, destinationKey, e);
-      throw new RuntimeException(
-          String.format("Failed to copy file from %s to %s", sourceKey, destinationKey), e);
+    } catch (Exception e) {
+      Throwable cause = e.getCause();
+      if (cause instanceof S3Exception s3ex && s3ex.statusCode() == 304) {
+        // If the file already exists and is identical, we can ignore this error
+        LOG.info("File {} already exists and is identical to {}", destinationKey, sourceKey);
+      } else {
+        LOG.error("Failed to copy file from {} to {}", sourceKey, destinationKey, e);
+        throw new RuntimeException(
+            String.format("Failed to copy file from %s to %s", sourceKey, destinationKey), e);
+      }
     }
   }
 
