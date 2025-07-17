@@ -14,6 +14,15 @@ import java.util.Map;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
+/**
+ * Utility class for serializing and compressing WAL batches for S3 storage.
+ *
+ * <p>Provides methods to serialize trace spans grouped by index into a compressed binary format and
+ * deserialize them back. Uses GZIP compression and protobuf serialization with BatchHeader metadata
+ * for each index section.
+ *
+ * <p>Thread-safe utility class with static methods only.
+ */
 public class WALBatchSerializer {
 
   public static byte[] serializeAndCompress(Map<String, List<Trace.Span>> indexDocs)

@@ -5,17 +5,21 @@ package slack.astra.wal;
 option java_package = "com.slack.astra.proto.wal";
 option java_outer_classname = "WalProtos";
 
-message S3WalPointer {
-  string s3_bucket = 1;
-  string s3_key = 2;
-  int32 doc_count = 3;
-  int64 timestamp_ms = 4;
-  string compression_type = 5;
-  // Future: checksum, uncompressed_size, etc.
+// WAL segment pointer message sent via Kafka to notify indexers about available WAL data in S3 (BlobStore).
+// Contains metadata about a compressed WAL segment stored in the blob store.
+// Indexers consume these messages to fetch and process the actual WAL data from blob storage.
+message WalSegmentPointer {
+  string blob_bucket = 1;      // Bucket name in the blob store where WAL segment is stored
+  string blobstore_filepath = 2;         // Object key/path in the blob store for the WAL segment
+  int32 doc_count = 3;         // Number of documents/spans contained in this WAL segment
+  int64 timestamp_ms = 4;      // Timestamp when the segment was created (milliseconds since epoch)
+  string compression_type = 5; // Compression algorithm used (e.g., "gzip")
 }
 
+// Header information for a batch of spans within a WAL segment.
+// Used during serialization/deserialization to group spans by index.
 message BatchHeader {
-  string index = 1;
-  uint32 span_count = 2;
+  string index = 1;       // Index name that the spans belong to
+  uint32 span_count = 2;  // Number of spans in this batch for the given index
 }
 

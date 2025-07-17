@@ -36,7 +36,6 @@ import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import software.amazon.awssdk.services.s3.S3AsyncClient;
 
 public abstract class BulkIngestProducer extends AbstractExecutionThreadService {
 
@@ -80,8 +79,7 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
   public BulkIngestProducer(
       final DatasetMetadataStore datasetMetadataStore,
       final AstraConfigs.PreprocessorConfig preprocessorConfig,
-      final MeterRegistry meterRegistry,
-      S3AsyncClient s3Client) {
+      final MeterRegistry meterRegistry) {
 
     this.kafkaConfig = preprocessorConfig.getKafkaConfig();
 

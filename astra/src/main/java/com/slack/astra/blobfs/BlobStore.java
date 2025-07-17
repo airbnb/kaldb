@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.async.AsyncRequestBody;
 import software.amazon.awssdk.core.async.AsyncResponseTransformer;
+import software.amazon.awssdk.core.async.AsyncRequestBody;
 import software.amazon.awssdk.core.internal.async.ByteArrayAsyncResponseTransformer;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.model.CopyObjectRequest;
@@ -34,6 +35,7 @@ import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Publisher;
 import software.amazon.awssdk.transfer.s3.S3TransferManager;
 import software.amazon.awssdk.transfer.s3.model.CompletedDirectoryDownload;
@@ -101,6 +103,23 @@ public class BlobStore {
       }
     } catch (ExecutionException | InterruptedException e) {
       throw new RuntimeException(e);
+    }
+  }
+
+  /**
+   * Uploads WAL batch bytes directly to S3
+   *
+   * @param key S3 object key
+   * @param data Compressed WAL batch data
+   * @throws RuntimeException Thrown when upload fails
+   */
+  public void uploadWalBatch(String key, byte[] data) {
+    try {
+      PutObjectRequest putObjectRequest =
+          PutObjectRequest.builder().bucket(bucketName).key(key).build();
+      s3AsyncClient.putObject(putObjectRequest, AsyncRequestBody.fromBytes(data)).get();
+    } catch (ExecutionException | InterruptedException e) {
+      throw new RuntimeException("Failed to upload WAL batch to S3", e);
     }
   }
 
