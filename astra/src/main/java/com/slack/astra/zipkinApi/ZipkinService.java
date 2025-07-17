@@ -40,7 +40,6 @@ import java.util.concurrent.TimeUnit;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 
 @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
 /**
@@ -313,19 +312,12 @@ public class ZipkinService {
         LOG.warn("No trace data found in S3 for traceId={}", traceId);
         return null;
       }
-
       LOG.info("Retrieved and decompressed trace data from S3 for traceId={}", traceId);
-      // Process the jsonData as needed
       return jsonData;
 
     } catch (Exception e) {
-      Throwable cause = e.getCause();
-      if (cause instanceof NoSuchKeyException) {
-        LOG.info("No trace data from S3 for traceId={}", traceId);
-      } else {
-        // Log other exceptions as errors
-        LOG.error("Error retrieving trace data from S3 for traceId={}", traceId, e);
-      }
+      // Log other exceptions as errors
+      LOG.error("Error retrieving trace data from S3 for traceId={}", traceId, e);
       return null;
     }
   }

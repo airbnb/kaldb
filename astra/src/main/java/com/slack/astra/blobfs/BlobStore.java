@@ -322,6 +322,12 @@ public class BlobStore {
       }
       return new String(futureStream.readAllBytes(), StandardCharsets.UTF_8);
     } catch (IOException | ExecutionException | InterruptedException e) {
+      Throwable cause = e.getCause();
+      if (cause instanceof NoSuchKeyException
+          || (cause instanceof S3Exception s3ex && s3ex.statusCode() == 404)) {
+        LOG.warn("File not found in S3: {}", key);
+        return null; // File not found
+      }
       throw new RuntimeException(
           String.format("Failed to read file data from S3 for key: %s", key), e);
     }
