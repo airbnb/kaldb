@@ -183,66 +183,66 @@ iterations.times do |iteration|
   puts "="*80
   puts "="*80
   queries.to_a.each.with_index do |(name, (query,jq_query)), i|
-  puts
-  puts "="*80
-  puts "#{((i+1).to_s+"/#{queries.size}").ljust(7)} #{name.to_s.tr('_', ' ').capitalize} - #{query}"
-  puts "="*80
+    puts
+    puts "="*80
+    puts "#{((i+1).to_s+"/#{queries.size}").ljust(7)} #{name.to_s.tr('_', ' ').capitalize} - #{query}"
+    puts "="*80
 
-  sizes.each do |count|
-    timings = subjects.map do |subject|
-      raw_out = nil
-      failed = false
-      fail_message = []
-      request_body = "{\"index\":\"test\"}
-{\"query\": #{query}, \"size\": #{count}}
-"
-      timing = Benchmark.measure("#{subject} #{count}".ljust(60)) do
-        raw_out = `#{curls[subject]} '#{request_body}'`
-      end
-      File.write("output/#{current_time.strftime "%Y-%m-%d-%H-%M-%S"}/#{name}-#{count}-#{subject}.json", raw_out)
-      out = raw_out
-      if $?.exitstatus != 0
-        rerun_out = `#{curls[subject].sub"-s","-vvv"} '#{request_body}'`
-        rerun_out = "rerun result:\n> #{rerun_out.gsub("\n", "> ")}"
-        failed = true
-        fail_message << "Error with #{subject} #{$?.exitstatus}\n#{rerun_out}"
-      end
-
-      matching_error = error_shapes.find{|x|out.include?(x)}
-      if matching_error
-        failed = true
-        fail_message << "found error shape like #{matching_error}"
-      end
-
-      if jq_query && !jq_query.empty?
-        out = run_jq(jq_query, out)
-        if out.to_i != count
-          failed = true
-          fail_message << "hit count didn't match [#{out}] != #{count}"
+    sizes.each do |count|
+      timings = subjects.map do |subject|
+        raw_out = nil
+        failed = false
+        fail_message = []
+        request_body = "{\"index\":\"test\"}
+  {\"query\": #{query}, \"size\": #{count}}
+  "
+        timing = Benchmark.measure("#{subject} #{count}".ljust(60)) do
+          raw_out = `#{curls[subject]} '#{request_body}'`
         end
-      else
-        puts '='*80
-        puts out
-        puts "no jq extraction query for #{subject} -- #{name}"
-        exit 1
+        File.write("output/#{current_time.strftime "%Y-%m-%d-%H-%M-%S"}/#{name}-#{count}-#{subject}.json", raw_out)
+        out = raw_out
+        if $?.exitstatus != 0
+          rerun_out = `#{curls[subject].sub"-s","-vvv"} '#{request_body}'`
+          rerun_out = "rerun result:\n> #{rerun_out.gsub("\n", "> ")}"
+          failed = true
+          fail_message << "Error with #{subject} #{$?.exitstatus}\n#{rerun_out}"
+        end
+
+        matching_error = error_shapes.find{|x|out.include?(x)}
+        if matching_error
+          failed = true
+          fail_message << "found error shape like #{matching_error}"
+        end
+
+        if jq_query && !jq_query.empty?
+          out = run_jq(jq_query, out)
+          if out.to_i != count
+            failed = true
+            fail_message << "hit count didn't match [#{out}] != #{count}"
+          end
+        else
+          puts '='*80
+          puts out
+          puts "no jq extraction query for #{subject} -- #{name}"
+          exit 1
+        end
+        [timing, [failed, fail_message.join(', ')], raw_out]
       end
-      [timing, [failed, fail_message.join(', ')], raw_out]
-    end
-    # some attempt at comparing results here:
-    _astra,_os = timings.map(&:last).map{|json|
-      JSON.parse(json).dig("responses", 0, "hits", "hits").
-         map {|hit| hit["_source"]["total_amount"]}.sort} rescue [[100],[100]]
-         # map {|hit|DateTime.parse hit["_source"]["dropoff_datetime"]}.sort}
-    # puts "no match astra: #{_astra.size} #{_astra} os: #{_os.size} #{_os}" if _astra != _os
-    stats << [name, *stat_output(count, timings, ->(c,o) {o})]
-    print output_line count, timings, ->(c,o) { o }
-    if _astra != _os
-      puts " no match astra: #{_astra.size} #{_astra.first}..#{_astra.last} os: #{_os.size} #{_os.first}..#{_os.last}"
-    else
-      puts
+      # some attempt at comparing results here:
+      _astra,_os = timings.map(&:last).map{|json|
+        JSON.parse(json).dig("responses", 0, "hits", "hits").
+           map {|hit| hit["_source"]["total_amount"]}.sort} rescue [[100],[100]]
+           # map {|hit|DateTime.parse hit["_source"]["dropoff_datetime"]}.sort}
+      # puts "no match astra: #{_astra.size} #{_astra} os: #{_os.size} #{_os}" if _astra != _os
+      stats << [name, *stat_output(count, timings, ->(c,o) {o})]
+      print output_line count, timings, ->(c,o) { o }
+      if _astra != _os
+        puts " no match astra: #{_astra.size} #{_astra.first}..#{_astra.last} os: #{_os.size} #{_os.first}..#{_os.last}"
+      else
+        puts
+      end
     end
   end
-end
 end
 
 Dir.mkdir("results") unless Dir.exist?("results")
