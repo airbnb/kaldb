@@ -23,7 +23,7 @@ public class BulkIngestKafkaProducer extends BulkIngestProducer {
       final DatasetMetadataStore datasetMetadataStore,
       final AstraConfigs.PreprocessorConfig preprocessorConfig,
       final MeterRegistry meterRegistry) {
-    super(datasetMetadataStore, preprocessorConfig, meterRegistry, null);
+    super(datasetMetadataStore, preprocessorConfig, meterRegistry);
   }
 
   @Override

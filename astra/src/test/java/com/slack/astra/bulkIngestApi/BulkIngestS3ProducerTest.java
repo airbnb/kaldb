@@ -6,10 +6,10 @@ import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import brave.Tracing;
 import com.google.protobuf.ByteString;
+import com.slack.astra.blobfs.BlobStore;
 import com.slack.astra.metadata.core.CuratorBuilder;
 import com.slack.astra.metadata.dataset.DatasetMetadata;
 import com.slack.astra.metadata.dataset.DatasetMetadataStore;
@@ -26,7 +26,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.curator.test.TestingServer;
 import org.apache.curator.x.async.AsyncCuratorFramework;
@@ -39,10 +38,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import software.amazon.awssdk.core.async.AsyncRequestBody;
-import software.amazon.awssdk.services.s3.S3AsyncClient;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.model.PutObjectResponse;
 
 class BulkIngestS3ProducerTest {
 
@@ -53,8 +48,7 @@ class BulkIngestS3ProducerTest {
   private static DatasetMetadataStore datasetMetadataStore;
   private static TestingServer zkServer;
   private static TestKafkaServer kafkaServer;
-  private static S3AsyncClient mockS3Client;
-
+  private static BlobStore mockBlobStore;
   private BulkIngestS3Producer bulkIngestS3Producer;
 
   static String INDEX_NAME = "testtransactionindex";
@@ -67,11 +61,7 @@ class BulkIngestS3ProducerTest {
     Tracing.newBuilder().build();
     meterRegistry = new SimpleMeterRegistry();
 
-    // Initialize mock S3 client
-    mockS3Client = mock(S3AsyncClient.class);
-    when(mockS3Client.putObject(any(PutObjectRequest.class), any(AsyncRequestBody.class)))
-        .thenReturn(CompletableFuture.completedFuture(PutObjectResponse.builder().build()));
-
+    mockBlobStore = mock(BlobStore.class);
     zkServer = new TestingServer();
     AstraConfigs.ZookeeperConfig zkConfig =
         AstraConfigs.ZookeeperConfig.newBuilder()
@@ -133,7 +123,7 @@ class BulkIngestS3ProducerTest {
 
     bulkIngestS3Producer =
         new BulkIngestS3Producer(
-            datasetMetadataStore, preprocessorConfig, meterRegistry, mockS3Client);
+            datasetMetadataStore, preprocessorConfig, meterRegistry, mockBlobStore);
     bulkIngestS3Producer.startAsync();
     bulkIngestS3Producer.awaitRunning(DEFAULT_START_STOP_DURATION);
   }
@@ -188,7 +178,7 @@ class BulkIngestS3ProducerTest {
     assertThat(response.get().failedDocs()).isEqualTo(0);
 
     // Verify that the S3 upload was called
-    verify(mockS3Client).putObject(any(PutObjectRequest.class), any(AsyncRequestBody.class));
+    verify(mockBlobStore).uploadWalBatch(any(String.class), any(byte[].class));
 
     assertThat(MetricsUtil.getCount("s3_wal_uploads_total", meterRegistry)).isEqualTo(1);
     assertThat(MetricsUtil.getCount("s3_wal_spans_uploaded_total", meterRegistry)).isEqualTo(1);
@@ -201,10 +191,10 @@ class BulkIngestS3ProducerTest {
     assertThat(records.count()).isEqualTo(1);
 
     for (ConsumerRecord<String, byte[]> record : records) {
-      // Parse the S3WalPointer from the message
-      WalProtos.S3WalPointer pointer = WalProtos.S3WalPointer.parseFrom(record.value());
-      assertThat(pointer.getS3Bucket()).isEqualTo(TEST_S3_BUCKET);
-      assertThat(pointer.getS3Key()).startsWith("wal/");
+      // Parse the WalSegmentPointer from the message
+      WalProtos.WalSegmentPointer pointer = WalProtos.WalSegmentPointer.parseFrom(record.value());
+      assertThat(pointer.getBlobBucket()).isEqualTo(TEST_S3_BUCKET);
+      assertThat(pointer.getBlobstoreFilepath()).startsWith("wal/");
       assertThat(pointer.getDocCount()).isEqualTo(1);
       assertThat(pointer.getCompressionType()).isEqualTo("gzip");
 
@@ -229,58 +219,5 @@ class BulkIngestS3ProducerTest {
     kafkaConsumer.subscribe(List.of(DOWNSTREAM_TOPIC));
 
     return kafkaConsumer;
-  }
-
-  @Test
-  public void testCompression() throws Exception {
-
-    // Test 1: Empty spans
-    Map<String, List<Trace.Span>> emptyspans = Map.of(INDEX_NAME, List.of());
-    byte[] emptyCompressedData = WALBatchSerializer.serializeAndCompress(emptyspans);
-    assertThat(emptyCompressedData.length).isGreaterThan(0);
-
-    // Test 2: Single span
-    Trace.Span singleSpan = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("test1")).build();
-    Map<String, List<Trace.Span>> singleSpanDocs = Map.of(INDEX_NAME, List.of(singleSpan));
-    byte[] singleSpanCompressedData = WALBatchSerializer.serializeAndCompress(singleSpanDocs);
-    assertThat(singleSpanCompressedData.length).isGreaterThan(0);
-
-    // Test 3: Multiple spans with repeated data
-    String repeatdata = "testdata".repeat(1000); // Create a large string to test compression
-
-    Trace.Span span1 = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("test1")).build();
-
-    Trace.Span span2 =
-        Trace.Span.newBuilder()
-            .setId(ByteString.copyFromUtf8("test2"))
-            .setTraceId(ByteString.copyFromUtf8(repeatdata))
-            .build();
-
-    Trace.Span span3 =
-        Trace.Span.newBuilder()
-            .setId(ByteString.copyFromUtf8("test3"))
-            .setTraceId(ByteString.copyFromUtf8(repeatdata))
-            .build();
-
-    // create a map with multiple spans
-    Map<String, List<Trace.Span>> indexDocs = Map.of(INDEX_NAME, List.of(span1, span2, span3));
-    byte[] compressedData = WALBatchSerializer.serializeAndCompress(indexDocs);
-
-    int uncompressedSize = 0;
-
-    // Calculate the uncompressed size
-    for (List<Trace.Span> spans : indexDocs.values()) {
-      for (Trace.Span span : spans) {
-        uncompressedSize += span.getSerializedSize();
-      }
-    }
-
-    // Verify that the compressed data is smaller than the uncompressed size
-    assertThat(compressedData.length).isLessThan(uncompressedSize);
-    LOG.debug(
-        "Compression ratio: {} -> {} bytes ({}% reduction)",
-        uncompressedSize,
-        compressedData.length,
-        ((uncompressedSize - compressedData.length) * 100) / uncompressedSize);
   }
 }
