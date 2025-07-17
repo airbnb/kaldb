@@ -311,7 +311,8 @@ public class BlobStore {
       }
       return new String(futureStream.readAllBytes(), StandardCharsets.UTF_8);
     } catch (IOException | ExecutionException | InterruptedException e) {
-      throw new RuntimeException(e);
+      throw new RuntimeException(
+          String.format("Failed to read file data from S3 for key: %s", key), e);
     }
   }
 
