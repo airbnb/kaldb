@@ -514,9 +514,11 @@ public class Astra {
             !preprocessorConfig.getS3WalConfig().getS3Bucket().isEmpty(),
             "S3 bucket must be provided when using S3 WAL");
         LOG.info("Using S3 WAL producer");
+        BlobStore s3WalBlobStore =
+            new BlobStore(s3Client, preprocessorConfig.getS3WalConfig().getS3Bucket());
         bulkIngestProducer =
             new BulkIngestS3Producer(
-                datasetMetadataStore, preprocessorConfig, meterRegistry, s3Client);
+                datasetMetadataStore, preprocessorConfig, meterRegistry, s3WalBlobStore);
       } else {
         LOG.info("Using Kafka WAL producer");
         bulkIngestProducer =
