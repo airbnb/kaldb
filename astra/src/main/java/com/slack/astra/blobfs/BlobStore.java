@@ -332,8 +332,6 @@ public class BlobStore {
             .sourceKey(sourceKey)
             .destinationBucket(bucketName)
             .destinationKey(destinationKey)
-            .copySourceIfNoneMatch(
-                "*") // Ensures the copy only happens if the destination does not exist
             .build();
 
     try {
