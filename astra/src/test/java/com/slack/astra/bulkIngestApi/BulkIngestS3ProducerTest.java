@@ -178,7 +178,7 @@ class BulkIngestS3ProducerTest {
     assertThat(response.get().failedDocs()).isEqualTo(0);
 
     // Verify that the S3 upload was called
-    verify(mockBlobStore).uploadWalBatch(any(String.class), any(byte[].class));
+    verify(mockBlobStore).upload(any(String.class), any(byte[].class));
 
     assertThat(MetricsUtil.getCount("bulk_ingest_producer_s3_wal_uploads_total", meterRegistry))
         .isEqualTo(1);
