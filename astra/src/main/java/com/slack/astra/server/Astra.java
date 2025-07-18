@@ -15,9 +15,11 @@ import com.slack.astra.bulkIngestApi.DatasetRateLimitingService;
 import com.slack.astra.chunkManager.CachingChunkManager;
 import com.slack.astra.chunkManager.IndexingChunkManager;
 import com.slack.astra.clusterManager.CacheNodeAssignmentService;
+import com.slack.astra.clusterManager.CacheNodeSearchabilityService;
 import com.slack.astra.clusterManager.ClusterHpaMetricService;
 import com.slack.astra.clusterManager.ClusterMonitorService;
 import com.slack.astra.clusterManager.RecoveryTaskAssignmentService;
+import com.slack.astra.clusterManager.RedactionUpdateService;
 import com.slack.astra.clusterManager.ReplicaAssignmentService;
 import com.slack.astra.clusterManager.ReplicaCreationService;
 import com.slack.astra.clusterManager.ReplicaDeletionService;
@@ -35,7 +37,9 @@ import com.slack.astra.metadata.cache.CacheSlotMetadataStore;
 import com.slack.astra.metadata.core.CloseableLifecycleManager;
 import com.slack.astra.metadata.core.CuratorBuilder;
 import com.slack.astra.metadata.dataset.DatasetMetadataStore;
+import com.slack.astra.metadata.fieldredaction.FieldRedactionMetadataStore;
 import com.slack.astra.metadata.hpa.HpaMetricMetadataStore;
+import com.slack.astra.metadata.preprocessor.PreprocessorMetadataStore;
 import com.slack.astra.metadata.recovery.RecoveryNodeMetadataStore;
 import com.slack.astra.metadata.recovery.RecoveryTaskMetadataStore;
 import com.slack.astra.metadata.replica.ReplicaMetadataStore;
@@ -189,15 +193,27 @@ public class Astra {
               astraConfig.getS3Config());
       services.add(chunkManager);
 
-      AstraIndexer indexer =
-          new AstraIndexer(
-              chunkManager,
-              curatorFramework,
-              astraConfig.getIndexerConfig(),
-              astraConfig.getIndexerConfig().getKafkaConfig(),
-              meterRegistry,
-              astraConfig.getPreprocessorConfig(),
-              s3Client);
+      AstraIndexer indexer;
+      if (s3WalBlobStore != null) {
+        indexer =
+            new AstraIndexer(
+                chunkManager,
+                curatorFramework,
+                astraConfig.getIndexerConfig(),
+                astraConfig.getIndexerConfig().getKafkaConfig(),
+                meterRegistry,
+                astraConfig.getPreprocessorConfig(),
+                s3WalBlobStore);
+      } else {
+        indexer =
+            new AstraIndexer(
+                chunkManager,
+                curatorFramework,
+                astraConfig.getMetadataStoreConfig(),
+                astraConfig.getIndexerConfig(),
+                astraConfig.getIndexerConfig().getKafkaConfig(),
+                meterRegistry);
+      }
       services.add(indexer);
 
       AstraLocalQueryService<LogMessage> searcher =
@@ -422,14 +438,22 @@ public class Astra {
               .build();
       services.add(armeriaService);
 
-      RecoveryService recoveryService =
-          new RecoveryService(
-              astraConfig,
-              curatorFramework,
-              meterRegistry,
-              blobStore,
-              astraConfig.getPreprocessorConfig(),
-              s3Client);
+      RecoveryService recoveryService;
+      if (s3WalBlobStore != null) {
+        recoveryService = new RecoveryService(
+                astraConfig,
+                curatorFramework,
+                meterRegistry,
+                blobStore,
+                astraConfig.getPreprocessorConfig(),
+                s3WalBlobStore);
+      } else {
+        recoveryService = new RecoveryService(
+                astraConfig,
+                curatorFramework,
+                meterRegistry,
+                blobStore);
+      }
       services.add(recoveryService);
     }
 
@@ -450,9 +474,6 @@ public class Astra {
           new CloseableLifecycleManager(
               AstraConfigs.NodeRole.PREPROCESSOR, List.of(datasetMetadataStore)));
 
-      BulkIngestKafkaProducer bulkIngestKafkaProducer =
-          new BulkIngestKafkaProducer(datasetMetadataStore, preprocessorConfig, meterRegistry);
-      services.add(bulkIngestKafkaProducer);
       BulkIngestProducer bulkIngestProducer;
 
       if (s3WalBlobStore != null) {

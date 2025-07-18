@@ -20,7 +20,9 @@ import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.async.AsyncRequestBody;
 import software.amazon.awssdk.core.async.AsyncResponseTransformer;
+import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.async.AsyncRequestBody;
+import software.amazon.awssdk.core.async.AsyncResponseTransformer;
 import software.amazon.awssdk.core.internal.async.ByteArrayAsyncResponseTransformer;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.model.CopyObjectRequest;
@@ -29,6 +31,7 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
@@ -121,6 +124,27 @@ public class BlobStore {
     } catch (ExecutionException | InterruptedException e) {
       LOG.error("Failed to upload WAL batch to S3", e);
       throw new RuntimeException(e);
+    }
+  }
+
+  /**
+   * Downloads WAL batch bytes directly from S3
+   *
+   * @param key S3 object key for the WAL batch
+   * @return Compressed WAL batch data as byte array
+   * @throws RuntimeException Thrown when download fails
+   */
+  public byte[] downloadWalBatch(String key) {
+    try {
+      GetObjectRequest getObjectRequest =
+          GetObjectRequest.builder().bucket(bucketName).key(key).build();
+
+      ResponseBytes<GetObjectResponse> response =
+          s3AsyncClient.getObject(getObjectRequest, AsyncResponseTransformer.toBytes()).get();
+
+      return response.asByteArray();
+    } catch (ExecutionException | InterruptedException e) {
+      throw new RuntimeException("Failed to download WAL batch from S3", e);
     }
   }
 
