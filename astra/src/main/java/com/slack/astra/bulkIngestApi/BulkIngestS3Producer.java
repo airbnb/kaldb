@@ -34,10 +34,7 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
 
   private final BlobStore blobStore;
   protected final String walBucket;
-  private final Counter s3UploadCounter;
-  private final Counter s3SpansUploadedCounter;
   private final Timer s3UploadTimer;
-  private final Counter s3BytesUploadedCounter;
 
   public BulkIngestS3Producer(
       final DatasetMetadataStore datasetMetadataStore,
@@ -51,10 +48,7 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
     this.blobStore = blobStore;
     this.walBucket = preprocessorConfig.getS3WalConfig().getS3Bucket();
     this.kafkaTopic = preprocessorConfig.getKafkaConfig().getKafkaTopic();
-    this.s3UploadCounter = meterRegistry.counter(S3_UPLOAD_COUNTER);
-    this.s3SpansUploadedCounter = meterRegistry.counter(S3_SPANS_UPLOADED_COUNTER);
     this.s3UploadTimer = meterRegistry.timer(S3_UPLOAD_TIMER);
-    this.s3BytesUploadedCounter = meterRegistry.counter(S3_BYTES_UPLOADED_COUNTER);
   }
 
   @Override
@@ -121,70 +115,83 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
       Map<String, List<Trace.Span>> indexesForPartition = partitionGroup.getValue();
       int docsInPartition = indexesForPartition.values().stream().mapToInt(List::size).sum();
 
+      // Serialize and compress the spans for this partition
       byte[] compressedData = WALBatchSerializer.serializeAndCompress(indexesForPartition);
 
-      String objectKey = generateS3ObjectKey(partition);
+      //Send to S3 and Kafka
+      BulkIngestResponse errorResponse = uploadToS3AndSendKafkaPointer(partition, compressedData,
+                docsInPartition, totalDocs);
 
-      // put req then upload object to S3
-      Timer.Sample uploadTimer = Timer.start(meterRegistry);
-      try {
+      if (errorResponse != null) return errorResponse;
 
-        // upload to S3
-        blobStore.uploadWalBatch(objectKey, compressedData);
-
-        LOG.debug(
-            "Uploaded {} spans ({} bytes compressed) to S3 at key {} for partition {}",
-            docsInPartition,
-            compressedData.length,
-            objectKey,
-            partition);
-
-      } catch (Exception e) {
-        LOG.error("Failed to upload to S3", e);
-        return new BulkIngestResponse(0, totalDocs, "S3 upload failed: " + e.getMessage());
-      } finally {
-        uploadTimer.stop(s3UploadTimer);
-      }
-
-      // prepare pointer message
-      WalProtos.WalSegmentPointer pointer =
-          WalProtos.WalSegmentPointer.newBuilder()
-              .setBlobBucket(walBucket)
-              .setBlobstoreFilepath(objectKey)
-              .setDocCount(docsInPartition)
-              .setTimestampMs(Instant.now().toEpochMilli())
-              .setCompressionType("gzip")
-              .build();
-
-      byte[] pointerBytes = pointer.toByteArray();
-
-      ProducerRecord<String, byte[]> producerRecord =
-          new ProducerRecord<>(kafkaTopic, partition, null, pointerBytes);
-
-      try {
-        RecordMetadata recordMetadata = this.kafkaProducer.send(producerRecord).get();
-        LOG.debug(
-            "Sent WAL pointer for partition {} to Kafka topic {} partition {} offset {}",
-            partition,
-            kafkaTopic,
-            recordMetadata.partition(),
-            recordMetadata.offset());
-
-      } catch (Exception e) {
-        LOG.error(
-            "Failed to send WAL pointer for partition {} to Kafka - deleting S3 object {}",
-            partition,
-            objectKey,
-            e);
-        return new BulkIngestResponse(
-            0, totalDocs, "Failed to send WAL pointer to Kafka: " + e.getMessage());
-      }
-      // Increment metrics
-      s3UploadCounter.increment();
-      s3SpansUploadedCounter.increment(docsInPartition);
-      s3BytesUploadedCounter.increment(compressedData.length);
     }
+    // All partitions processed successfully
     return new BulkIngestResponse(totalDocs, 0, "Success");
+  }
+
+  private BulkIngestResponse uploadToS3AndSendKafkaPointer(int partition,
+                                                           byte[] compressedData,
+                                                           int docsInPartition, int totalDocs) {
+    String objectKey = generateS3ObjectKey(partition);
+
+    // put req then upload object to S3
+    Timer.Sample uploadTimer = Timer.start(meterRegistry);
+    try {
+      // upload to S3
+      blobStore.upload(objectKey, compressedData);
+
+      LOG.debug(
+          "Uploaded {} spans ({} bytes compressed) to S3 at key {} for partition {}",
+              docsInPartition,
+          compressedData.length,
+          objectKey,
+              partition);
+
+    } catch (Exception e) {
+      LOG.error("Failed to upload to S3", e);
+      return new BulkIngestResponse(0, totalDocs, "S3 upload failed: " + e.getMessage());
+    } finally {
+      uploadTimer.stop(s3UploadTimer);
+    }
+
+    // prepare pointer message
+    WalProtos.WalSegmentPointer pointer =
+        WalProtos.WalSegmentPointer.newBuilder()
+            .setBlobBucket(walBucket)
+            .setBlobstoreFilepath(objectKey)
+            .setDocCount(docsInPartition)
+            .setTimestampMs(Instant.now().toEpochMilli())
+            .setCompressionType("gzip")
+            .build();
+
+    byte[] pointerBytes = pointer.toByteArray();
+
+    ProducerRecord<String, byte[]> producerRecord =
+        new ProducerRecord<>(kafkaTopic, partition, null, pointerBytes);
+
+    try {
+      //send the record to Kafka
+      RecordMetadata recordMetadata = this.kafkaProducer.send(producerRecord).get();
+      LOG.debug(
+          "Sent WAL pointer for partition {} to Kafka topic {} partition {} offset {}",
+              partition,
+          kafkaTopic,
+          recordMetadata.partition(),
+          recordMetadata.offset());
+
+    } catch (Exception e) {
+      LOG.error(
+          "Failed to send WAL pointer for partition {} to Kafka - deleting S3 object {}",
+              partition,
+          objectKey,
+          e);
+      return new BulkIngestResponse(
+              0, totalDocs, "Failed to send WAL pointer to Kafka: " + e.getMessage());
+    }
+    // Increment metrics
+    updateMetricsForPartition(partition, docsInPartition, compressedData.length);
+
+    return null;  //successful upload and Kafka send, return null to indicate no error
   }
 
   // generate a key based on the current timestamp and a UUID.
@@ -201,5 +208,13 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
         partition,
         timestampMillis,
         UUID.randomUUID().toString().substring(0, 8));
+  }
+
+  private void updateMetricsForPartition(int partition, int docsInPartition, int bytesUploaded) {
+    meterRegistry.counter(S3_UPLOAD_COUNTER, "partition", String.valueOf(partition)).increment();
+    meterRegistry.counter(S3_SPANS_UPLOADED_COUNTER, "partition", String.valueOf(partition))
+            .increment(docsInPartition);
+    meterRegistry.counter(S3_BYTES_UPLOADED_COUNTER, "partition", String.valueOf(partition))
+            .increment(bytesUploaded);
   }
 }
