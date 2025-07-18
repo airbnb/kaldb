@@ -373,7 +373,7 @@ public class BlobStore {
     HeadObjectRequest headRequest = HeadObjectRequest.builder().bucket(bucketName).key(key).build();
 
     try {
-      s3AsyncClient.headObject(headRequest).get(); // blocks until complete
+      s3AsyncClient.headObject(headRequest).get(); 
       return true;
     } catch (ExecutionException e) {
       Throwable cause = e.getCause();
@@ -387,7 +387,13 @@ public class BlobStore {
       throw new RuntimeException("Interrupted while checking if S3 file exists", e);
     }
   }
-
+  /**
+   * Checks if a path exists in the object store by prefix.
+   *
+   * @param prefix The S3 prefix (considered as a "directory")
+   * @return true if the path exists, false otherwise
+   * @throws RuntimeException if checking fails
+   */
   public boolean pathExists(String prefix) {
     ListObjectsV2Request listReq =
         ListObjectsV2Request.builder()
