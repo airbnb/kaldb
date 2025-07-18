@@ -113,13 +113,14 @@ public class BlobStore {
    * @param data Compressed WAL batch data
    * @throws RuntimeException Thrown when upload fails
    */
-  public void uploadWalBatch(String key, byte[] data) {
+  public void upload(String key, byte[] data) {
     try {
       PutObjectRequest putObjectRequest =
           PutObjectRequest.builder().bucket(bucketName).key(key).build();
       s3AsyncClient.putObject(putObjectRequest, AsyncRequestBody.fromBytes(data)).get();
     } catch (ExecutionException | InterruptedException e) {
-      throw new RuntimeException("Failed to upload WAL batch to S3", e);
+      LOG.error("Failed to upload WAL batch to S3", e);
+      throw new RuntimeException(e);
     }
   }
 
