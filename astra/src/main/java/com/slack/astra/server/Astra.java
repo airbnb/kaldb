@@ -194,16 +194,28 @@ public class Astra {
               astraConfig.getS3Config());
       services.add(chunkManager);
 
-      AstraIndexer indexer =
-          new AstraIndexer(
-              chunkManager,
-              curatorFramework,
-              astraConfig.getMetadataStoreConfig(),
-              astraConfig.getIndexerConfig(),
-              astraConfig.getIndexerConfig().getKafkaConfig(),
-              meterRegistry,
-              astraConfig.getPreprocessorConfig(),
-              s3Client);
+      AstraIndexer indexer;
+      if (s3WalBlobStore != null) {
+        indexer =
+            new AstraIndexer(
+                chunkManager,
+                curatorFramework,
+                astraConfig.getMetadataStoreConfig(),
+                astraConfig.getIndexerConfig(),
+                astraConfig.getIndexerConfig().getKafkaConfig(),
+                meterRegistry,
+                astraConfig.getPreprocessorConfig(),
+                s3WalBlobStore);
+      } else {
+        indexer =
+            new AstraIndexer(
+                chunkManager,
+                curatorFramework,
+                astraConfig.getMetadataStoreConfig(),
+                astraConfig.getIndexerConfig(),
+                astraConfig.getIndexerConfig().getKafkaConfig(),
+                meterRegistry);
+      }
       services.add(indexer);
 
       AstraLocalQueryService<LogMessage> searcher =
@@ -485,14 +497,22 @@ public class Astra {
               .build();
       services.add(armeriaService);
 
-      RecoveryService recoveryService =
-          new RecoveryService(
-              astraConfig,
-              curatorFramework,
-              meterRegistry,
-              blobStore,
-              astraConfig.getPreprocessorConfig(),
-              s3Client);
+      RecoveryService recoveryService;
+      if (s3WalBlobStore != null) {
+        recoveryService = new RecoveryService(
+                astraConfig,
+                curatorFramework,
+                meterRegistry,
+                blobStore,
+                astraConfig.getPreprocessorConfig(),
+                s3WalBlobStore);
+      } else {
+        recoveryService = new RecoveryService(
+                astraConfig,
+                curatorFramework,
+                meterRegistry,
+                blobStore);
+      }
       services.add(recoveryService);
     }
 

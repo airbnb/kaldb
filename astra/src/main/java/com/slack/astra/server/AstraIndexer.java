@@ -4,10 +4,10 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static com.slack.astra.server.AstraConfig.DEFAULT_START_STOP_DURATION;
 
 import com.google.common.util.concurrent.AbstractExecutionThreadService;
+import com.slack.astra.blobfs.BlobStore;
 import com.slack.astra.chunkManager.ChunkRollOverException;
 import com.slack.astra.chunkManager.IndexingChunkManager;
 import com.slack.astra.logstore.LogMessage;
-import com.slack.astra.logstore.Message;
 import com.slack.astra.metadata.recovery.RecoveryTaskMetadataStore;
 import com.slack.astra.metadata.snapshot.SnapshotMetadataStore;
 import com.slack.astra.proto.config.AstraConfigs;
@@ -21,7 +21,6 @@ import java.io.IOException;
 import org.apache.curator.x.async.AsyncCuratorFramework;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import software.amazon.awssdk.services.s3.S3AsyncClient;
 
 /**
  * AstraIndexer creates an indexer to index the log data. The indexer also exposes a search api to
@@ -63,7 +62,7 @@ public class AstraIndexer extends AbstractExecutionThreadService {
       AstraConfigs.KafkaConfig kafkaConfig,
       MeterRegistry meterRegistry,
       AstraConfigs.PreprocessorConfig preprocessorConfig, // Add this
-      S3AsyncClient s3Client) {
+      BlobStore blobStore) {
 
     checkNotNull(chunkManager, "Chunk manager can't be null");
     this.curatorFramework = curatorFramework;
@@ -77,9 +76,8 @@ public class AstraIndexer extends AbstractExecutionThreadService {
     // set up indexing pipelne
     MessageWriter messageWriter;
 
-    if (preprocessorConfig != null && preprocessorConfig.getUseS3Wal()){
-      messageWriter = new S3MessageWriterImpl(
-          chunkManager, s3Client, meterRegistry);
+    if (preprocessorConfig != null && preprocessorConfig.getUseS3Wal()) {
+      messageWriter = new S3MessageWriterImpl(chunkManager, blobStore, meterRegistry);
     } else {
       messageWriter = new LogMessageWriterImpl(chunkManager);
     }
@@ -88,15 +86,22 @@ public class AstraIndexer extends AbstractExecutionThreadService {
   }
 
   public AstraIndexer(
-          IndexingChunkManager<LogMessage> chunkManager,
-          AsyncCuratorFramework curatorFramework,
-          AstraConfigs.MetadataStoreConfig metadataStoreConfig,
-          AstraConfigs.IndexerConfig indexerConfig,
-          AstraConfigs.KafkaConfig kafkaConfig,
-          MeterRegistry meterRegistry) {
+      IndexingChunkManager<LogMessage> chunkManager,
+      AsyncCuratorFramework curatorFramework,
+      AstraConfigs.MetadataStoreConfig metadataStoreConfig,
+      AstraConfigs.IndexerConfig indexerConfig,
+      AstraConfigs.KafkaConfig kafkaConfig,
+      MeterRegistry meterRegistry) {
 
-    this(chunkManager, curatorFramework, metadataStoreConfig, indexerConfig,
-            kafkaConfig, meterRegistry, null, null);
+    this(
+        chunkManager,
+        curatorFramework,
+        metadataStoreConfig,
+        indexerConfig,
+        kafkaConfig,
+        meterRegistry,
+        null,
+        null);
   }
 
   @Override

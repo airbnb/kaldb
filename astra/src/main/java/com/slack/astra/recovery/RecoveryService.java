@@ -42,7 +42,6 @@ import org.apache.kafka.clients.admin.OffsetSpec;
 import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import software.amazon.awssdk.services.s3.S3AsyncClient;
 
 /**
  * The recovery service is intended to be executed on a recovery node, and is responsible for
@@ -87,8 +86,8 @@ public class RecoveryService extends AbstractIdleService {
   private final Timer recoveryTaskTimerSuccess;
   private final Timer recoveryTaskTimerFailure;
   private SearchMetadataStore searchMetadataStore;
+  private final BlobStore s3WalBlobStore;
 
-  protected final S3AsyncClient s3Client;
   final AstraConfigs.PreprocessorConfig preprocessorConfig;
 
   private final AstraMetadataStoreChangeListener<RecoveryNodeMetadata> recoveryNodeListener =
@@ -100,7 +99,7 @@ public class RecoveryService extends AbstractIdleService {
       MeterRegistry meterRegistry,
       BlobStore blobStore,
       AstraConfigs.PreprocessorConfig preprocessorConfig,
-      S3AsyncClient s3Client) {
+      BlobStore s3WalBlobStore) {
 
     this.curatorFramework = curatorFramework;
     this.searchContext =
@@ -109,7 +108,7 @@ public class RecoveryService extends AbstractIdleService {
     this.blobStore = blobStore;
     this.AstraConfig = AstraConfig;
     this.preprocessorConfig = preprocessorConfig;
-    this.s3Client = s3Client;
+    this.s3WalBlobStore = s3WalBlobStore;
 
     adminClient =
         AdminClient.create(
@@ -143,10 +142,10 @@ public class RecoveryService extends AbstractIdleService {
   }
 
   public RecoveryService(
-          AstraConfigs.AstraConfig AstraConfig,
-          AsyncCuratorFramework curatorFramework,
-          MeterRegistry meterRegistry,
-          BlobStore blobStore) {
+      AstraConfigs.AstraConfig AstraConfig,
+      AsyncCuratorFramework curatorFramework,
+      MeterRegistry meterRegistry,
+      BlobStore blobStore) {
 
     this(AstraConfig, curatorFramework, meterRegistry, blobStore, null, null);
   }
@@ -338,9 +337,8 @@ public class RecoveryService extends AbstractIdleService {
         // Ingest data in parallel
         MessageWriter messageWriter;
 
-        if (preprocessorConfig != null && preprocessorConfig.getUseS3Wal()){
-          messageWriter = new S3MessageWriterImpl(
-                  chunkManager, s3Client, meterRegistry);
+        if (preprocessorConfig != null && preprocessorConfig.getUseS3Wal()) {
+          messageWriter = new S3MessageWriterImpl(chunkManager, s3WalBlobStore, meterRegistry);
         } else {
           messageWriter = new LogMessageWriterImpl(chunkManager);
         }
