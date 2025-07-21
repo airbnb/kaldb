@@ -116,7 +116,7 @@ class BulkIngestS3ProducerTest {
             INDEX_NAME,
             "owner",
             1,
-            List.of(new DatasetPartitionMetadata(1, Long.MAX_VALUE, List.of("0"))),
+            List.of(new DatasetPartitionMetadata(1, Long.MAX_VALUE, List.of("1"))),
             INDEX_NAME);
     // Create an entry while init. Update the entry on every test run
     datasetMetadataStore.createSync(datasetMetadata);
@@ -205,6 +205,149 @@ class BulkIngestS3ProducerTest {
 
       // Verify the Kafka message key is null (partition-based routing)
       assertThat(record.key()).isNull();
+    }
+    kafkaConsumer.close();
+  }
+
+  @Test
+  public void testMultipleIndexesSamePartition() throws Exception {
+    // Create additional dataset that maps to the same partition
+    DatasetMetadata dataset2 =
+        new DatasetMetadata(
+            "secondindex_same_partition",
+            "owner",
+            1,
+            List.of(
+                new DatasetPartitionMetadata(
+                    1, Long.MAX_VALUE, List.of("1"))), // Same partition as INDEX_NAME
+            "secondindex_same_partition");
+    datasetMetadataStore.createSync(dataset2);
+
+    // Create spans for multiple indexes that will map to the same partition
+    Trace.Span span1 = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("span1")).build();
+    Trace.Span span2 = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("span2")).build();
+    Trace.Span span3 = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("span3")).build();
+
+    // Both indexes map to partition 1
+    Map<String, List<Trace.Span>> indexDocs =
+        Map.of(INDEX_NAME, List.of(span1, span2), "secondindex_same_partition", List.of(span3));
+
+    BulkIngestRequest request = bulkIngestS3Producer.submitRequest(indexDocs);
+    AtomicReference<BulkIngestResponse> response = new AtomicReference<>();
+
+    Thread.ofVirtual()
+        .start(
+            () -> {
+              try {
+                response.set(request.getResponse());
+              } catch (Exception e) {
+                throw new RuntimeException(e);
+              }
+            });
+
+    await().until(() -> response.get() != null);
+
+    // Verify response includes all spans
+    assertThat(response.get().totalDocs()).isEqualTo(3);
+    assertThat(response.get().failedDocs()).isEqualTo(0);
+
+    // Verify only 1 S3 upload (all indexes grouped into one partition)
+    verify(mockBlobStore).upload(any(String.class), any(byte[].class));
+
+    // Verify metrics show single upload with all spans
+    assertThat(MetricsUtil.getCount("bulk_ingest_producer_s3_wal_uploads_total", meterRegistry))
+        .isEqualTo(1);
+    assertThat(
+            MetricsUtil.getCount("bulk_ingest_producer_s3_wal_spans_uploaded_total", meterRegistry))
+        .isEqualTo(3);
+
+    // Verify single Kafka message with total span count
+    KafkaConsumer<String, byte[]> kafkaConsumer = getTestKafkaConsumer();
+    ConsumerRecords<String, byte[]> records =
+        kafkaConsumer.poll(Duration.of(10, ChronoUnit.SECONDS));
+
+    assertThat(records.count()).isEqualTo(1);
+
+    for (ConsumerRecord<String, byte[]> record : records) {
+      WalProtos.WalSegmentPointer pointer = WalProtos.WalSegmentPointer.parseFrom(record.value());
+      assertThat(pointer.getBlobBucket()).isEqualTo(TEST_S3_BUCKET);
+      assertThat(pointer.getBlobstoreFilepath()).startsWith("wal/");
+      assertThat(pointer.getDocCount()).isEqualTo(3); // Total spans across all indexes
+      assertThat(pointer.getCompressionType()).isEqualTo("gzip");
+    }
+    kafkaConsumer.close();
+  }
+
+  @Test
+  public void testMultipleIndexesDifferentPartitions() throws Exception {
+    // Create additional dataset for different partition
+    DatasetMetadata dataset2 =
+        new DatasetMetadata(
+            "secondindex",
+            "owner",
+            1,
+            List.of(
+                new DatasetPartitionMetadata(
+                    1, Long.MAX_VALUE, List.of("2"))), // Different partition
+            "secondindex");
+    datasetMetadataStore.createSync(dataset2);
+
+    Trace.Span span1 = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("span1")).build();
+    Trace.Span span2 = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("span2")).build();
+
+    // Indexes that map to different partitions
+    Map<String, List<Trace.Span>> indexDocs =
+        Map.of(
+            INDEX_NAME,
+            List.of(span1), // Partition 1
+            "secondindex",
+            List.of(span2) // Partition 2
+            );
+
+    BulkIngestRequest request = bulkIngestS3Producer.submitRequest(indexDocs);
+    AtomicReference<BulkIngestResponse> response = new AtomicReference<>();
+
+    Thread.ofVirtual()
+        .start(
+            () -> {
+              try {
+                response.set(request.getResponse());
+              } catch (Exception e) {
+                throw new RuntimeException(e);
+              }
+            });
+
+    await().until(() -> response.get() != null);
+
+    // Verify response includes all spans
+    assertThat(response.get().totalDocs()).isEqualTo(2);
+    assertThat(response.get().failedDocs()).isEqualTo(0);
+
+    // Verify 2 S3 uploads (one per partition)
+    verify(mockBlobStore, org.mockito.Mockito.times(2))
+        .upload(any(String.class), any(byte[].class));
+
+    // Verify metrics show 2 uploads with 1 span each
+    assertThat(MetricsUtil.getCount("bulk_ingest_producer_s3_wal_uploads_total", meterRegistry))
+        .isEqualTo(2);
+    assertThat(
+            MetricsUtil.getCount("bulk_ingest_producer_s3_wal_spans_uploaded_total", meterRegistry))
+        .isEqualTo(2);
+
+    // Verify 2 Kafka messages (one per partition)
+    KafkaConsumer<String, byte[]> kafkaConsumer = getTestKafkaConsumer();
+    ConsumerRecords<String, byte[]> records =
+        kafkaConsumer.poll(Duration.of(10, ChronoUnit.SECONDS));
+
+    assertThat(records.count()).isEqualTo(2);
+
+    // Verify each message has 1 span
+    for (ConsumerRecord<String, byte[]> record : records) {
+      WalProtos.WalSegmentPointer pointer = WalProtos.WalSegmentPointer.parseFrom(record.value());
+      assertThat(pointer.getBlobBucket()).isEqualTo(TEST_S3_BUCKET);
+      assertThat(pointer.getBlobstoreFilepath()).startsWith("wal/");
+      assertThat(pointer.getDocCount()).isEqualTo(1); // 1 span per partition
+      assertThat(pointer.getCompressionType()).isEqualTo("gzip");
     }
     kafkaConsumer.close();
   }
