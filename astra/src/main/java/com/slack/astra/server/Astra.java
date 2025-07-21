@@ -440,7 +440,8 @@ public class Astra {
 
       RecoveryService recoveryService;
       if (s3WalBlobStore != null) {
-        recoveryService = new RecoveryService(
+        recoveryService =
+            new RecoveryService(
                 astraConfig,
                 curatorFramework,
                 meterRegistry,
@@ -448,11 +449,8 @@ public class Astra {
                 astraConfig.getPreprocessorConfig(),
                 s3WalBlobStore);
       } else {
-        recoveryService = new RecoveryService(
-                astraConfig,
-                curatorFramework,
-                meterRegistry,
-                blobStore);
+        recoveryService =
+            new RecoveryService(astraConfig, curatorFramework, meterRegistry, blobStore);
       }
       services.add(recoveryService);
     }

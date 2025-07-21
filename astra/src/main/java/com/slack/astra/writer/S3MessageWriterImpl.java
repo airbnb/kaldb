@@ -22,9 +22,7 @@ public class S3MessageWriterImpl implements MessageWriter {
   private final BlobStore blobStore;
 
   private final Counter s3DownloadCounter;
-  private final Counter s3DownloadErrorCounter;
   private final Counter spansProcessedCounter;
-  private final Counter decompressionErrorCounter;
 
   public S3MessageWriterImpl(
       ChunkManager<LogMessage> chunkManager, BlobStore blobStore, MeterRegistry meterRegistry) {
@@ -34,80 +32,50 @@ public class S3MessageWriterImpl implements MessageWriter {
 
     // Initialize metrics
     this.s3DownloadCounter = meterRegistry.counter("s3_message_writer.downloads");
-    this.s3DownloadErrorCounter = meterRegistry.counter("s3_message_writer.download_errors");
     this.spansProcessedCounter = meterRegistry.counter("s3_message_writer.spans_processed");
-    this.decompressionErrorCounter =
-        meterRegistry.counter("s3_message_writer.decompression_errors");
   }
 
   @Override
   public boolean insertRecord(ConsumerRecord<String, byte[]> record) throws IOException {
-
     if (record == null) return false;
-    try {
-      // Deserialize the S3WalPointer from the record value
-      WalProtos.WalSegmentPointer pointer = WalProtos.WalSegmentPointer.parseFrom(record.value());
-      LOG.debug(
-          "Processing WAL segment: bucket={}, key={}, docCount={}",
-          pointer.getBlobBucket(),
-          pointer.getBlobstoreFilepath(),
-          pointer.getDocCount());
-      try {
-        // Create a GetObjectRequest for the S3 object
-        byte[] compressedData = blobStore.downloadWalBatch(pointer.getBlobstoreFilepath());
-        s3DownloadCounter.increment();
 
-        // Deserialize and decompress to get all indexes and their spans
-        Map<String, List<Trace.Span>> indexDocs =
-            WALBatchSerializer.deserializeAndDecompress(compressedData);
+    // Parse S3 pointer (let exceptions propagate like LogMessageWriter)
 
-        boolean allSuccessful = true;
-        int totalSpansProcessed = 0;
+    WalProtos.WalSegmentPointer pointer = WalProtos.WalSegmentPointer.parseFrom(record.value());
 
-        for (Map.Entry<String, List<Trace.Span>> entry : indexDocs.entrySet()) {
+    LOG.debug(
+        "Processing WAL segment: bucket={}, key={}, docCount={}",
+        pointer.getBlobBucket(),
+        pointer.getBlobstoreFilepath(),
+        pointer.getDocCount());
 
-          String index = entry.getKey();
-          List<Trace.Span> spans = entry.getValue();
+    // Download batch from S3
+    byte[] compressedData = blobStore.downloadWalBatch(pointer.getBlobstoreFilepath());
+    s3DownloadCounter.increment();
 
-          LOG.debug(
-              "Processing {} spans for index {} from partition {}",
-              spans.size(),
-              index,
-              record.partition());
+    // Deserialize batch
+    Map<String, List<Trace.Span>> indexDocs =
+        WALBatchSerializer.deserializeAndDecompress(compressedData);
 
-          for (Trace.Span span : spans) {
-            try {
-              chunkManager.addMessage(
-                  span,
-                  span.getSerializedSize(),
-                  String.valueOf(record.partition()),
-                  record.offset());
-              totalSpansProcessed++;
-            } catch (Exception e) {
-              LOG.error("Failed to add span to chunk manager", e);
-              allSuccessful = false;
-            }
-          }
-        }
-        spansProcessedCounter.increment(totalSpansProcessed);
+    int totalSpansProcessed = 0;
 
-        LOG.debug(
-            "Successfully processed {} spans from S3 object for partition {}",
-            totalSpansProcessed,
-            record.partition());
-        return allSuccessful;
-      } catch (Exception e) {
-        LOG.error(
-            "Failed to process S3 batch: bucket={}, key={}",
-            pointer.getBlobBucket(),
-            pointer.getBlobstoreFilepath(),
-            e);
-        decompressionErrorCounter.increment();
-        throw new IOException("S3 batch processing failed", e);
+    // Process each span
+    for (Map.Entry<String, List<Trace.Span>> entry : indexDocs.entrySet()) {
+      for (Trace.Span span : entry.getValue()) {
+
+        chunkManager.addMessage(
+            span, span.getSerializedSize(), String.valueOf(record.partition()), record.offset());
+        totalSpansProcessed++;
       }
-    } catch (Exception e) {
-      LOG.error("Failed to process S3 WAL pointer message", e);
-      return false;
     }
+
+    spansProcessedCounter.increment(totalSpansProcessed);
+
+    LOG.debug(
+        "Successfully processed {} spans from S3 object for partition {}",
+        totalSpansProcessed,
+        record.partition());
+
+    return true; // Only reached if ALL spans succeeded
   }
 }
