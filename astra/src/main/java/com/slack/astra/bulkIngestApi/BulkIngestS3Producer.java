@@ -4,8 +4,8 @@ import com.slack.astra.blobfs.BlobStore;
 import com.slack.astra.metadata.dataset.DatasetMetadataStore;
 import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.astra.proto.wal.WalProtos;
+import com.slack.astra.util.RuntimeHalterImpl;
 import com.slack.service.murron.trace.Trace;
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import java.time.Instant;
@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.slf4j.Logger;
@@ -31,10 +32,16 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
   public static final String S3_UPLOAD_TIMER = "bulk_ingest_producer_s3_wal_upload_duration";
   public static final String S3_BYTES_UPLOADED_COUNTER =
       "bulk_ingest_producer_s3_wal_bytes_uploaded_total";
-
+  public static final String S3_UPLOAD_FAILURES_COUNTER =
+      "bulk_ingest_producer_s3_wal_upload_failures_total";
+  public static final String KAFKA_POINTER_FAILURES_COUNTER =
+      "bulk_ingest_producer_s3_wal_kafka_failures_total";
+  public static final String STOP_INGESTION_COUNTER =
+      "bulk_ingest_producer_s3_wal_stop_ingestion_total";
   private final BlobStore blobStore;
   protected final String walBucket;
   private final Timer s3UploadTimer;
+  private volatile boolean stopIngestion = false;
 
   public BulkIngestS3Producer(
       final DatasetMetadataStore datasetMetadataStore,
@@ -84,6 +91,12 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
 
   protected BulkIngestResponse processRequest(BulkIngestRequest request) throws Exception {
 
+    if (stopIngestion) {
+      LOG.warn("Stopping ingestion due to previous S3 WAL failures.");
+      RuntimeException e = new RuntimeException("Stopping ingestion due to S3 WAL failures.");
+      new RuntimeHalterImpl().handleFatal(e);
+    }
+
     Map<String, List<Trace.Span>> indexDocs = request.getInputDocs();
     int totalDocs = indexDocs.values().stream().mapToInt(List::size).sum();
 
@@ -118,20 +131,19 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
       // Serialize and compress the spans for this partition
       byte[] compressedData = WALBatchSerializer.serializeAndCompress(indexesForPartition);
 
-      //Send to S3 and Kafka
-      BulkIngestResponse errorResponse = uploadToS3AndSendKafkaPointer(partition, compressedData,
-                docsInPartition, totalDocs);
+      // Send to S3 and Kafka
+      BulkIngestResponse errorResponse =
+          uploadToS3AndSendKafkaPointer(partition, compressedData, docsInPartition, totalDocs);
 
       if (errorResponse != null) return errorResponse;
-
     }
     // All partitions processed successfully
     return new BulkIngestResponse(totalDocs, 0, "Success");
   }
 
-  private BulkIngestResponse uploadToS3AndSendKafkaPointer(int partition,
-                                                           byte[] compressedData,
-                                                           int docsInPartition, int totalDocs) {
+  private BulkIngestResponse uploadToS3AndSendKafkaPointer(
+      int partition, byte[] compressedData, int docsInPartition, int totalDocs) {
+
     String objectKey = generateS3ObjectKey(partition);
 
     // put req then upload object to S3
@@ -142,13 +154,15 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
 
       LOG.debug(
           "Uploaded {} spans ({} bytes compressed) to S3 at key {} for partition {}",
-              docsInPartition,
+          docsInPartition,
           compressedData.length,
           objectKey,
-              partition);
+          partition);
 
     } catch (Exception e) {
-      LOG.error("Failed to upload to S3", e);
+      LOG.error("Fatal: Failed to upload to S3 - stopping ingestion", e);
+      updateFailureMetrics(partition, S3_UPLOAD_FAILURES_COUNTER);
+      stopIngestion = true;
       return new BulkIngestResponse(0, totalDocs, "S3 upload failed: " + e.getMessage());
     } finally {
       uploadTimer.stop(s3UploadTimer);
@@ -170,28 +184,31 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
         new ProducerRecord<>(kafkaTopic, partition, null, pointerBytes);
 
     try {
-      //send the record to Kafka
-      RecordMetadata recordMetadata = this.kafkaProducer.send(producerRecord).get();
+      // send the record to Kafka
+      RecordMetadata recordMetadata =
+          this.kafkaProducer.send(producerRecord).get(5000, TimeUnit.MILLISECONDS);
       LOG.debug(
           "Sent WAL pointer for partition {} to Kafka topic {} partition {} offset {}",
-              partition,
+          partition,
           kafkaTopic,
           recordMetadata.partition(),
           recordMetadata.offset());
 
     } catch (Exception e) {
       LOG.error(
-          "Failed to send WAL pointer for partition {} to Kafka - deleting S3 object {}",
-              partition,
+          "Failed to send WAL pointer for partition {} to Kafka - stopping ingestion {}",
+          partition,
           objectKey,
           e);
+      updateFailureMetrics(partition, KAFKA_POINTER_FAILURES_COUNTER);
+      stopIngestion = true;
       return new BulkIngestResponse(
-              0, totalDocs, "Failed to send WAL pointer to Kafka: " + e.getMessage());
+          0, totalDocs, "Failed to send WAL pointer to Kafka: " + e.getMessage());
     }
     // Increment metrics
     updateMetricsForPartition(partition, docsInPartition, compressedData.length);
 
-    return null;  //successful upload and Kafka send, return null to indicate no error
+    return null; // successful upload and Kafka send, return null to indicate no error
   }
 
   // generate a key based on the current timestamp and a UUID.
@@ -212,9 +229,19 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
 
   private void updateMetricsForPartition(int partition, int docsInPartition, int bytesUploaded) {
     meterRegistry.counter(S3_UPLOAD_COUNTER, "partition", String.valueOf(partition)).increment();
-    meterRegistry.counter(S3_SPANS_UPLOADED_COUNTER, "partition", String.valueOf(partition))
-            .increment(docsInPartition);
-    meterRegistry.counter(S3_BYTES_UPLOADED_COUNTER, "partition", String.valueOf(partition))
-            .increment(bytesUploaded);
+    meterRegistry
+        .counter(S3_SPANS_UPLOADED_COUNTER, "partition", String.valueOf(partition))
+        .increment(docsInPartition);
+    meterRegistry
+        .counter(S3_BYTES_UPLOADED_COUNTER, "partition", String.valueOf(partition))
+        .increment(bytesUploaded);
+  }
+
+  private void updateFailureMetrics(int partition, String failureType) {
+
+    meterRegistry.counter(failureType, "partition", String.valueOf(partition)).increment();
+    meterRegistry
+        .counter(STOP_INGESTION_COUNTER, "partition", String.valueOf(partition))
+        .increment();
   }
 }
