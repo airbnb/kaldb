@@ -97,6 +97,9 @@ public class WALBatchSerializer {
         } catch (EOFException e) {
           break; // Natural end of stream
         } catch (IOException e) {
+          if (e.getMessage() != null && e.getMessage().contains("Unexpected end of stream")) {
+            break; // This is actually EOF, not corruption
+          }
           throw new IOException("Corruption detected during deserialization", e);
         }
       }
