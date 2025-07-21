@@ -4,6 +4,7 @@ import com.slack.astra.proto.wal.WalProtos;
 import com.slack.service.murron.trace.Trace;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -60,7 +61,7 @@ public class WALBatchSerializer {
     try (ByteArrayInputStream bais = new ByteArrayInputStream(compressedData);
         GZIPInputStream gzipIn = new GZIPInputStream(bais)) {
 
-      while (gzipIn.available() > 0) {
+      while (true) {
         try {
           // Read header size
           int headerSize = readInt(gzipIn);
@@ -93,9 +94,10 @@ public class WALBatchSerializer {
 
           result.put(index, spans);
 
-        } catch (Exception e) {
-          // End of valid data
-          break;
+        } catch (EOFException e) {
+          break; // Natural end of stream
+        } catch (IOException e) {
+          throw new IOException("Corruption detected during deserialization", e);
         }
       }
     }
