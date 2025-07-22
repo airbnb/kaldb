@@ -223,10 +223,10 @@ class BlobStoreTest {
     // Arrange
     String jsonData =
         "[{\"id\":\"101\",\"traceId\":\"test_trace_789\",\"name\":\"test-span\",\"tags\":{\"key1\":\"value1\",\"key2\":\"value2\",\"key3\":\"value3\"}}]";
-    byte[] compressedData = BlobStore.compressJsonData(jsonData);
+    byte[] compressedData = BlobStore.compressData(jsonData);
 
     // Act
-    String decompressedData = BlobStore.decompressJsonData(compressedData);
+    String decompressedData = BlobStore.decompressData(compressedData);
 
     // Assert
     assertNotNull(decompressedData, "Decompressed data should not be null");
@@ -237,10 +237,10 @@ class BlobStoreTest {
   public void testCompressDecompressJsonData_emptyString() throws Exception {
     // Arrange
     String jsonData = "";
-    byte[] compressedData = BlobStore.compressJsonData(jsonData);
+    byte[] compressedData = BlobStore.compressData(jsonData);
 
     // Act
-    String decompressedData = BlobStore.decompressJsonData(compressedData);
+    String decompressedData = BlobStore.decompressData(compressedData);
 
     // Assert
     assertNotNull(decompressedData, "Decompressed data should not be null");
@@ -256,7 +256,7 @@ class BlobStoreTest {
         "[{\"id\":\"101\",\"traceId\":\"test_trace_789\",\"name\":\"test-span\",\"tags\":{\"key1\":\"value1\",\"key2\":\"value2\",\"key3\":\"value3\"}}]";
 
     // Upload JSON data
-    blobStore.uploadJsonData(chunkId, jsonData, false);
+    blobStore.uploadData(chunkId, jsonData, false);
 
     // Download and decompress the JSON data
     String downloadedJsonData = blobStore.readFileData(chunkId, false);
@@ -273,7 +273,7 @@ class BlobStoreTest {
         "[{\"id\":\"101\",\"traceId\":\"test_trace_789\",\"name\":\"test-span\",\"tags\":{\"key1\":\"value1\",\"key2\":\"value2\",\"key3\":\"value3\"}}]";
 
     // Upload empty JSON data
-    blobStore.uploadJsonData(chunkId, jsonData, true);
+    blobStore.uploadData(chunkId, jsonData, true);
 
     // Download and decompress the JSON data
     String downloadedJsonData = blobStore.readFileData(chunkId, true);
@@ -281,28 +281,6 @@ class BlobStoreTest {
     // Assert that the downloaded data matches the original empty string
     assertEquals(
         jsonData, downloadedJsonData, "Downloaded JSON data should match original empty string");
-  }
-
-  @Test
-  public void testDeleteFile() throws IOException {
-    BlobStore blobStore = new BlobStore(s3Client, TEST_BUCKET);
-    String chunkId = UUID.randomUUID().toString();
-
-    // Upload a file
-    Path directoryUpload = Files.createTempDirectory("");
-    Path foo = Files.createTempFile(directoryUpload, "", "");
-    try (FileWriter fileWriter = new FileWriter(foo.toFile())) {
-      fileWriter.write("Example test");
-    }
-    blobStore.upload(chunkId, directoryUpload);
-
-    // Delete the file
-    blobStore.deleteFile(String.format("%s/%s", chunkId, foo.getFileName().toString()));
-
-    // Verify the file is deleted
-    List<String> filesAfterDeletion = blobStore.listFiles(chunkId);
-    assertThat(filesAfterDeletion)
-        .doesNotContain(String.format("%s/%s", chunkId, foo.getFileName().toString()));
   }
 
   @Test

@@ -213,7 +213,7 @@ public class ZipkinServiceTest {
               Mockito.argThat(
                   request -> request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
 
-      verify(mockBlobStore).uploadJsonData(anyString(), anyString(), eq(true));
+      verify(mockBlobStore).uploadData(anyString(), anyString(), eq(true));
       verify(mockBlobStore).copyFile(anyString(), eq(traceFilePath));
       verify(mockBlobStore).deleteFile(anyString());
 
@@ -246,7 +246,7 @@ public class ZipkinServiceTest {
 
       Path filePath = Paths.get(Resources.getResource("zipkinApi/traceData.json").toURI());
 
-      mockBlobStore.uploadJsonData(traceFilePath, Files.readString(filePath), true);
+      mockBlobStore.uploadData(traceFilePath, Files.readString(filePath), true);
 
       boolean userRequest = true;
 
@@ -307,7 +307,7 @@ public class ZipkinServiceTest {
               Optional.of(dataFreshnessInSeconds));
 
       verify(mockBlobStore).readFileData(traceFilePath, true);
-      verify(mockBlobStore, never()).uploadJsonData(anyString(), anyString(), eq(true));
+      verify(mockBlobStore, never()).uploadData(anyString(), anyString(), eq(true));
       verify(mockBlobStore, never()).copyFile(anyString(), eq(traceFilePath));
       verify(mockBlobStore, never()).deleteFile(anyString());
       verify(searcher)
@@ -366,7 +366,7 @@ public class ZipkinServiceTest {
               Mockito.argThat(
                   request -> request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
 
-      verify(mockBlobStore).uploadJsonData(anyString(), anyString(), eq(true));
+      verify(mockBlobStore).uploadData(anyString(), anyString(), eq(true));
       verify(mockBlobStore).copyFile(anyString(), eq(traceFilePath));
       verify(mockBlobStore).deleteFile(anyString());
       assertNotNull(response, "Response should not be null");
@@ -390,10 +390,10 @@ public class ZipkinServiceTest {
     String traceId = "test_trace_123";
     String jsonData =
         "[{\"id\":\"101\",\"traceId\":\"test_trace_123\",\"name\":\"test-span\",\"tags\":{\"key1\":\"value1\",\"key2\":\"value2\"}}]";
-    zipkinService.saveDataToS3(traceId, jsonData);
+    zipkinService.saveDataToBlobStoreCache(traceId, jsonData);
 
     // Act
-    String retrievedData = zipkinService.retrieveDataFromS3(traceId);
+    String retrievedData = zipkinService.retrieveDataFromBlobStoreCache(traceId);
 
     // Assert
     assertNotNull(retrievedData, "Retrieved data should not be null");
@@ -404,7 +404,7 @@ public class ZipkinServiceTest {
   public void testRetrieveDataFromS3_nullTraceId_throwsException() {
     // Act & Assert
     try {
-      zipkinService.retrieveDataFromS3(null);
+      zipkinService.retrieveDataFromBlobStoreCache(null);
       fail("Should have thrown an exception");
     } catch (AssertionError e) {
       // Expected - assertion should fail for null traceId
@@ -415,7 +415,7 @@ public class ZipkinServiceTest {
   public void testRetrieveDataFromS3_emptyTraceId_throwsException() {
     // Act & Assert
     try {
-      zipkinService.retrieveDataFromS3("");
+      zipkinService.retrieveDataFromBlobStoreCache("");
       fail("Should have thrown an exception");
     } catch (AssertionError e) {
       // Expected - assertion should fail for empty traceId
@@ -430,10 +430,10 @@ public class ZipkinServiceTest {
         "[{\"id\":\"101\",\"traceId\":\"test_trace_456\",\"name\":\"test-span\",\"tags\":{\"key1\":\"value1\",\"key2\":\"value2\"}}]";
 
     // Act
-    zipkinService.saveDataToS3(traceId, jsonData);
+    zipkinService.saveDataToBlobStoreCache(traceId, jsonData);
 
     // Assert
-    verify(mockBlobStore).uploadJsonData(anyString(), anyString(), eq(true));
+    verify(mockBlobStore).uploadData(anyString(), anyString(), eq(true));
     verify(mockBlobStore).copyFile(anyString(), anyString());
     verify(mockBlobStore).deleteFile(anyString());
 
@@ -450,7 +450,7 @@ public class ZipkinServiceTest {
 
     // Act & Assert
     try {
-      zipkinService.saveDataToS3(null, jsonData);
+      zipkinService.saveDataToBlobStoreCache(null, jsonData);
       assertTrue(false, "Should have thrown an exception");
     } catch (AssertionError e) {
       // Expected - assertion should fail for null traceId
@@ -464,7 +464,7 @@ public class ZipkinServiceTest {
 
     // Act & Assert
     try {
-      zipkinService.saveDataToS3("", jsonData);
+      zipkinService.saveDataToBlobStoreCache("", jsonData);
       assertTrue(false, "Should have thrown an exception");
     } catch (AssertionError e) {
       // Expected - assertion should fail for empty traceId
@@ -476,7 +476,7 @@ public class ZipkinServiceTest {
 
     // Act & Assert
     try {
-      zipkinService.saveDataToS3("test_trace", null);
+      zipkinService.saveDataToBlobStoreCache("test_trace", null);
       assertTrue(false, "Should have thrown an exception");
     } catch (AssertionError e) {
       // Expected - assertion should fail for null data

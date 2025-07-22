@@ -224,12 +224,13 @@ public class ZipkinService {
     // Log the custom header userRequest value if present
     if (userRequest.isPresent()) {
       LOG.info("Received custom header X-User-Request: {}", userRequest.get());
-      // try to retrieve trace data from S3; check timestamp before using S3 for data freshness
+      // try to retrieve trace data from blob store cache; check timestamp before using blob store
+      // cache for data freshness
 
-      String traceData = retrieveDataFromS3(traceId);
+      String traceData = retrieveDataFromBlobStoreCache(traceId);
       // if found, return the data
       if (traceData != null) {
-        LOG.info("Trace data retrieved from S3 for traceId={}", traceId);
+        LOG.info("Trace data retrieved from blob store cache for traceId={}", traceId);
         return HttpResponse.of(HttpStatus.OK, MediaType.ANY_APPLICATION_TYPE, traceData);
       }
     }
@@ -277,18 +278,25 @@ public class ZipkinService {
     if (userRequest.isPresent() && userRequest.get() && !output.isEmpty()) {
       long dataFreshnessInSecondsValue =
           dataFreshnessInSeconds.orElse(
-              this.defaultDataFreshnessInSeconds); // default to 15 minutes if not provided
+              this.defaultDataFreshnessInSeconds); // default to 15 minutes if not
       // Check if no new spans in trace data, it can be saved
       Instant latestSpanTimestamp = getLatestSpanTimestamp(messages);
-      Instant currentTime = Instant.now();
-      if (latestSpanTimestamp.isBefore(
-          currentTime.minus(dataFreshnessInSecondsValue, ChronoUnit.SECONDS))) {
-        LOG.info("No new incoming span in trace data, can be saved to S3 for traceId={}", traceId);
-        // Save the trace data to S3
-        saveDataToS3(traceId, output);
+
+      if (shouldSaveToBlobStoreCache(latestSpanTimestamp, dataFreshnessInSecondsValue)) {
+        LOG.info(
+            "Data freshness check done, can be saved to blob store cache for traceId={}", traceId);
+        // Save the trace data to blob store cache
+        saveDataToBlobStoreCache(traceId, output);
       }
     }
     return HttpResponse.of(HttpStatus.OK, MediaType.JSON_UTF_8, output);
+  }
+
+  protected static boolean shouldSaveToBlobStoreCache(
+      Instant latestSpanTimestamp, long dataFreshnessInSeconds) {
+    Instant currentTime = Instant.now();
+    return latestSpanTimestamp.isBefore(
+        currentTime.minus(dataFreshnessInSeconds, ChronoUnit.SECONDS));
   }
 
   @VisibleForTesting
@@ -299,53 +307,54 @@ public class ZipkinService {
         .orElse(null);
   }
 
-  protected String retrieveDataFromS3(String traceId) {
+  protected String retrieveDataFromBlobStoreCache(String traceId) {
     assert traceId != null && !traceId.isEmpty();
 
     try {
-      // Retrieve the compressed trace data from S3
+      // Retrieve the compressed trace data from blob store cache
       String jsonData =
           blobStore.readFileData(
               String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId), true);
 
       if (jsonData == null || jsonData.isEmpty()) {
-        LOG.warn("No trace data found in S3 for traceId={}", traceId);
+        LOG.warn("No trace data found in blob store cache for traceId={}", traceId);
         return null;
       }
-      LOG.info("Retrieved and decompressed trace data from S3 for traceId={}", traceId);
+      LOG.info(
+          "Retrieved and decompressed trace data from blob store cache for traceId={}", traceId);
       return jsonData;
 
     } catch (Exception e) {
       // Log other exceptions as errors
-      LOG.error("Error retrieving trace data from S3 for traceId={}", traceId, e);
+      LOG.error("Error retrieving trace data from blob store cache for traceId={}", traceId, e);
       return null;
     }
   }
 
-  protected void saveDataToS3(String traceId, String output) {
+  protected void saveDataToBlobStoreCache(String traceId, String output) {
     assert traceId != null && !traceId.isEmpty();
     assert output != null && !output.isEmpty();
 
     try {
-      // Upload the compressed trace data to S3
+      // Upload the compressed trace data to blob store cache
       String srcLocation =
           String.format("%s/%s-tmp/%s.json.gz", TRACE_CACHE_PREFIX, traceId, UUID.randomUUID());
       String dstLocation = String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId);
 
       if (blobStore.pathExists("%s/%s-tmp".formatted(TRACE_CACHE_PREFIX, traceId))) {
-        LOG.info("Temporary location found in S3 for traceId={}", traceId);
+        LOG.info("Temporary location found in blob store cache for traceId={}", traceId);
         return;
       }
 
-      blobStore.uploadJsonData(srcLocation, output, true);
+      blobStore.uploadData(srcLocation, output, true);
       blobStore.copyFile(srcLocation, dstLocation);
-      blobStore.deleteFile(srcLocation);
+      blobStore.delete(String.format("%s/%s-tmp", TRACE_CACHE_PREFIX, traceId));
 
-      LOG.info("Compressed trace data saved to S3 for traceId={}", traceId);
+      LOG.info("Compressed trace data saved to blob store cache for traceId={}", traceId);
 
     } catch (Exception e) {
-      LOG.error("Error saving trace data to S3 for traceId={}", traceId, e);
-      throw new RuntimeException("Failed to save trace data to S3", e);
+      LOG.error("Error saving trace data to blob store cache for traceId={}", traceId, e);
+      throw new RuntimeException("Failed to save trace data to blob store cache", e);
     }
   }
 }

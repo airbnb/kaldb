@@ -24,7 +24,6 @@ import software.amazon.awssdk.core.internal.async.ByteArrayAsyncResponseTransfor
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.model.CopyObjectRequest;
 import software.amazon.awssdk.services.s3.model.Delete;
-import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
@@ -244,14 +243,14 @@ public class BlobStore {
   /**
    * Compresses JSON data using GZIP.
    *
-   * @param jsonData The JSON data to compress
+   * @param data The JSON data to compress
    * @return The compressed byte array
    * @throws IOException if compression fails
    */
-  public static byte[] compressJsonData(String jsonData) throws IOException {
+  public static byte[] compressData(String data) throws IOException {
     ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
     try (GZIPOutputStream gzipOutputStream = new GZIPOutputStream(byteArrayOutputStream)) {
-      gzipOutputStream.write(jsonData.getBytes(StandardCharsets.UTF_8));
+      gzipOutputStream.write(data.getBytes(StandardCharsets.UTF_8));
     }
     return byteArrayOutputStream.toByteArray();
   }
@@ -263,14 +262,14 @@ public class BlobStore {
    * @param jsonData The JSON data to upload
    * @throws RuntimeException if compression fails or upload fails
    */
-  public void uploadJsonData(String key, String jsonData, boolean gzip) throws RuntimeException {
+  public void uploadData(String key, String jsonData, boolean gzip) throws RuntimeException {
     assert key != null && !key.isEmpty();
     assert jsonData != null && !jsonData.isEmpty();
 
     PutObjectRequest request = PutObjectRequest.builder().bucket(bucketName).key(key).build();
     try {
       if (gzip) {
-        byte[] compressedData = compressJsonData(jsonData);
+        byte[] compressedData = compressData(jsonData);
         s3AsyncClient.putObject(request, AsyncRequestBody.fromBytes(compressedData)).get();
       } else {
         s3AsyncClient
@@ -289,7 +288,7 @@ public class BlobStore {
    * @return The decompressed JSON data as a String
    * @throws RuntimeException if decompression fails
    */
-  public static String decompressJsonData(byte[] compressedData) {
+  public static String decompressData(byte[] compressedData) {
     assert compressedData != null && compressedData.length > 0;
 
     try (GZIPInputStream gzipInputStream =
@@ -319,7 +318,8 @@ public class BlobStore {
                   AsyncResponseTransformer.toBlockingInputStream())
               .get();
       if (gzip) {
-        return decompressJsonData(futureStream.readAllBytes());
+        // TODO: Handle below operation in more efficient way via streaming
+        return decompressData(futureStream.readAllBytes());
       }
       return new String(futureStream.readAllBytes(), StandardCharsets.UTF_8);
     } catch (IOException | ExecutionException | InterruptedException e) {
@@ -408,23 +408,6 @@ public class BlobStore {
       return !listRes.contents().isEmpty();
     } catch (ExecutionException | InterruptedException e) {
       throw new RuntimeException("Failed to check if S3 path exists", e);
-    }
-  }
-
-  /**
-   * Deletes a file from the object store by S3 key (full path in the bucket).
-   *
-   * @param key The S3 key (full path in the bucket)
-   * @throws RuntimeException if deletion fails
-   */
-  public void deleteFile(String key) {
-    assert key != null && !key.isEmpty();
-    try {
-      s3AsyncClient
-          .deleteObject(DeleteObjectRequest.builder().bucket(bucketName).key(key).build())
-          .get();
-    } catch (InterruptedException | ExecutionException e) {
-      throw new RuntimeException("Failed to delete file from S3", e);
     }
   }
 }
