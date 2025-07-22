@@ -338,6 +338,7 @@ public class S3WalIntegrationTest {
     await().until(() -> getCount("s3_message_writer.spans_processed", metricsRegistry) == 5);
 
     if (chunkManagerUtil.chunkManager.getActiveChunk() != null) {
+      chunkManagerUtil.chunkManager.getActiveChunk().commit();
       Thread.sleep(100);
     }
 
