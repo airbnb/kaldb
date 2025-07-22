@@ -337,10 +337,7 @@ public class S3WalIntegrationTest {
     await().until(() -> getCount("s3_message_writer.downloads", metricsRegistry) == 1);
     await().until(() -> getCount("s3_message_writer.spans_processed", metricsRegistry) == 5);
 
-    // Commit active chunk to make data searchable
     if (chunkManagerUtil.chunkManager.getActiveChunk() != null) {
-      chunkManagerUtil.chunkManager.getActiveChunk().commit();
-      // Small wait to ensure commit is complete
       Thread.sleep(100);
     }
 
@@ -356,19 +353,16 @@ public class S3WalIntegrationTest {
       LOG.info("Active chunk info: {}", chunkManagerUtil.chunkManager.getActiveChunk().info());
     }
 
-    // Search using INDEX_NAME since that's what we used as the service name
     LOG.info("=== DEBUGGING SEARCH ===");
     LOG.info("Searching for index: '{}'", INDEX_NAME);
     LOG.info("Available chunks: {}", chunkManagerUtil.chunkManager.getChunkList().size());
 
-    // Try different search approaches
     SearchResult<LogMessage> searchResult = searchChunkManager(INDEX_NAME, "");
     LOG.info(
         "Search result for index '{}' with empty query: {} hits",
         INDEX_NAME,
         searchResult.hits.size());
 
-    // Try searching with the default index name
     SearchResult<LogMessage> defaultSearch = searchChunkManager("unknown", "");
     LOG.info("Search result for 'unknown' with empty query: {} hits", defaultSearch.hits.size());
 
@@ -393,8 +387,6 @@ public class S3WalIntegrationTest {
     assertThat(searchResult.hits).hasSize(5);
     assertThat(searchResult.hits.get(0).getSource()).isNotNull();
 
-    // Both INDEX_NAME and "unknown" work as search indexes, use INDEX_NAME since that's the correct
-    // service name
     SearchResult<LogMessage> serviceSearch =
         searchChunkManager(INDEX_NAME, "service_name:" + INDEX_NAME);
     LOG.info(
