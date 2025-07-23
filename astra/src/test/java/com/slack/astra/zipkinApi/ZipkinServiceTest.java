@@ -215,7 +215,7 @@ public class ZipkinServiceTest {
 
       verify(mockBlobStore).uploadData(anyString(), anyString(), eq(true));
       verify(mockBlobStore).copyFile(anyString(), eq(traceFilePath));
-      verify(mockBlobStore).deleteFile(anyString());
+      verify(mockBlobStore).delete(anyString());
 
       assertNotNull(response, "Response should not be null");
       response
@@ -309,7 +309,7 @@ public class ZipkinServiceTest {
       verify(mockBlobStore).readFileData(traceFilePath, true);
       verify(mockBlobStore, never()).uploadData(anyString(), anyString(), eq(true));
       verify(mockBlobStore, never()).copyFile(anyString(), eq(traceFilePath));
-      verify(mockBlobStore, never()).deleteFile(anyString());
+      verify(mockBlobStore, never()).delete(anyString());
       verify(searcher)
           .doSearch(
               Mockito.argThat(
@@ -368,7 +368,7 @@ public class ZipkinServiceTest {
 
       verify(mockBlobStore).uploadData(anyString(), anyString(), eq(true));
       verify(mockBlobStore).copyFile(anyString(), eq(traceFilePath));
-      verify(mockBlobStore).deleteFile(anyString());
+      verify(mockBlobStore).delete(anyString());
       assertNotNull(response, "Response should not be null");
       response
           .aggregate()
@@ -435,7 +435,7 @@ public class ZipkinServiceTest {
     // Assert
     verify(mockBlobStore).uploadData(anyString(), anyString(), eq(true));
     verify(mockBlobStore).copyFile(anyString(), anyString());
-    verify(mockBlobStore).deleteFile(anyString());
+    verify(mockBlobStore).delete(anyString());
 
     // Assert
     String fileData =
