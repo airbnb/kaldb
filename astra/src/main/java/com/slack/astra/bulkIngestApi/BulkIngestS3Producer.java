@@ -4,7 +4,6 @@ import com.slack.astra.blobfs.BlobStore;
 import com.slack.astra.metadata.dataset.DatasetMetadataStore;
 import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.astra.proto.wal.WalProtos;
-import com.slack.astra.util.RuntimeHalterImpl;
 import com.slack.service.murron.trace.Trace;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -41,7 +40,6 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
   private final BlobStore blobStore;
   protected final String walBucket;
   private final Timer s3UploadTimer;
-  private volatile boolean stopIngestion = false;
 
   public BulkIngestS3Producer(
       final DatasetMetadataStore datasetMetadataStore,
@@ -91,12 +89,6 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
 
   protected BulkIngestResponse processRequest(BulkIngestRequest request) throws Exception {
 
-    if (stopIngestion) {
-      LOG.warn("Stopping ingestion due to previous S3 WAL failures.");
-      RuntimeException e = new RuntimeException("Stopping ingestion due to S3 WAL failures.");
-      new RuntimeHalterImpl().handleFatal(e);
-    }
-
     Map<String, List<Trace.Span>> indexDocs = request.getInputDocs();
     int totalDocs = indexDocs.values().stream().mapToInt(List::size).sum();
 
@@ -107,7 +99,8 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
 
     Map<Integer, Map<String, List<Trace.Span>>> partitionGroups = new HashMap<>();
 
-    for (Map.Entry<String, List<Trace.Span>> indexDoc : indexDocs.entrySet()) {
+    for (Map.Entry<String, List<Trace.Span>> indexDoc :
+        indexDocs.entrySet()) { // pull into a temp method
       String index = indexDoc.getKey();
       List<Trace.Span> spans = indexDoc.getValue();
       int partition = getPartition(index);
@@ -122,7 +115,7 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
 
     // Create one S3 object per partition
     for (Map.Entry<Integer, Map<String, List<Trace.Span>>> partitionGroup :
-        partitionGroups.entrySet()) {
+        partitionGroups.entrySet()) { // pull into a temp method
 
       int partition = partitionGroup.getKey();
       Map<String, List<Trace.Span>> indexesForPartition = partitionGroup.getValue();
@@ -162,7 +155,6 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
     } catch (Exception e) {
       LOG.error("Fatal: Failed to upload to S3 - stopping ingestion", e);
       updateFailureMetrics(partition, S3_UPLOAD_FAILURES_COUNTER);
-      stopIngestion = true;
       return new BulkIngestResponse(0, totalDocs, "S3 upload failed: " + e.getMessage());
     } finally {
       uploadTimer.stop(s3UploadTimer);
@@ -201,7 +193,6 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
           objectKey,
           e);
       updateFailureMetrics(partition, KAFKA_POINTER_FAILURES_COUNTER);
-      stopIngestion = true;
       return new BulkIngestResponse(
           0, totalDocs, "Failed to send WAL pointer to Kafka: " + e.getMessage());
     }
