@@ -99,8 +99,7 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
 
     Map<Integer, Map<String, List<Trace.Span>>> partitionGroups = new HashMap<>();
 
-    for (Map.Entry<String, List<Trace.Span>> indexDoc :
-        indexDocs.entrySet()) {
+    for (Map.Entry<String, List<Trace.Span>> indexDoc : indexDocs.entrySet()) {
       String index = indexDoc.getKey();
       List<Trace.Span> spans = indexDoc.getValue();
       int partition = getPartition(index);
