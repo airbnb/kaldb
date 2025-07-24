@@ -338,17 +338,17 @@ public class ZipkinService {
     try {
       // Upload the compressed trace data to blob store cache
       String srcLocation =
-          String.format("%s/%s-tmp/%s.json.gz", TRACE_CACHE_PREFIX, traceId, UUID.randomUUID());
+          String.format("%s/tmp-%s/%s.json.gz", TRACE_CACHE_PREFIX, traceId, UUID.randomUUID());
       String dstLocation = String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId);
 
-      if (blobStore.pathExists("%s/%s-tmp".formatted(TRACE_CACHE_PREFIX, traceId))) {
+      if (blobStore.pathExists("%s/tmp-%s".formatted(TRACE_CACHE_PREFIX, traceId))) {
         LOG.info("Temporary location found in blob store cache for traceId={}", traceId);
         return;
       }
 
       blobStore.uploadData(srcLocation, output, true);
       blobStore.copyFile(srcLocation, dstLocation);
-      blobStore.delete(String.format("%s/%s-tmp", TRACE_CACHE_PREFIX, traceId));
+      blobStore.delete(String.format("%s/tmp-%s", TRACE_CACHE_PREFIX, traceId));
 
       LOG.info("Compressed trace data saved to blob store cache for traceId={}", traceId);
 
