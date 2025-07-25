@@ -9,9 +9,12 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -40,6 +43,10 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
   private final BlobStore blobStore;
   protected final String walBucket;
   private final Timer s3UploadTimer;
+  private final int maxBufferTimeMs;
+  private final int maxRequestsPerBatch;
+  private final int minBatchSize;
+  private final int bufferWaitMs;
 
   public BulkIngestS3Producer(
       final DatasetMetadataStore datasetMetadataStore,
@@ -50,10 +57,55 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
     super(datasetMetadataStore, preprocessorConfig, meterRegistry);
 
     // Initialize S3Producer specific fields
+    AstraConfigs.S3WalBufferConfig s3WalBufferConfig = preprocessorConfig.getS3WalBufferConfig();
     this.blobStore = blobStore;
     this.walBucket = preprocessorConfig.getS3WalConfig().getS3Bucket();
     this.kafkaTopic = preprocessorConfig.getKafkaConfig().getKafkaTopic();
     this.s3UploadTimer = meterRegistry.timer(S3_UPLOAD_TIMER);
+    this.producerSleepMs =
+        Integer.parseInt(System.getProperty("astra.bulkIngest.S3producerSleepMs", "100"));
+    this.maxBufferTimeMs = s3WalBufferConfig.getMaxBufferTimeMs();
+    this.maxRequestsPerBatch = s3WalBufferConfig.getMaxRequestsPerBatch();
+    this.minBatchSize = Math.max(1, maxRequestsPerBatch / 4);
+    this.bufferWaitMs = Math.max(10, maxBufferTimeMs / 10);
+  }
+
+  @Override
+  protected void run() throws Exception {
+
+    long lastProcessTime = System.currentTimeMillis();
+
+    while (isRunning()) {
+
+      // Check queue size first, don't drain if not ready
+      int availableRequests = pendingRequests.size();
+      if (availableRequests == 0) {
+        // No requests available, sleep and continue
+        try {
+          stallCounter.increment();
+          Thread.sleep(producerSleepMs);
+        } catch (InterruptedException e) {
+          return;
+        }
+        continue;
+      }
+
+      // Check if we should wait for more requests
+      if (shouldWaitForMoreRequests(availableRequests, lastProcessTime)) {
+        // Don't drain anything, just sleep and wait for more
+        Thread.sleep(bufferWaitMs);
+        continue;
+      }
+      List<BulkIngestRequest> requests = new ArrayList<>(maxRequestsPerBatch);
+      // drain only up to maxBatch requests from the pending queue
+      pendingRequests.drainTo(requests, maxRequestsPerBatch);
+
+      batchSizeGauge.set(requests.size());
+
+      // Process the batch
+      produceDocuments(requests);
+      lastProcessTime = System.currentTimeMillis();
+    }
   }
 
   @Override
@@ -62,9 +114,19 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
 
     Map<BulkIngestRequest, BulkIngestResponse> responseMap = new HashMap<>();
     try {
-      for (BulkIngestRequest request : requests) {
-        responseMap.put(request, processRequest(request));
+      // Group all requests by partition
+      Map<Integer, Set<BulkIngestRequest>> requestsByPartition =
+          aggregateRequestsByPartition(requests);
+
+      // Process all the requests for each partition
+      for (Map.Entry<Integer, Set<BulkIngestRequest>> entry : requestsByPartition.entrySet()) {
+
+        int partition = entry.getKey();
+        Set<BulkIngestRequest> partitionRequests = entry.getValue();
+
+        processBatchedRequests(partition, partitionRequests, responseMap);
       }
+
       for (Map.Entry<BulkIngestRequest, BulkIngestResponse> entry : responseMap.entrySet()) {
         BulkIngestRequest key = entry.getKey();
         BulkIngestResponse value = entry.getValue();
@@ -87,66 +149,110 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
     return responseMap;
   }
 
-  protected BulkIngestResponse processRequest(BulkIngestRequest request) throws Exception {
+  private void processBatchedRequests(
+      int partition,
+      Set<BulkIngestRequest> requests,
+      Map<BulkIngestRequest, BulkIngestResponse> responseMap)
+      throws Exception {
 
-    Map<String, List<Trace.Span>> indexDocs = request.getInputDocs();
-    int totalDocs = indexDocs.values().stream().mapToInt(List::size).sum();
+    // Combine all spans from all requests for this partition
+    Map<String, List<Trace.Span>> combinedIndexDocs = new HashMap<>();
+    int totalDocs = 0;
 
-    if (totalDocs == 0) {
-      // No documents to process
-      return new BulkIngestResponse(0, 0, "");
-    }
+    // Track how many documents each request contributes
+    Map<BulkIngestRequest, Integer> requestDocCounts = new HashMap<>();
 
-    Map<Integer, Map<String, List<Trace.Span>>> partitionGroups = new HashMap<>();
-
-    for (Map.Entry<String, List<Trace.Span>> indexDoc : indexDocs.entrySet()) {
-      String index = indexDoc.getKey();
-      List<Trace.Span> spans = indexDoc.getValue();
-      int partition = getPartition(index);
-
-      if (partition < 0) {
-        LOG.warn("index=" + index + " does not have a provisioned dataset associated with it");
-        continue; // Skip this index if no partition is found
+    // Combine all requests' spans into combinedIndexDocs
+    for (BulkIngestRequest request : requests) {
+      int requestDocs = 0;
+      for (Map.Entry<String, List<Trace.Span>> indexDoc : request.getInputDocs().entrySet()) {
+        String index = indexDoc.getKey();
+        combinedIndexDocs
+            .computeIfAbsent(index, k -> new ArrayList<>())
+            .addAll(indexDoc.getValue());
+        requestDocs += indexDoc.getValue().size();
       }
-
-      partitionGroups.computeIfAbsent(partition, k -> new HashMap<>()).put(index, spans);
+      totalDocs += requestDocs;
+      requestDocCounts.put(request, requestDocs);
     }
+    // Serialize and upload combined data for the partition as a single S3 object
+    byte[] compressedData = WALBatchSerializer.serializeAndCompress(combinedIndexDocs);
 
-    // Create one S3 object per partition
-    for (Map.Entry<Integer, Map<String, List<Trace.Span>>> partitionGroup :
-        partitionGroups.entrySet()) {
+    // Upload combined data to S3 and send Kafka pointer for the partition
+    String errorMessage = uploadToS3AndSendKafkaPointer(partition, compressedData, totalDocs);
 
-      int partition = partitionGroup.getKey();
-      Map<String, List<Trace.Span>> indexesForPartition = partitionGroup.getValue();
-      int docsInPartition = indexesForPartition.values().stream().mapToInt(List::size).sum();
-
-      // Serialize and compress the spans for this partition
-      byte[] compressedData = WALBatchSerializer.serializeAndCompress(indexesForPartition);
-
-      // Send to S3 and Kafka
-      BulkIngestResponse errorResponse =
-          uploadToS3AndSendKafkaPointer(partition, compressedData, docsInPartition, totalDocs);
-
-      if (errorResponse != null) return errorResponse;
+    // If there was an error during upload or Kafka send, all requests in this partition fail and return the error message
+    if (errorMessage != null) {
+      // Handle failures
+      for (BulkIngestRequest request : requests) {
+        int requestDocs = requestDocCounts.get(request);
+        responseMap.put(request, new BulkIngestResponse(0, requestDocs, errorMessage));
+      }
+    } else {
+      // Handle successes
+      for (BulkIngestRequest request : requests) {
+        int requestDocs = requestDocCounts.get(request);
+        responseMap.put(request, new BulkIngestResponse(requestDocs, 0, "Success"));
+      }
     }
-    // All partitions processed successfully
-    return new BulkIngestResponse(totalDocs, 0, "Success");
   }
 
-  private BulkIngestResponse uploadToS3AndSendKafkaPointer(
-      int partition, byte[] compressedData, int docsInPartition, int totalDocs) {
+  private boolean shouldWaitForMoreRequests(int availableRequests, long lastProcessTime) {
+    // Time-based: Don't wait if max buffer time exceeded
+    long timeSinceLastProcess = System.currentTimeMillis() - lastProcessTime;
+    if (timeSinceLastProcess >= maxBufferTimeMs) {
+      return false; // Process now, time limit reached
+    }
+
+    // Count-based: Wait if we don't have enough requests
+    if (availableRequests < minBatchSize) {
+      return true; // Wait for more requests
+    }
+
+    return false; // We have enough, process now
+  }
+
+  private Map<Integer, Set<BulkIngestRequest>> aggregateRequestsByPartition(
+      List<BulkIngestRequest> requests) {
+
+    Map<Integer, Set<BulkIngestRequest>> requestsByPartition = new HashMap<>();
+
+    // Iterate through all requests and group them by partition
+    for (BulkIngestRequest request : requests) {
+
+      Map<String, List<Trace.Span>> indexDocs = request.getInputDocs();
+
+      // Find the partition for each index in the request (Current constraint allows only 1 index
+      // per request)
+      for (Map.Entry<String, List<Trace.Span>> indexDoc : indexDocs.entrySet()) {
+        String index = indexDoc.getKey();
+        int partition = getPartition(index);
+
+        if (partition < 0) {
+          LOG.warn("index=" + index + " does not have a provisioned dataset associated with it");
+          continue; // Skip this index if no partition is found
+        }
+        // Add the request to the list of its partition
+        requestsByPartition.computeIfAbsent(partition, k -> new HashSet<>()).add(request);
+      }
+    }
+    return requestsByPartition;
+  }
+
+  private String uploadToS3AndSendKafkaPointer(
+      int partition, byte[] compressedData, int totalDocs) {
 
     String objectKey = generateS3ObjectKey(partition);
 
-    // put req then upload object to S3
+    // Put req then upload object to S3
     Timer.Sample uploadTimer = Timer.start(meterRegistry);
     try {
-      // upload to S3
+      // upload to S3 using blobstore
       blobStore.upload(objectKey, compressedData);
 
       LOG.debug(
           "Uploaded {} spans ({} bytes compressed) to S3 at key {} for partition {}",
-          docsInPartition,
+          totalDocs,
           compressedData.length,
           objectKey,
           partition);
@@ -154,17 +260,17 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
     } catch (Exception e) {
       LOG.error("Fatal: Failed to upload to S3 - stopping ingestion", e);
       updateFailureMetrics(partition, S3_UPLOAD_FAILURES_COUNTER);
-      return new BulkIngestResponse(0, totalDocs, "S3 upload failed: " + e.getMessage());
+      return "S3 upload failed: " + e.getMessage();
     } finally {
       uploadTimer.stop(s3UploadTimer);
     }
 
-    // prepare pointer message
+    // prepare pointer message for Kafka
     WalProtos.WalSegmentPointer pointer =
         WalProtos.WalSegmentPointer.newBuilder()
             .setBlobBucket(walBucket)
             .setBlobstoreFilepath(objectKey)
-            .setDocCount(docsInPartition)
+            .setDocCount(totalDocs)
             .setTimestampMs(Instant.now().toEpochMilli())
             .setCompressionType("gzip")
             .build();
@@ -192,11 +298,10 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
           objectKey,
           e);
       updateFailureMetrics(partition, KAFKA_POINTER_FAILURES_COUNTER);
-      return new BulkIngestResponse(
-          0, totalDocs, "Failed to send WAL pointer to Kafka: " + e.getMessage());
+      return "Failed to send WAL pointer to Kafka: " + e.getMessage();
     }
     // Increment metrics
-    updateMetricsForPartition(partition, docsInPartition, compressedData.length);
+    updateMetricsForPartition(partition, totalDocs, compressedData.length);
 
     return null; // successful upload and Kafka send, return null to indicate no error
   }
