@@ -181,7 +181,8 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
     // Upload combined data to S3 and send Kafka pointer for the partition
     String errorMessage = uploadToS3AndSendKafkaPointer(partition, compressedData, totalDocs);
 
-    // If there was an error during upload or Kafka send, all requests in this partition fail and return the error message
+    // If there was an error during upload or Kafka send, all requests in this partition fail and
+    // return the error message
     if (errorMessage != null) {
       // Handle failures
       for (BulkIngestRequest request : requests) {
