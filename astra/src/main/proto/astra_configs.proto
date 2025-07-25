@@ -280,7 +280,7 @@ message PreprocessorConfig {
   // S3 WAL Config
   bool use_s3_wal = 15;
   S3Config s3_wal_config = 16;
-
+  S3WalBufferConfig s3_wal_buffer_config = 18;
   // Make the rate limit exceeded error code configurable
   // We default to 400 to prioritize fresh logs and drop excess logs
   // Set this to 429 for clients to retry the request after a delay
@@ -299,4 +299,19 @@ message PreprocessorConfig {
   // refresh of the dataset rate limits, whether or not a ZK event
   // has triggered it
   int32 dataset_rate_limit_period_secs = 14;
+}
+message S3WalBufferConfig {
+  // Time-based flushing
+  int32 max_buffer_time_ms = 1;           // Max time to wait before flush (default: 1000ms)
+
+  // Size-based flushing
+  int32 max_buffer_size_mb = 2;           // Max buffer size before flush (default: 10MB)
+  int32 min_buffer_size_mb = 3;           // Min buffer size for efficient S3 uploads (default: 1MB)
+
+  // Count-based flushing
+  int32 max_requests_per_batch = 4;       // Max requests per batch (default: 100)
+  int32 max_requests_per_s3_object = 5;   // Max requests per S3 object (default: 1000)
+
+  // Queue management
+  int32 max_queue_size = 6;               // Max pending requests queue size (default: 10000)
 }

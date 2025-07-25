@@ -4,6 +4,7 @@ import com.slack.astra.metadata.dataset.DatasetMetadataStore;
 import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.service.murron.trace.Trace;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +25,27 @@ public class BulkIngestKafkaProducer extends BulkIngestProducer {
       final AstraConfigs.PreprocessorConfig preprocessorConfig,
       final MeterRegistry meterRegistry) {
     super(datasetMetadataStore, preprocessorConfig, meterRegistry);
+    this.producerSleepMs =
+        Integer.parseInt(System.getProperty("astra.bulkIngest.producerSleepMs", "50"));
+  }
+
+  @Override
+  protected void run() throws Exception {
+    while (isRunning()) {
+      List<BulkIngestRequest> requests = new ArrayList<>();
+      pendingRequests.drainTo(requests);
+      batchSizeGauge.set(requests.size());
+      if (requests.isEmpty()) {
+        try {
+          stallCounter.increment();
+          Thread.sleep(producerSleepMs);
+        } catch (InterruptedException e) {
+          return;
+        }
+      } else {
+        produceDocuments(requests);
+      }
+    }
   }
 
   @Override
