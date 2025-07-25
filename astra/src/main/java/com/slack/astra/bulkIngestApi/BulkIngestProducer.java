@@ -18,7 +18,6 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.binder.kafka.KafkaClientMetrics;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -56,7 +55,7 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
 
   protected final BlockingQueue<BulkIngestRequest> pendingRequests;
 
-  protected final Integer producerSleepMs;
+  protected Integer producerSleepMs;
 
   public static final String FAILED_SET_RESPONSE_COUNTER =
       "bulk_ingest_producer_failed_set_response";
@@ -68,7 +67,7 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
   private final Timer kafkaRestartTimer;
 
   public static final String BATCH_SIZE_GAUGE = "bulk_ingest_producer_batch_size";
-  private final AtomicInteger batchSizeGauge;
+  protected final AtomicInteger batchSizeGauge;
 
   protected final MeterRegistry meterRegistry;
 
@@ -91,9 +90,6 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
     this.meterRegistry = meterRegistry;
     this.datasetMetadataStore = datasetMetadataStore;
     this.pendingRequests = new LinkedBlockingQueue<>();
-
-    this.producerSleepMs =
-        Integer.parseInt(System.getProperty("astra.bulkIngest.producerSleepMs", "50"));
 
     this.useKafkaTransactions =
         Boolean.parseBoolean(System.getProperty("astra.bulkIngest.useKafkaTransactions", "false"));
@@ -153,23 +149,7 @@ public abstract class BulkIngestProducer extends AbstractExecutionThreadService 
   }
 
   @Override
-  protected void run() throws Exception {
-    while (isRunning()) {
-      List<BulkIngestRequest> requests = new ArrayList<>();
-      pendingRequests.drainTo(requests);
-      batchSizeGauge.set(requests.size());
-      if (requests.isEmpty()) {
-        try {
-          stallCounter.increment();
-          Thread.sleep(producerSleepMs);
-        } catch (InterruptedException e) {
-          return;
-        }
-      } else {
-        produceDocuments(requests);
-      }
-    }
-  }
+  protected abstract void run() throws Exception;
 
   @Override
   protected void shutDown() throws Exception {

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import brave.Tracing;
@@ -23,9 +24,12 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.curator.test.TestingServer;
 import org.apache.curator.x.async.AsyncCuratorFramework;
@@ -100,10 +104,21 @@ class BulkIngestS3ProducerTest {
             .setS3Region("us-west-2")
             .build();
 
+    AstraConfigs.S3WalBufferConfig s3WalBufferConfig =
+        AstraConfigs.S3WalBufferConfig.newBuilder()
+            .setMaxBufferTimeMs(100) // Short timeout for tests
+            .setMaxRequestsPerBatch(10) // Small batch size for tests
+            .setMaxBufferSizeMb(1) // Small buffer for tests
+            .setMinBufferSizeMb(1) // Small min buffer for tests
+            .setMaxRequestsPerS3Object(100)
+            .setMaxQueueSize(1000)
+            .build();
+
     preprocessorConfig =
         AstraConfigs.PreprocessorConfig.newBuilder()
             .setKafkaConfig(kafkaConfig)
             .setS3WalConfig(s3Config)
+            .setS3WalBufferConfig(s3WalBufferConfig)
             .setServerConfig(serverConfig)
             .setPreprocessorInstanceCount(1)
             .setRateLimiterMaxBurstSeconds(1)
@@ -295,37 +310,37 @@ class BulkIngestS3ProducerTest {
     Trace.Span span1 = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("span1")).build();
     Trace.Span span2 = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("span2")).build();
 
-    // Indexes that map to different partitions
-    Map<String, List<Trace.Span>> indexDocs =
-        Map.of(
-            INDEX_NAME,
-            List.of(span1), // Partition 1
-            "secondindex",
-            List.of(span2) // Partition 2
-            );
+    BulkIngestRequest request1 =
+        bulkIngestS3Producer.submitRequest(Map.of(INDEX_NAME, List.of(span1)));
+    BulkIngestRequest request2 =
+        bulkIngestS3Producer.submitRequest(Map.of("secondindex", List.of(span2)));
 
-    BulkIngestRequest request = bulkIngestS3Producer.submitRequest(indexDocs);
-    AtomicReference<BulkIngestResponse> response = new AtomicReference<>();
+    Map<BulkIngestRequest, BulkIngestResponse> responseMap = new ConcurrentHashMap<>();
+    CountDownLatch latch = new CountDownLatch(2);
 
-    Thread.ofVirtual()
-        .start(
-            () -> {
-              try {
-                response.set(request.getResponse());
-              } catch (Exception e) {
-                throw new RuntimeException(e);
-              }
-            });
+    for (BulkIngestRequest req : List.of(request1, request2)) {
+      Thread.ofVirtual()
+          .start(
+              () -> {
+                try {
+                  responseMap.put(req, req.getResponse());
+                  latch.countDown();
+                } catch (Exception e) {
+                  throw new RuntimeException(e);
+                }
+              });
+    }
+    latch.await();
 
-    await().until(() -> response.get() != null);
-
-    // Verify response includes all spans
-    assertThat(response.get().totalDocs()).isEqualTo(2);
-    assertThat(response.get().failedDocs()).isEqualTo(0);
+    // Verify responses
+    assertThat(responseMap).hasSize(2);
+    List<BulkIngestResponse> responses = new ArrayList<>(responseMap.values());
+    int totalSpans = responses.stream().mapToInt(BulkIngestResponse::totalDocs).sum();
+    assertThat(totalSpans).isEqualTo(2);
+    assertThat(responses.stream().allMatch(r -> r.failedDocs() == 0)).isTrue();
 
     // Verify 2 S3 uploads (one per partition)
-    verify(mockBlobStore, org.mockito.Mockito.times(2))
-        .upload(any(String.class), any(byte[].class));
+    verify(mockBlobStore, times(2)).upload(any(String.class), any(byte[].class));
 
     // Verify metrics show 2 uploads with 1 span each
     assertThat(MetricsUtil.getCount("bulk_ingest_producer_s3_wal_uploads_total", meterRegistry))
@@ -348,6 +363,68 @@ class BulkIngestS3ProducerTest {
       assertThat(pointer.getBlobstoreFilepath()).startsWith("wal/");
       assertThat(pointer.getDocCount()).isEqualTo(1); // 1 span per partition
       assertThat(pointer.getCompressionType()).isEqualTo("gzip");
+    }
+    kafkaConsumer.close();
+  }
+
+  @Test
+  public void testMultipleRequestsSamePartitionBatching() throws Exception {
+    // Create 3 separate requests that all go to the same partition
+    Trace.Span span1 = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("req1_span1")).build();
+    Trace.Span span2 = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("req1_span2")).build();
+    Trace.Span span3 = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("req2_span1")).build();
+    Trace.Span span4 = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("req3_span1")).build();
+
+    // Create 3 separate requests all using the same index (same partition)
+    BulkIngestRequest request1 =
+        bulkIngestS3Producer.submitRequest(Map.of(INDEX_NAME, List.of(span1, span2)));
+    BulkIngestRequest request2 =
+        bulkIngestS3Producer.submitRequest(Map.of(INDEX_NAME, List.of(span3)));
+    BulkIngestRequest request3 =
+        bulkIngestS3Producer.submitRequest(Map.of(INDEX_NAME, List.of(span4)));
+
+    // Collect all responses
+    Map<BulkIngestRequest, BulkIngestResponse> responseMap = new ConcurrentHashMap<>();
+    CountDownLatch latch = new CountDownLatch(3);
+
+    // Submit all requests concurrently
+    for (BulkIngestRequest req : List.of(request1, request2, request3)) {
+      Thread.ofVirtual()
+          .start(
+              () -> {
+                try {
+                  responseMap.put(req, req.getResponse());
+                  latch.countDown();
+                } catch (Exception e) {
+                  throw new RuntimeException(e);
+                }
+              });
+    }
+
+    latch.await();
+
+    // Verify individual responses are correct
+    assertThat(responseMap).hasSize(3);
+
+    // Verify specific request responses (order-independent)
+    assertThat(responseMap.get(request1).totalDocs()).isEqualTo(2); // request1: 2 spans
+    assertThat(responseMap.get(request2).totalDocs()).isEqualTo(1); // request2: 1 span
+    assertThat(responseMap.get(request3).totalDocs()).isEqualTo(1); // request3: 1 span
+    assertThat(responseMap.values().stream().allMatch(r -> r.failedDocs() == 0)).isTrue();
+
+    // KEY TEST: Verify only 1 S3 upload happened (batching!)
+    verify(mockBlobStore, times(1)).upload(any(String.class), any(byte[].class));
+
+    // Verify only 1 Kafka message with total span count
+    KafkaConsumer<String, byte[]> kafkaConsumer = getTestKafkaConsumer();
+    ConsumerRecords<String, byte[]> records =
+        kafkaConsumer.poll(Duration.of(10, ChronoUnit.SECONDS));
+
+    assertThat(records.count()).isEqualTo(1); // Single Kafka message
+
+    for (ConsumerRecord<String, byte[]> record : records) {
+      WalProtos.WalSegmentPointer pointer = WalProtos.WalSegmentPointer.parseFrom(record.value());
+      assertThat(pointer.getDocCount()).isEqualTo(4); // Total spans from all 3 requests
     }
     kafkaConsumer.close();
   }
