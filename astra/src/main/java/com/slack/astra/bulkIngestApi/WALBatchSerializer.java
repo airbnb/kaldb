@@ -1,13 +1,12 @@
 package com.slack.astra.bulkIngestApi;
 
+import com.google.protobuf.CodedInputStream;
+import com.google.protobuf.CodedOutputStream;
 import com.slack.astra.proto.wal.WalProtos;
 import com.slack.service.murron.trace.Trace;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.EOFException;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -26,10 +25,11 @@ import java.util.zip.GZIPOutputStream;
  */
 public class WALBatchSerializer {
 
-  public static byte[] serializeAndCompress(Map<String, List<Trace.Span>> indexDocs)
-      throws IOException {
+  public static byte[] serialize(Map<String, List<Trace.Span>> indexDocs) throws IOException {
     try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
         GZIPOutputStream gzipOut = new GZIPOutputStream(baos)) {
+
+      CodedOutputStream codedOut = CodedOutputStream.newInstance(gzipOut);
 
       for (Map.Entry<String, List<Trace.Span>> entry : indexDocs.entrySet()) {
         WalProtos.BatchHeader header =
@@ -38,22 +38,24 @@ public class WALBatchSerializer {
                 .setSpanCount(entry.getValue().size())
                 .build();
 
-        // Write header size then header - using protobuf methods
-        writeInt(gzipOut, header.getSerializedSize());
-        header.writeTo(gzipOut);
+        // Write header size then header using varint encoding
+        codedOut.writeUInt32NoTag(header.getSerializedSize());
+        header.writeTo(codedOut);
 
-        // Write each span - using protobuf methods
+        // Write each span using varint encoding
         for (Trace.Span span : entry.getValue()) {
-          writeInt(gzipOut, span.getSerializedSize());
-          span.writeTo(gzipOut);
+          codedOut.writeUInt32NoTag(span.getSerializedSize());
+          span.writeTo(codedOut);
         }
       }
+
+      codedOut.flush();
       gzipOut.finish();
       return baos.toByteArray();
     }
   }
 
-  public static Map<String, List<Trace.Span>> deserializeAndDecompress(byte[] compressedData)
+  public static Map<String, List<Trace.Span>> deserialize(byte[] compressedData)
       throws IOException {
 
     Map<String, List<Trace.Span>> result = new HashMap<>();
@@ -61,69 +63,44 @@ public class WALBatchSerializer {
     try (ByteArrayInputStream bais = new ByteArrayInputStream(compressedData);
         GZIPInputStream gzipIn = new GZIPInputStream(bais)) {
 
-      while (true) {
-        try {
-          // Read header size
-          int headerSize = readInt(gzipIn);
-          if (headerSize <= 0) {
-            break; // No more headers to read
-          }
-          // Read header data
-          byte[] headerData = gzipIn.readNBytes(headerSize);
-          if (headerData.length != headerSize) {
-            throw new IOException("Failed to read complete header data");
-          }
+      CodedInputStream codedIn = CodedInputStream.newInstance(gzipIn);
 
-          WalProtos.BatchHeader header = WalProtos.BatchHeader.parseFrom(headerData);
+      while (!codedIn.isAtEnd()) {
+        try {
+          // Read header size using varint encoding
+          int headerSize = codedIn.readUInt32();
+
+          // Use pushLimit/popLimit for safe bounded reading
+          int previousLimit = codedIn.pushLimit(headerSize);
+          WalProtos.BatchHeader header = WalProtos.BatchHeader.parseFrom(codedIn);
+          codedIn.popLimit(previousLimit);
+
           String index = header.getIndex();
           int spanCount = header.getSpanCount();
 
           List<Trace.Span> spans = new ArrayList<>();
           for (int i = 0; i < spanCount; i++) {
-            // Read span size (4 bytes)
-            int spanSize = readInt(gzipIn);
-            if (spanSize <= 0) break;
+            // Read span size using varint encoding
+            int spanSize = codedIn.readUInt32();
 
-            // Read span data
-            byte[] spanBytes = gzipIn.readNBytes(spanSize);
-            if (spanBytes.length != spanSize) break;
+            // Use pushLimit/popLimit for safe bounded reading
+            int spanLimit = codedIn.pushLimit(spanSize);
+            Trace.Span span = Trace.Span.parseFrom(codedIn);
+            codedIn.popLimit(spanLimit);
 
-            Trace.Span span = Trace.Span.parseFrom(spanBytes);
             spans.add(span);
           }
 
           result.put(index, spans);
 
-        } catch (EOFException e) {
-          break; // Natural end of stream
         } catch (IOException e) {
-          if (e.getMessage() != null && e.getMessage().contains("Unexpected end of stream")) {
-            break; // This is actually EOF, not corruption
+          if (codedIn.isAtEnd()) {
+            break; // Natural end of stream
           }
           throw new IOException("Corruption detected during deserialization", e);
         }
       }
     }
     return result;
-  }
-
-  private static void writeInt(OutputStream out, int value) throws IOException {
-    out.write((value >>> 24) & 0xFF);
-    out.write((value >>> 16) & 0xFF);
-    out.write((value >>> 8) & 0xFF);
-    out.write(value & 0xFF);
-  }
-
-  private static int readInt(InputStream in) throws IOException {
-    int b1 = in.read();
-    int b2 = in.read();
-    int b3 = in.read();
-    int b4 = in.read();
-
-    if (b1 < 0 || b2 < 0 || b3 < 0 || b4 < 0) {
-      throw new IOException("Unexpected end of stream");
-    }
-
-    return (b1 << 24) | (b2 << 16) | (b3 << 8) | b4;
   }
 }
