@@ -20,13 +20,13 @@ class WALBatchSerializerTest {
 
     // Test 1: Empty spans
     Map<String, List<Trace.Span>> emptyspans = Map.of(INDEX_NAME, List.of());
-    byte[] emptyCompressedData = WALBatchSerializer.serializeAndCompress(emptyspans);
+    byte[] emptyCompressedData = WALBatchSerializer.serialize(emptyspans);
     assertThat(emptyCompressedData.length).isGreaterThan(0);
 
     // Test 2: Single span
     Trace.Span singleSpan = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("test1")).build();
     Map<String, List<Trace.Span>> singleSpanDocs = Map.of(INDEX_NAME, List.of(singleSpan));
-    byte[] singleSpanCompressedData = WALBatchSerializer.serializeAndCompress(singleSpanDocs);
+    byte[] singleSpanCompressedData = WALBatchSerializer.serialize(singleSpanDocs);
     assertThat(singleSpanCompressedData.length).isGreaterThan(0);
 
     // Test 3: Multiple spans with repeated data
@@ -48,7 +48,7 @@ class WALBatchSerializerTest {
 
     // create a map with multiple spans
     Map<String, List<Trace.Span>> indexDocs = Map.of(INDEX_NAME, List.of(span1, span2, span3));
-    byte[] compressedData = WALBatchSerializer.serializeAndCompress(indexDocs);
+    byte[] compressedData = WALBatchSerializer.serialize(indexDocs);
 
     int uncompressedSize = 0;
 
@@ -73,9 +73,9 @@ class WALBatchSerializerTest {
 
     // Test 1: Empty spans round-trip
     Map<String, List<Trace.Span>> emptyDocs = Map.of(INDEX_NAME, List.of());
-    byte[] emptyCompressed = WALBatchSerializer.serializeAndCompress(emptyDocs);
+    byte[] emptyCompressed = WALBatchSerializer.serialize(emptyDocs);
     Map<String, List<Trace.Span>> emptyDecompressed =
-        WALBatchSerializer.deserializeAndDecompress(emptyCompressed);
+        WALBatchSerializer.deserialize(emptyCompressed);
 
     assertThat(emptyDecompressed).hasSize(1);
     assertThat(emptyDecompressed.get(INDEX_NAME)).isEmpty();
@@ -83,9 +83,9 @@ class WALBatchSerializerTest {
     // Test 2: Single span round-trip
     Trace.Span singleSpan = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("test1")).build();
     Map<String, List<Trace.Span>> singleDocs = Map.of(INDEX_NAME, List.of(singleSpan));
-    byte[] singleCompressed = WALBatchSerializer.serializeAndCompress(singleDocs);
+    byte[] singleCompressed = WALBatchSerializer.serialize(singleDocs);
     Map<String, List<Trace.Span>> singleDecompressed =
-        WALBatchSerializer.deserializeAndDecompress(singleCompressed);
+        WALBatchSerializer.deserialize(singleCompressed);
 
     assertThat(singleDecompressed).hasSize(1);
     assertThat(singleDecompressed.get(INDEX_NAME)).hasSize(1);
@@ -97,9 +97,9 @@ class WALBatchSerializerTest {
     Trace.Span span3 = Trace.Span.newBuilder().setId(ByteString.copyFromUtf8("test3")).build();
 
     Map<String, List<Trace.Span>> multipleDocs = Map.of(INDEX_NAME, List.of(span1, span2, span3));
-    byte[] multipleCompressed = WALBatchSerializer.serializeAndCompress(multipleDocs);
+    byte[] multipleCompressed = WALBatchSerializer.serialize(multipleDocs);
     Map<String, List<Trace.Span>> multipleDecompressed =
-        WALBatchSerializer.deserializeAndDecompress(multipleCompressed);
+        WALBatchSerializer.deserialize(multipleCompressed);
 
     assertThat(multipleDecompressed).hasSize(1);
     assertThat(multipleDecompressed.get(INDEX_NAME)).hasSize(3);
@@ -122,9 +122,9 @@ class WALBatchSerializerTest {
             "indexA", List.of(indexASpan),
             "indexB", List.of(indexBSpan));
 
-    byte[] multiIndexCompressed = WALBatchSerializer.serializeAndCompress(multiIndexDocs);
+    byte[] multiIndexCompressed = WALBatchSerializer.serialize(multiIndexDocs);
     Map<String, List<Trace.Span>> multiIndexDecompressed =
-        WALBatchSerializer.deserializeAndDecompress(multiIndexCompressed);
+        WALBatchSerializer.deserialize(multiIndexCompressed);
 
     assertThat(multiIndexDecompressed).hasSize(2);
     assertThat(multiIndexDecompressed.get("indexA")).hasSize(1);

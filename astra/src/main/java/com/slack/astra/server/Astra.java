@@ -147,10 +147,9 @@ public class Astra {
     curatorFramework =
         CuratorBuilder.build(
             prometheusMeterRegistry, astraConfig.getMetadataStoreConfig().getZookeeperConfig());
-    BlobStore blobStore = new BlobStore(s3Client, astraConfig.getS3Config().getS3Bucket());
 
     Set<Service> services =
-        getServices(curatorFramework, astraConfig, blobStore, prometheusMeterRegistry, s3Client);
+        getServices(curatorFramework, astraConfig, prometheusMeterRegistry, s3Client);
     serviceManager = new ServiceManager(services);
     serviceManager.addListener(getServiceManagerListener(), MoreExecutors.directExecutor());
 
@@ -160,11 +159,27 @@ public class Astra {
   private static Set<Service> getServices(
       AsyncCuratorFramework curatorFramework,
       AstraConfigs.AstraConfig astraConfig,
-      BlobStore blobStore,
       PrometheusMeterRegistry meterRegistry,
       S3AsyncClient s3Client)
       throws Exception {
     Set<Service> services = new HashSet<>();
+
+    final AstraConfigs.PreprocessorConfig preprocessorConfig = astraConfig.getPreprocessorConfig();
+
+    BlobStore blobStore = new BlobStore(s3Client, astraConfig.getS3Config().getS3Bucket());
+
+    // Create S3 WAL BlobStore if S3 WAL is enabled
+    BlobStore s3WalBlobStore = null;
+    if (preprocessorConfig != null && preprocessorConfig.getUseS3Wal()) {
+      checkArgument(
+          preprocessorConfig.hasS3WalConfig(),
+          "S3 configuration must be provided when using S3 WAL");
+      checkArgument(
+          !preprocessorConfig.getS3WalConfig().getS3Config().getS3Bucket().isEmpty(),
+          "S3 bucket must be provided when using S3 WAL");
+      s3WalBlobStore =
+          new BlobStore(s3Client, preprocessorConfig.getS3WalConfig().getS3Config().getS3Bucket());
+    }
 
     HashSet<AstraConfigs.NodeRole> roles = new HashSet<>(astraConfig.getNodeRolesList());
 
@@ -488,8 +503,6 @@ public class Astra {
           new PreprocessorMetadataStore(
               curatorFramework, astraConfig.getMetadataStoreConfig(), meterRegistry, true);
 
-      final AstraConfigs.PreprocessorConfig preprocessorConfig =
-          astraConfig.getPreprocessorConfig();
       final int serverPort = preprocessorConfig.getServerConfig().getServerPort();
 
       Duration requestTimeout =
@@ -506,16 +519,9 @@ public class Astra {
               List.of(datasetMetadataStore, preprocessorMetadataStore)));
 
       BulkIngestProducer bulkIngestProducer;
-      if (preprocessorConfig.getUseS3Wal()) {
-        checkArgument(
-            preprocessorConfig.hasS3WalConfig(),
-            "S3 configuration must be provided when using S3 WAL");
-        checkArgument(
-            !preprocessorConfig.getS3WalConfig().getS3Bucket().isEmpty(),
-            "S3 bucket must be provided when using S3 WAL");
+
+      if (s3WalBlobStore != null) {
         LOG.info("Using S3 WAL producer");
-        BlobStore s3WalBlobStore =
-            new BlobStore(s3Client, preprocessorConfig.getS3WalConfig().getS3Bucket());
         bulkIngestProducer =
             new BulkIngestS3Producer(
                 datasetMetadataStore, preprocessorConfig, meterRegistry, s3WalBlobStore);
