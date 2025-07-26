@@ -239,6 +239,28 @@ message RecoveryConfig {
   KafkaConfig kafka_config = 10;
 }
 
+// Consolidated S3 WAL Configuration - contains all S3 WAL related settings
+message S3WalConfig {
+  // S3 storage settings
+  S3Config s3_config = 1;
+
+  // Buffer management
+  S3WalBufferConfig buffer_config = 3;
+}
+
+message S3WalBufferConfig {
+  // Time-based flushing
+  int32 max_buffer_time_ms = 1;           // Max time to wait before flush (default: 1000ms)
+
+  // Count-based flushing
+  int32 max_requests_per_batch = 4;       // Max requests per batch (default: 100)
+  int32 max_requests_per_s3_object = 5;   // Max requests per S3 object (default: 1000)
+
+  // Queue management
+  int32 max_queue_size = 6;               // Max pending requests queue size (default: 10000)
+}
+
+
 // Config for the preprocessor node.
 message PreprocessorConfig {
   ServerConfig server_config = 1;
@@ -254,8 +276,8 @@ message PreprocessorConfig {
 
   // S3 WAL Config
   bool use_s3_wal = 15;
-  S3Config s3_wal_config = 16;
-  S3WalBufferConfig s3_wal_buffer_config = 18;
+  S3WalConfig s3_wal_config = 16;    // Consolidated S3 WAL configuration
+
   // Make the rate limit exceeded error code configurable
   // We default to 400 to prioritize fresh logs and drop excess logs
   // Set this to 429 for clients to retry the request after a delay
@@ -265,19 +287,4 @@ message PreprocessorConfig {
   // We intend to use ZK for the schema file in the future
   // Path to the schema file in the local file system helps us iterate faster
   string schema_file = 12;
-}
-message S3WalBufferConfig {
-  // Time-based flushing
-  int32 max_buffer_time_ms = 1;           // Max time to wait before flush (default: 1000ms)
-
-  // Size-based flushing
-  int32 max_buffer_size_mb = 2;           // Max buffer size before flush (default: 10MB)
-  int32 min_buffer_size_mb = 3;           // Min buffer size for efficient S3 uploads (default: 1MB)
-
-  // Count-based flushing
-  int32 max_requests_per_batch = 4;       // Max requests per batch (default: 100)
-  int32 max_requests_per_s3_object = 5;   // Max requests per S3 object (default: 1000)
-
-  // Queue management
-  int32 max_queue_size = 6;               // Max pending requests queue size (default: 10000)
 }

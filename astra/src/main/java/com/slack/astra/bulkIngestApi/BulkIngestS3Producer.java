@@ -57,9 +57,10 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
     super(datasetMetadataStore, preprocessorConfig, meterRegistry);
 
     // Initialize S3Producer specific fields
-    AstraConfigs.S3WalBufferConfig s3WalBufferConfig = preprocessorConfig.getS3WalBufferConfig();
+    AstraConfigs.S3WalBufferConfig s3WalBufferConfig =
+        preprocessorConfig.getS3WalConfig().getBufferConfig();
     this.blobStore = blobStore;
-    this.walBucket = preprocessorConfig.getS3WalConfig().getS3Bucket();
+    this.walBucket = preprocessorConfig.getS3WalConfig().getS3Config().getS3Bucket();
     this.kafkaTopic = preprocessorConfig.getKafkaConfig().getKafkaTopic();
     this.s3UploadTimer = meterRegistry.timer(S3_UPLOAD_TIMER);
     this.producerSleepMs =
@@ -176,7 +177,7 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
       requestDocCounts.put(request, requestDocs);
     }
     // Serialize and upload combined data for the partition as a single S3 object
-    byte[] compressedData = WALBatchSerializer.serializeAndCompress(combinedIndexDocs);
+    byte[] compressedData = WALBatchSerializer.serialize(combinedIndexDocs);
 
     // Upload combined data to S3 and send Kafka pointer for the partition
     String errorMessage = uploadToS3AndSendKafkaPointer(partition, compressedData, totalDocs);
