@@ -82,6 +82,9 @@ public class S3AsyncUtil {
           throw new RuntimeException(e);
         }
       }
+      if (config.getS3ForcePathStyle()) {
+        s3AsyncClient.forcePathStyle(true);
+      }
       return s3AsyncClient.build();
     } catch (S3Exception e) {
       throw new RuntimeException("Could not initialize S3blobFs", e);
