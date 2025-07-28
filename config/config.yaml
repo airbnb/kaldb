@@ -53,6 +53,7 @@ queryConfig:
   defaultQueryTimeoutMs: ${ASTRA_QUERY_DEFAULT_QUERY_TIMEOUT_MS:-7000}
   zipkinDefaultMaxSpans: ${ASTRA_QUERY_ZIPKIN_DEFAULT_MAX_SPANS:-20000}
   zipkinDefaultLookbackMins: ${ASTRA_QUERY_ZIPKIN_DEFAULT_LOOKBACK_MINS:-10080}
+  zipkinDefaultDataFreshnessSecs: ${ASTRA_QUERY_DEFAULT_DATA_FRESHNESS_SECONDS:-900}
   managerConnectString: ${ASTRA_MANAGER_CONNECTION_STRING:-localhost:8083}
   maxSnapshotsQueriedPerBatch: ${ASTRA_QUERY_MAX_SNAPSHOTS_QUERIED_PER_BATCH:-30}
   perBatchQueryTimeoutMs: ${ASTRA_QUERY_PER_BATCH_QUERY_TIMEOUT_MS:-5000}
