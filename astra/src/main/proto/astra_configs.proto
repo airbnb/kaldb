@@ -82,6 +82,7 @@ message S3Config {
   string s3_end_point = 4;
   string s3_bucket = 5;
   double s3_target_throughput_gbps = 6;
+  bool s3_force_path_style=7;
 }
 
 message TracingConfig {
@@ -268,6 +269,9 @@ message RecoveryConfig {
 message S3WalConfig {
   // S3 storage settings
   S3Config s3_config = 1;
+
+  // Offset management for S3 WAL
+  int64 max_offset_delay_messages = 2;
 
   // Buffer management
   S3WalBufferConfig buffer_config = 3;

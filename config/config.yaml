@@ -36,6 +36,7 @@ s3Config:
   s3EndPoint: ${S3_ENDPOINT:-http://localhost:9090}
   s3Bucket: ${S3_BUCKET:-test-s3-bucket}
   s3TargetThroughputGbps: ${S3_TARGET_THROUGHPUT_GBPS:-25}
+  s3ForcePathStyle: ${S3_FORCE_PATH_STYLE:-false}
 
 tracingConfig:
   zipkinEndpoint: ${ZIPKIN_TRACING_ENDPOINT:-http://localhost:9411/api/v2/spans}
@@ -153,3 +154,22 @@ preprocessorConfig:
   rateLimitExceededErrorCode: ${ASTRA_PREPROCESSOR_RATE_LIMIT_EXCEEDED_ERROR_CODE:-400}
   datasetRateLimitAggregationSecs: ${ASTRA_PREPROCESSOR_DATASET_RATE_LIMIT_AGGREGATION_SECS:-5}
   datasetRateLimitPeriodSecs: ${ASTRA_PREPROCESSOR_DATASET_RATE_LIMIT_PERIOD_SECS:-60}
+
+  useS3Wal: ${USE_S3_WAL:-false}
+  s3WalConfig:
+    s3Config:
+      s3AccessKey: ${S3_ACCESS_KEY:-access}
+      s3SecretKey: ${S3_SECRET_KEY:-key}
+      s3Region: ${S3_REGION:-us-east-1}
+      s3EndPoint: ${S3_ENDPOINT:-http://localhost:9090}
+      s3Bucket: ${S3_WAL_BUCKET:-test-s3-bucket}
+      s3TargetThroughputGbps: ${S3_TARGET_THROUGHPUT_GBPS:-25}
+      s3ForcePathStyle: ${S3_FORCE_PATH_STYLE:-false}
+    maxOffsetDelayMessages: ${S3_WAL_MAX_OFFSET_DELAY_MESSAGES:-1000000}
+    bufferConfig:
+      maxBufferTimeMs: ${S3_WAL_MAX_BUFFER_TIME_MS:-1000}
+      maxBufferSizeMb: ${S3_WAL_MAX_BUFFER_SIZE_MB:-10}
+      minBufferSizeMb: ${S3_WAL_MIN_BUFFER_SIZE_MB:-1}
+      maxRequestsPerBatch: ${S3_WAL_MAX_REQUESTS_PER_BATCH:-100}
+      maxRequestsPerS3Object: ${S3_WAL_MAX_REQUESTS_PER_S3_OBJECT:-1000}
+      maxQueueSize: ${S3_WAL_MAX_QUEUE_SIZE:-10000}
