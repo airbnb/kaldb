@@ -54,8 +54,7 @@ public class S3MessageWriterImpl implements MessageWriter {
     s3DownloadCounter.increment();
 
     // Deserialize batch
-    Map<String, List<Trace.Span>> indexDocs =
-        WALBatchSerializer.deserializeAndDecompress(compressedData);
+    Map<String, List<Trace.Span>> indexDocs = WALBatchSerializer.deserialize(compressedData);
 
     int totalSpansProcessed = 0;
 
