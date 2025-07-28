@@ -169,11 +169,11 @@ public class ZipkinService {
           .build();
 
   public ZipkinService(
-          AstraQueryServiceBase searcher,
-          BlobStore blobStore,
-          int defaultMaxSpans,
-          int defaultLookbackMins,
-          long defaultDataFreshnessInSeconds) {
+      AstraQueryServiceBase searcher,
+      BlobStore blobStore,
+      int defaultMaxSpans,
+      int defaultLookbackMins,
+      long defaultDataFreshnessInSeconds) {
     this.searcher = searcher;
     this.blobStore = blobStore;
     this.defaultMaxSpans = defaultMaxSpans;
