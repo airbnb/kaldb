@@ -151,8 +151,7 @@ public class ZipkinService {
 
   private static final Logger LOG = LoggerFactory.getLogger(ZipkinService.class);
   private final int defaultMaxSpans;
-  private static long LOOKBACK_MINS = 60 * 24 * 7;
-
+  private final int defaultLookbackMins;
   private final long defaultDataFreshnessInSeconds;
 
   private final AstraQueryServiceBase searcher;
@@ -170,14 +169,15 @@ public class ZipkinService {
           .build();
 
   public ZipkinService(
-      AstraQueryServiceBase searcher,
-      BlobStore blobStore,
-      int defaultMaxSpans,
-      int defaultLookbackMins,
-      long defaultDataFreshnessInSeconds) {
+          AstraQueryServiceBase searcher,
+          BlobStore blobStore,
+          int defaultMaxSpans,
+          int defaultLookbackMins,
+          long defaultDataFreshnessInSeconds) {
     this.searcher = searcher;
     this.blobStore = blobStore;
     this.defaultMaxSpans = defaultMaxSpans;
+    this.defaultLookbackMins = defaultLookbackMins;
     this.defaultDataFreshnessInSeconds = defaultDataFreshnessInSeconds;
   }
 
@@ -242,13 +242,13 @@ public class ZipkinService {
 
     long startTime =
         startTimeEpochMs.orElseGet(
-            () -> Instant.now().minus(LOOKBACK_MINS, ChronoUnit.MINUTES).toEpochMilli());
+            () -> Instant.now().minus(this.defaultLookbackMins, ChronoUnit.MINUTES).toEpochMilli());
     // we are adding a buffer to end time also because some machines clock may be ahead of current
     // system clock and those spans would be stored but can't be queried
 
     long endTime =
         endTimeEpochMs.orElseGet(
-            () -> Instant.now().plus(LOOKBACK_MINS, ChronoUnit.MINUTES).toEpochMilli());
+            () -> Instant.now().plus(this.defaultLookbackMins, ChronoUnit.MINUTES).toEpochMilli());
     int howMany = maxSpans.orElse(this.defaultMaxSpans);
 
     brave.Span span = Tracing.currentTracer().currentSpan();
