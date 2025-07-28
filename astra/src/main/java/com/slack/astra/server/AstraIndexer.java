@@ -35,6 +35,7 @@ public class AstraIndexer extends AbstractExecutionThreadService {
   private final AstraConfigs.KafkaConfig kafkaConfig;
   private final AstraKafkaConsumer kafkaConsumer;
   private final IndexingChunkManager<LogMessage> chunkManager;
+  private final AstraConfigs.S3WalConfig s3WalConfig;
 
   /**
    * This class contains the code to needed to run a single instance of an Astra indexer. A single
@@ -59,7 +60,7 @@ public class AstraIndexer extends AbstractExecutionThreadService {
       AstraConfigs.IndexerConfig indexerConfig,
       AstraConfigs.KafkaConfig kafkaConfig,
       MeterRegistry meterRegistry,
-      AstraConfigs.PreprocessorConfig preprocessorConfig, // Add this
+      AstraConfigs.S3WalConfig s3WalConfig,
       BlobStore blobStore) {
 
     checkNotNull(chunkManager, "Chunk manager can't be null");
@@ -67,13 +68,13 @@ public class AstraIndexer extends AbstractExecutionThreadService {
     this.indexerConfig = indexerConfig;
     this.kafkaConfig = kafkaConfig;
     this.meterRegistry = meterRegistry;
-
+    this.s3WalConfig = s3WalConfig;
     // Create a chunk manager
     this.chunkManager = chunkManager;
     // set up indexing pipelne
     MessageWriter messageWriter;
 
-    if (preprocessorConfig != null && preprocessorConfig.getUseS3Wal()) {
+    if (s3WalConfig != null) {
       messageWriter = new S3MessageWriterImpl(chunkManager, blobStore, meterRegistry);
     } else {
       messageWriter = new LogMessageWriterImpl(chunkManager);
@@ -125,7 +126,18 @@ public class AstraIndexer extends AbstractExecutionThreadService {
         new RecoveryTaskMetadataStore(curatorFramework, true);
 
     String partitionId = kafkaConfig.getKafkaTopicPartition();
-    long maxOffsetDelay = indexerConfig.getMaxOffsetDelayMessages();
+
+    // Choose offset delay based on WAL type
+    long maxOffsetDelay;
+    if (s3WalConfig != null) {
+      // Use S3 WAL specific offset delay
+      maxOffsetDelay = s3WalConfig.getMaxOffsetDelayMessages();
+      LOG.info("Using S3 WAL offset delay: {}", maxOffsetDelay);
+    } else {
+      // Use regular Kafka WAL offset delay
+      maxOffsetDelay = indexerConfig.getMaxOffsetDelayMessages();
+      LOG.info("Using Kafka WAL offset delay: {}", maxOffsetDelay);
+    }
 
     // TODO: Move this to it's own config var.
     final long maxMessagesPerRecoveryTask = indexerConfig.getMaxMessagesPerChunk();

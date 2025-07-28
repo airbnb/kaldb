@@ -202,7 +202,7 @@ public class Astra {
                 astraConfig.getIndexerConfig(),
                 astraConfig.getIndexerConfig().getKafkaConfig(),
                 meterRegistry,
-                astraConfig.getPreprocessorConfig(),
+                astraConfig.getPreprocessorConfig().getS3WalConfig(),
                 s3WalBlobStore);
       } else {
         indexer =
@@ -446,7 +446,7 @@ public class Astra {
                 curatorFramework,
                 meterRegistry,
                 blobStore,
-                astraConfig.getPreprocessorConfig(),
+                astraConfig.getPreprocessorConfig().getS3WalConfig(),
                 s3WalBlobStore);
       } else {
         recoveryService =

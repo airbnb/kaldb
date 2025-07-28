@@ -88,7 +88,7 @@ public class RecoveryService extends AbstractIdleService {
   private SearchMetadataStore searchMetadataStore;
   private final BlobStore s3WalBlobStore;
 
-  final AstraConfigs.PreprocessorConfig preprocessorConfig;
+  private final AstraConfigs.S3WalConfig s3WalConfig;
 
   private final AstraMetadataStoreChangeListener<RecoveryNodeMetadata> recoveryNodeListener =
       this::recoveryNodeListener;
@@ -98,7 +98,7 @@ public class RecoveryService extends AbstractIdleService {
       AsyncCuratorFramework curatorFramework,
       MeterRegistry meterRegistry,
       BlobStore blobStore,
-      AstraConfigs.PreprocessorConfig preprocessorConfig,
+      AstraConfigs.S3WalConfig s3WalConfig,
       BlobStore s3WalBlobStore) {
 
     this.curatorFramework = curatorFramework;
@@ -107,7 +107,7 @@ public class RecoveryService extends AbstractIdleService {
     this.meterRegistry = meterRegistry;
     this.blobStore = blobStore;
     this.AstraConfig = AstraConfig;
-    this.preprocessorConfig = preprocessorConfig;
+    this.s3WalConfig = s3WalConfig;
     this.s3WalBlobStore = s3WalBlobStore;
 
     adminClient =
@@ -323,7 +323,7 @@ public class RecoveryService extends AbstractIdleService {
         // Ingest data in parallel
         MessageWriter messageWriter;
 
-        if (preprocessorConfig != null && preprocessorConfig.getUseS3Wal()) {
+        if (s3WalConfig != null) {
           messageWriter = new S3MessageWriterImpl(chunkManager, s3WalBlobStore, meterRegistry);
         } else {
           messageWriter = new LogMessageWriterImpl(chunkManager);
