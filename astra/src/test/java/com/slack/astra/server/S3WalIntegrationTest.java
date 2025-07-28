@@ -47,6 +47,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.curator.test.TestingServer;
@@ -196,10 +197,25 @@ public class S3WalIntegrationTest {
             .setS3Region("us-west-2")
             .build();
 
+    AstraConfigs.S3WalBufferConfig s3WalBufferConfig =
+        AstraConfigs.S3WalBufferConfig.newBuilder()
+            .setMaxBufferTimeMs(1000)
+            .setMaxRequestsPerBatch(100)
+            .setMaxRequestsPerS3Object(1000)
+            .setMaxQueueSize(10000)
+            .build();
+
+    AstraConfigs.S3WalConfig s3WalConfig =
+        AstraConfigs.S3WalConfig.newBuilder()
+            .setS3Config(s3Config)
+            .setMaxOffsetDelayMessages(1000000)
+            .setBufferConfig(s3WalBufferConfig)
+            .build();
+
     AstraConfigs.PreprocessorConfig preprocessorConfig =
         AstraConfigs.PreprocessorConfig.newBuilder()
             .setKafkaConfig(kafkaConfig)
-            .setS3WalConfig(s3Config)
+            .setS3WalConfig(s3WalConfig)
             .setServerConfig(serverConfig)
             .setPreprocessorInstanceCount(1)
             .setRateLimiterMaxBurstSeconds(1)
@@ -324,7 +340,7 @@ public class S3WalIntegrationTest {
             makeIndexerConfig(1000),
             getKafkaConfig(),
             metricsRegistry,
-            s3ProcessorConfig,
+            s3ProcessorConfig.getS3WalConfig(),
             blobStore);
 
     astraIndexer.startAsync();
@@ -427,20 +443,43 @@ public class S3WalIntegrationTest {
     List<Trace.Span> spans1 = createTestSpansWithPrefix("partition0_", 3);
     List<Trace.Span> spans2 = createTestSpansWithPrefix("partition1_", 2);
 
-    Map<String, List<Trace.Span>> indexDocs =
-        Map.of(
-            INDEX_NAME,
-            spans1, // Partition 0
-            "second_index",
-            spans2 // Partition 1
-            );
+    // Create two separate requests following the single-index constraint
+    Map<String, List<Trace.Span>> indexDocs1 = Map.of(INDEX_NAME, spans1);
+    Map<String, List<Trace.Span>> indexDocs2 = Map.of("second_index", spans2);
 
-    // Submit to S3Producer
-    BulkIngestRequest request = bulkIngestS3Producer.submitRequest(indexDocs);
-    BulkIngestResponse response = request.getResponse();
+    // Submit two separate requests
+    BulkIngestRequest request1 = bulkIngestS3Producer.submitRequest(indexDocs1);
+    BulkIngestRequest request2 = bulkIngestS3Producer.submitRequest(indexDocs2);
 
-    assertThat(response.totalDocs()).isEqualTo(5);
-    assertThat(response.failedDocs()).isEqualTo(0);
+    // Wait for both responses IN PARALLEL using CompletableFuture or separate threads
+    CompletableFuture<BulkIngestResponse> future1 =
+        CompletableFuture.supplyAsync(
+            () -> {
+              try {
+                return request1.getResponse();
+              } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+              }
+            });
+
+    CompletableFuture<BulkIngestResponse> future2 =
+        CompletableFuture.supplyAsync(
+            () -> {
+              try {
+                return request2.getResponse();
+              } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+              }
+            });
+
+    BulkIngestResponse response1 = future1.get();
+    BulkIngestResponse response2 = future2.get();
+
+    // Verify responses
+    assertThat(response1.totalDocs()).isEqualTo(3);
+    assertThat(response1.failedDocs()).isEqualTo(0);
+    assertThat(response2.totalDocs()).isEqualTo(2);
+    assertThat(response2.failedDocs()).isEqualTo(0);
 
     // Verify 2 Kafka messages (one per partition)
     KafkaConsumer<String, byte[]> kafkaConsumer = createTestKafkaConsumer();
@@ -549,13 +588,30 @@ public class S3WalIntegrationTest {
   }
 
   private AstraConfigs.PreprocessorConfig createS3PreprocessorConfig() {
+    AstraConfigs.S3Config s3Config =
+        AstraConfigs.S3Config.newBuilder()
+            .setS3Bucket(S3_TEST_BUCKET)
+            .setS3Region("us-west-2")
+            .build();
+
+    AstraConfigs.S3WalBufferConfig s3WalBufferConfig =
+        AstraConfigs.S3WalBufferConfig.newBuilder()
+            .setMaxBufferTimeMs(100)
+            .setMaxRequestsPerBatch(5)
+            .setMaxRequestsPerS3Object(100)
+            .setMaxQueueSize(100)
+            .build();
+
+    AstraConfigs.S3WalConfig s3WalConfig =
+        AstraConfigs.S3WalConfig.newBuilder()
+            .setS3Config(s3Config)
+            .setMaxOffsetDelayMessages(100)
+            .setBufferConfig(s3WalBufferConfig)
+            .build();
+
     return AstraConfigs.PreprocessorConfig.newBuilder()
         .setUseS3Wal(true)
-        .setS3WalConfig(
-            AstraConfigs.S3Config.newBuilder()
-                .setS3Bucket(S3_TEST_BUCKET)
-                .setS3Region("us-west-2")
-                .build())
+        .setS3WalConfig(s3WalConfig)
         .build();
   }
 }

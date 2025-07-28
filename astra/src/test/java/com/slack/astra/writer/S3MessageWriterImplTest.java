@@ -158,7 +158,7 @@ class S3MessageWriterImplTest {
   public ConsumerRecord<String, byte[]> consumerRecordWithS3Pointer(
       Map<String, List<Trace.Span>> indexDocs) throws IOException {
 
-    byte[] compressedData = WALBatchSerializer.serializeAndCompress(indexDocs);
+    byte[] compressedData = WALBatchSerializer.serialize(indexDocs);
 
     int partition = 1;
 
