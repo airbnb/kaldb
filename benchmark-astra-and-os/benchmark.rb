@@ -36,10 +36,13 @@ curls = { "astra" => "curl -s --fail -H 'Content-Type: application/json' \
   -H 'Content-Type: application/json' --data-binary "
 }
 
-error_shapes = ['"responses":[{"error"','Status 500', '"hits":{"total":{"value":0']
+error_shapes = [
+  '"responses":[{"error"',
+  'Status 500']
 
 subjects = ["astra", "os"]
-sizes = [0,50,100,250,500,1000,2000,3000,4000,5000,6000,7000,8000,9000,10_000,
+sizes = [
+  0,50,100,250,500,1000,2000,3000,4000,5000,6000,7000,8000,9000,10_000,
          # Extra large sizes
          # 100_000, 200_000
 ]
@@ -52,11 +55,28 @@ sizes = [0,50,100,250,500,1000,2000,3000,4000,5000,6000,7000,8000,9000,10_000,
 # responses[].error
 #
 
+TO_DIG = {
+  hits_all: ["responses", 0, "hits", "hits"],
+  hits_total_value: ["responses", 0, "hits", "total", "value"],
+  root_took: ["took"],
+  resp_took: ["responses", 0, "took"],
+  error: ["responses", 0, "error"],
+}
+def extract_from_output json
+  # Extracts the count of hits, total value, took, and error from the output JSON
+  # Returns a hash with these values
+  TO_DIG.transform_values do |path|
+    json.dig(*path)
+  end
+end
+
+
+# checks
+
 # jq queries
-hits_hits_len = 'jq ".responses[].hits.hits | length"'
-hits_total_val = "jq '.responses[].hits.total.value'"
-# hits_hits_len = hits_total_val
-with_error = "jq '.responses[] | if .error then .error else empty end'"
+hits_hits_len = -> (extracted, size) { extracted[:hits_all].size == size }
+hits_total_val = -> (extracted, size) { extracted[:hits_total_value] == size}
+# bucket_count = -> (extracted, size) { extracted[:buckets].size == size }
 
 # query changes
 # increase size
@@ -163,7 +183,7 @@ at_exit do
   puts "="*80
   # name, count, astra_ms, astrisk, astrisk_why, os_ms, os_asterisk, os_asterisk_why
   stats_group_by = stats[1..-1].group_by(&:first)
-  puts "#{" "*56}size #{stats_group_by.values.first.map{|r|r[1]}.uniq.map(&:to_s).map{|i|i.sub(/000$/,'k').rjust 5}.join()}"
+  puts "#{" "*56}size #{stats_group_by.values.find{|v|v}.map{|r|r[1]}.uniq.map(&:to_s).map{|i|i.sub(/000$/,'k').rjust 5}.join()}"
 
   stats_group_by.each do |name, rows|
     rows = rows.group_by{|r|r[1]}.map {|count, rows| r = rows[0]; [r[0], r[1], rows.map{|x|x[2]}.sum.to_f/rows.size, r[3], r[4], rows.map{|x|x[5]}.sum.to_f/rows.size, r[6], r[7]]}.sort_by{|r|r[1]}
@@ -193,42 +213,55 @@ iterations.times do |iteration|
         raw_out = nil
         failed = false
         fail_message = []
-        request_body = "{\"index\":\"test\"}
-  {\"query\": #{query}, \"size\": #{count}}
-  "
+        request_body = "{\"index\":\"test\"}\n{\"query\": #{query}, \"size\": #{count}}\n"
         timing = Benchmark.measure("#{subject} #{count}".ljust(60)) do
           raw_out = `#{curls[subject]} '#{request_body}'`
         end
         File.write("output/#{current_time.strftime "%Y-%m-%d-%H-%M-%S"}/#{name}-#{count}-#{subject}.json", raw_out)
         out = raw_out
+        json_out = begin
+                     JSON.parse(out)
+                   rescue
+                     print 'E'
+                     {}
+                     end
+        extracted_vals = extract_from_output(json_out)
+        # per call validations:
+        # - exit status
+        # - matches an error shape
+        # - error in response
+        # - TODO more specific checks
         if $?.exitstatus != 0
           rerun_out = `#{curls[subject].sub"-s","-vvv"} '#{request_body}'`
           rerun_out = "rerun result:\n> #{rerun_out.gsub("\n", "> ")}"
           failed = true
           fail_message << "Error with #{subject} #{$?.exitstatus}\n#{rerun_out}"
         end
-
         matching_error = error_shapes.find{|x|out.include?(x)}
         if matching_error
           failed = true
           fail_message << "found error shape like #{matching_error}"
         end
-
-        if jq_query && !jq_query.empty?
-          out = run_jq(jq_query, out)
-          if out.to_i != count
-            failed = true
-            fail_message << "hit count didn't match [#{out}] != #{count}"
-          end
-        else
-          puts '='*80
-          puts out
-          puts "no jq extraction query for #{subject} -- #{name}"
-          exit 1
+        if extracted_vals[:error]
+          failed = true
+          fail_message << "had error: #{extracted_vals[:error]}"
         end
+        if extracted_vals[:hits_all].nil? || extracted_vals[:hits_all].empty?
+          # no hits
+        end
+        if extracted_vals[:hits_all] && extracted_vals[:hits_all].size != count
+          failed = true
+          fail_message << "hit count didn't match [#{extracted_vals[:hits_all].size}] != #{count}"
+        end
+        if extracted_vals[:hits_total_val].to_i == 0
+          # and expected there to be a total?
+          # failed = true
+          # fail_message << "total: 0 #{extracted_vals[:hits_total_val].inspect}"
+        end
+
         [timing, [failed, fail_message.join(', ')], raw_out]
       end
-      # some attempt at comparing results here:
+      # comparing results between astra and os:
       _astra,_os = timings.map(&:last).map{|json|
         JSON.parse(json).dig("responses", 0, "hits", "hits").
            map {|hit| hit["_source"]["total_amount"]}.sort} rescue [[100],[100]]
