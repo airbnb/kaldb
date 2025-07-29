@@ -269,12 +269,12 @@ message RecoveryConfig {
 message S3WalConfig {
   // S3 storage settings
   S3Config s3_config = 1;
-
+  KafkaConfig kafka_config = 2;
   // Offset management for S3 WAL
-  int64 max_offset_delay_messages = 2;
+  int64 max_offset_delay_messages = 3;
 
   // Buffer management
-  S3WalBufferConfig buffer_config = 3;
+  S3WalBufferConfig buffer_config = 4;
 }
 
 message S3WalBufferConfig {
@@ -301,6 +301,7 @@ message PreprocessorConfig {
 
   // S3 WAL Config
   bool use_s3_wal = 15;
+  bool use_original_wal = 17; // Use original WAL for compatibility
   S3WalConfig s3_wal_config = 16;    // Consolidated S3 WAL configuration
 
   // Make the rate limit exceeded error code configurable

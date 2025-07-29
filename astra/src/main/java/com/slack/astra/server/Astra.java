@@ -168,9 +168,22 @@ public class Astra {
 
     BlobStore blobStore = new BlobStore(s3Client, astraConfig.getS3Config().getS3Bucket());
 
+    boolean useS3Wal = preprocessorConfig != null && preprocessorConfig.getUseS3Wal();
+
+    boolean useOriginalWal;
+    if (preprocessorConfig == null) {
+      // No preprocessor config - use original WAL for backward compatibility
+      useOriginalWal = true;
+    } else {
+      // Default original to true if neither S3 nor original is enabled
+      useOriginalWal =
+          preprocessorConfig.getUseOriginalWal()
+              || (!preprocessorConfig.getUseS3Wal() && !preprocessorConfig.getUseOriginalWal());
+    }
+
     // Create S3 WAL BlobStore if S3 WAL is enabled
     BlobStore s3WalBlobStore = null;
-    if (preprocessorConfig != null && preprocessorConfig.getUseS3Wal()) {
+    if (useS3Wal) {
       checkArgument(
           preprocessorConfig.hasS3WalConfig(),
           "S3 configuration must be provided when using S3 WAL");
@@ -194,20 +207,45 @@ public class Astra {
               astraConfig.getS3Config());
       services.add(chunkManager);
 
-      AstraIndexer indexer;
-      if (s3WalBlobStore != null) {
-        indexer =
+      checkArgument(
+          useS3Wal || useOriginalWal, "At least one WAL type must be enabled (S3 or Original)");
+
+      // Create S3 WAL indexer if enabled
+      if (useS3Wal) {
+        checkArgument(
+            s3WalBlobStore != null, "S3 WAL BlobStore must be configured when S3 WAL is enabled");
+        LOG.info("Creating S3 WAL indexer service");
+
+        // Create separate Kafka config for S3 WAL topic
+        AstraConfigs.KafkaConfig s3KafkaConfig =
+            astraConfig.getPreprocessorConfig().getS3WalConfig().getKafkaConfig();
+
+        AstraConfigs.IndexerConfig s3IndexerConfig =
+            AstraConfigs.IndexerConfig.newBuilder()
+                .mergeFrom(astraConfig.getIndexerConfig())
+                .setKafkaConfig(s3KafkaConfig)
+                .build();
+
+        AstraIndexer s3Indexer =
             new AstraIndexer(
                 chunkManager,
                 curatorFramework,
                 astraConfig.getMetadataStoreConfig(),
-                astraConfig.getIndexerConfig(),
-                astraConfig.getIndexerConfig().getKafkaConfig(),
+                s3IndexerConfig,
+                s3KafkaConfig,
                 meterRegistry,
                 astraConfig.getPreprocessorConfig().getS3WalConfig(),
                 s3WalBlobStore);
-      } else {
-        indexer =
+        services.add(s3Indexer);
+      }
+
+      // Create original Kafka WAL indexer if enabled
+      if (useOriginalWal) {
+        LOG.info(
+            "Original Kafka config partition: {}",
+            astraConfig.getIndexerConfig().getKafkaConfig().getKafkaTopicPartition());
+        LOG.info("Creating original Kafka WAL indexer service");
+        AstraIndexer kafkaIndexer =
             new AstraIndexer(
                 chunkManager,
                 curatorFramework,
@@ -215,8 +253,8 @@ public class Astra {
                 astraConfig.getIndexerConfig(),
                 astraConfig.getIndexerConfig().getKafkaConfig(),
                 meterRegistry);
+        services.add(kafkaIndexer);
       }
-      services.add(indexer);
 
       AstraLocalQueryService<LogMessage> searcher =
           new AstraLocalQueryService<>(
