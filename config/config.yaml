@@ -145,6 +145,7 @@ preprocessorConfig:
   rateLimitExceededErrorCode: ${ASTRA_PREPROCESSOR_RATE_LIMIT_EXCEEDED_ERROR_CODE:-400}
 
   useS3Wal: ${USE_S3_WAL:-false}
+  useOriginalWal: ${USE_ORIGINAL_WAL:-true}
   s3WalConfig:
     s3Config:
       s3AccessKey: ${S3_ACCESS_KEY:-access}
@@ -154,6 +155,15 @@ preprocessorConfig:
       s3Bucket: ${S3_WAL_BUCKET:-test-s3-bucket}
       s3TargetThroughputGbps: ${S3_TARGET_THROUGHPUT_GBPS:-25}
       s3ForcePathStyle: ${S3_FORCE_PATH_STYLE:-false}
+    kafkaConfig:
+      kafkaTopic: ${S3_KAFKA_TOPIC:-s3-wal-pointers}     # Different topic
+      kafkaTopicPartition: ${S3_KAFKA_TOPIC_PARTITION:-1} # Different partition
+      kafkaBootStrapServers: ${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092} # Same servers
+      kafkaClientGroup: ${S3_KAFKA_CLIENT_GROUP:-ASTRA-s3-test}         # Different group
+      enableKafkaAutoCommit: ${KAFKA_AUTO_COMMIT:-true}
+      kafkaAutoCommitInterval: ${KAFKA_AUTO_COMMIT_INTERVAL:-5000}
+      kafkaSessionTimeout: ${KAFKA_SESSION_TIMEOUT:-30000}
+      additionalProps: ${KAFKA_ADDITIONAL_PROPS:-}
     maxOffsetDelayMessages: ${S3_WAL_MAX_OFFSET_DELAY_MESSAGES:-1000000}
     bufferConfig:
       maxBufferTimeMs: ${S3_WAL_MAX_BUFFER_TIME_MS:-1000}

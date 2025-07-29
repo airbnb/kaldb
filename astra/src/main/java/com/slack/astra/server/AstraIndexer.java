@@ -125,7 +125,12 @@ public class AstraIndexer extends AbstractExecutionThreadService {
     RecoveryTaskMetadataStore recoveryTaskMetadataStore =
         new RecoveryTaskMetadataStore(curatorFramework, true);
 
-    String partitionId = kafkaConfig.getKafkaTopicPartition();
+    String partitionId;
+    if (s3WalConfig != null) {
+      partitionId = "s3-" + kafkaConfig.getKafkaTopicPartition(); // e.g., "s3-0"
+    } else {
+      partitionId = kafkaConfig.getKafkaTopicPartition(); // e.g., "0"
+    }
 
     // Choose offset delay based on WAL type
     long maxOffsetDelay;
@@ -215,6 +220,10 @@ public class AstraIndexer extends AbstractExecutionThreadService {
 
   @Override
   protected String serviceName() {
-    return "astraIndexerService";
+    if (s3WalConfig != null) {
+      return "astraS3IndexerService";
+    } else {
+      return "astraKafkaIndexerService";
+    }
   }
 }
