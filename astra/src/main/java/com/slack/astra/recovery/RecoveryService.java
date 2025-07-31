@@ -23,7 +23,7 @@ import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.astra.proto.metadata.Metadata;
 import com.slack.astra.writer.LogMessageWriterImpl;
 import com.slack.astra.writer.MessageWriter;
-import com.slack.astra.writer.S3MessageWriterImpl;
+import com.slack.astra.writer.S3WalMessageWriterImpl;
 import com.slack.astra.writer.kafka.AstraKafkaConsumer;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -337,7 +337,7 @@ public class RecoveryService extends AbstractIdleService {
         MessageWriter messageWriter;
 
         if (s3WalConfig != null) {
-          messageWriter = new S3MessageWriterImpl(chunkManager, s3WalBlobStore, meterRegistry);
+          messageWriter = new S3WalMessageWriterImpl(chunkManager, s3WalBlobStore, meterRegistry);
         } else {
           messageWriter = new LogMessageWriterImpl(chunkManager);
         }

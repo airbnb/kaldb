@@ -131,8 +131,8 @@ class S3MessageWriterImplTest {
     ConsumerRecord<String, byte[]> s3Record = consumerRecordWithS3Pointer(indexDocs);
 
     // Create S3MessageWriter and process record
-    S3MessageWriterImpl messageWriter =
-        new S3MessageWriterImpl(chunkManagerUtil.chunkManager, mockBlobStore, metricsRegistry);
+    S3WalMessageWriterImpl messageWriter =
+        new S3WalMessageWriterImpl(chunkManagerUtil.chunkManager, mockBlobStore, metricsRegistry);
 
     assertThat(messageWriter.insertRecord(s3Record)).isTrue();
     assertThat(getCount(MESSAGES_RECEIVED_COUNTER, metricsRegistry)).isEqualTo(1);
@@ -149,8 +149,8 @@ class S3MessageWriterImplTest {
 
   @Test
   public void insertNullRecord() throws IOException {
-    S3MessageWriterImpl messageWriter =
-        new S3MessageWriterImpl(chunkManagerUtil.chunkManager, mockBlobStore, metricsRegistry);
+    S3WalMessageWriterImpl messageWriter =
+        new S3WalMessageWriterImpl(chunkManagerUtil.chunkManager, mockBlobStore, metricsRegistry);
     assertThat(messageWriter.insertRecord(null)).isFalse();
   }
 
