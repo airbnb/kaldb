@@ -74,9 +74,11 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
     this.maxBufferTimeMs = s3WalBufferConfig.getMaxBufferTimeMs();
     // Maximum number of requests to process in a single batch so that S3 objects are not too large.
     this.maxRequestsPerBatch = s3WalBufferConfig.getMaxRequestsPerBatch();
-    //Minimum number of requests to wait for before processing. This allows large enough S3 objects.
+    // Minimum number of requests to wait for before processing. This allows large enough S3
+    // objects.
     this.minBatchSize = Math.max(1, maxRequestsPerBatch / 4);
-    // Sleep interval when waiting for more requests to reach minBatchSize before maxBufferTimeMs expires.
+    // Sleep interval when waiting for more requests to reach minBatchSize before maxBufferTimeMs
+    // expires.
     // Set to 1/10th of maxBufferTimeMs (min 10ms) to check frequently without excessive CPU usage.
     this.bufferWaitMs = Math.max(10, maxBufferTimeMs / 10);
   }
