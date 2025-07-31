@@ -108,8 +108,6 @@ class BulkIngestS3ProducerTest {
         AstraConfigs.S3WalBufferConfig.newBuilder()
             .setMaxBufferTimeMs(100) // Short timeout for tests
             .setMaxRequestsPerBatch(10) // Small batch size for tests
-            .setMaxRequestsPerS3Object(100)
-            .setMaxQueueSize(1000)
             .build();
 
     AstraConfigs.S3WalConfig s3WalConfig =
