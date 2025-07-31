@@ -40,9 +40,11 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
       "bulk_ingest_producer_s3_wal_kafka_failures_total";
   public static final String STOP_INGESTION_COUNTER =
       "bulk_ingest_producer_s3_wal_stop_ingestion_total";
+  public static final String BATCH_WAIT_TIMER = "bulk_ingest_producer_s3_wal_batch_wait_duration";
   private final BlobStore blobStore;
   protected final String walBucket;
   private final Timer s3UploadTimer;
+  private final Timer batchWaitTimer;
   private final int maxBufferTimeMs;
   private final int maxRequestsPerBatch;
   private final int minBatchSize;
@@ -63,11 +65,19 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
     this.walBucket = preprocessorConfig.getS3WalConfig().getS3Config().getS3Bucket();
     this.kafkaTopic = preprocessorConfig.getKafkaConfig().getKafkaTopic();
     this.s3UploadTimer = meterRegistry.timer(S3_UPLOAD_TIMER);
+    this.batchWaitTimer = meterRegistry.timer(BATCH_WAIT_TIMER);
     this.producerSleepMs =
         Integer.parseInt(System.getProperty("astra.bulkIngest.S3producerSleepMs", "100"));
+
+    // Maximum time to wait for more requests before processing a batch
+    // This is used for time-based batching, allowing enough time to accumulate requests.
     this.maxBufferTimeMs = s3WalBufferConfig.getMaxBufferTimeMs();
+    // Maximum number of requests to process in a single batch so that S3 objects are not too large.
     this.maxRequestsPerBatch = s3WalBufferConfig.getMaxRequestsPerBatch();
+    //Minimum number of requests to wait for before processing. This allows large enough S3 objects.
     this.minBatchSize = Math.max(1, maxRequestsPerBatch / 4);
+    // Sleep interval when waiting for more requests to reach minBatchSize before maxBufferTimeMs expires.
+    // Set to 1/10th of maxBufferTimeMs (min 10ms) to check frequently without excessive CPU usage.
     this.bufferWaitMs = Math.max(10, maxBufferTimeMs / 10);
   }
 
@@ -75,6 +85,7 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
   protected void run() throws Exception {
 
     long lastProcessTime = System.currentTimeMillis();
+    Timer.Sample batchWaitSample = Timer.start(meterRegistry);
 
     while (isRunning()) {
 
@@ -104,8 +115,10 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
       batchSizeGauge.set(requests.size());
 
       // Process the batch
+      batchWaitSample.stop(batchWaitTimer);
       produceDocuments(requests);
       lastProcessTime = System.currentTimeMillis();
+      batchWaitSample = Timer.start(meterRegistry);
     }
   }
 
@@ -177,10 +190,10 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
       requestDocCounts.put(request, requestDocs);
     }
     // Serialize and upload combined data for the partition as a single S3 object
-    byte[] compressedData = WALBatchSerializer.serialize(combinedIndexDocs);
+    byte[] serializedData = WALBatchSerializer.serialize(combinedIndexDocs);
 
     // Upload combined data to S3 and send Kafka pointer for the partition
-    String errorMessage = uploadToS3AndSendKafkaPointer(partition, compressedData, totalDocs);
+    String errorMessage = uploadToS3AndSendKafkaPointer(partition, serializedData, totalDocs);
 
     // If there was an error during upload or Kafka send, all requests in this partition fail and
     // return the error message
@@ -200,18 +213,19 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
   }
 
   private boolean shouldWaitForMoreRequests(int availableRequests, long lastProcessTime) {
+
     // Time-based: Don't wait if max buffer time exceeded
     long timeSinceLastProcess = System.currentTimeMillis() - lastProcessTime;
     if (timeSinceLastProcess >= maxBufferTimeMs) {
       return false; // Process now, time limit reached
     }
 
-    // Count-based: Wait if we don't have enough requests
-    if (availableRequests < minBatchSize) {
-      return true; // Wait for more requests
+    // Count-based: Don't wait if we have enough requests
+    if (availableRequests > minBatchSize) {
+      return false; // Process now, minimum batch size reached
     }
 
-    return false; // We have enough, process now
+    return true; // Wait for more requests, either time or count not met
   }
 
   private Map<Integer, Set<BulkIngestRequest>> aggregateRequestsByPartition(
