@@ -14,7 +14,7 @@ import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.astra.util.RuntimeHalterImpl;
 import com.slack.astra.writer.LogMessageWriterImpl;
 import com.slack.astra.writer.MessageWriter;
-import com.slack.astra.writer.S3MessageWriterImpl;
+import com.slack.astra.writer.S3WalMessageWriterImpl;
 import com.slack.astra.writer.kafka.AstraKafkaConsumer;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.io.IOException;
@@ -75,7 +75,7 @@ public class AstraIndexer extends AbstractExecutionThreadService {
     MessageWriter messageWriter;
 
     if (s3WalConfig != null) {
-      messageWriter = new S3MessageWriterImpl(chunkManager, blobStore, meterRegistry);
+      messageWriter = new S3WalMessageWriterImpl(chunkManager, blobStore, meterRegistry);
     } else {
       messageWriter = new LogMessageWriterImpl(chunkManager);
     }

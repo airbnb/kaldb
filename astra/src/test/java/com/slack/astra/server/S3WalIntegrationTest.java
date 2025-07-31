@@ -201,8 +201,6 @@ public class S3WalIntegrationTest {
         AstraConfigs.S3WalBufferConfig.newBuilder()
             .setMaxBufferTimeMs(1000)
             .setMaxRequestsPerBatch(100)
-            .setMaxRequestsPerS3Object(1000)
-            .setMaxQueueSize(10000)
             .build();
 
     AstraConfigs.S3WalConfig s3WalConfig =
@@ -598,8 +596,6 @@ public class S3WalIntegrationTest {
         AstraConfigs.S3WalBufferConfig.newBuilder()
             .setMaxBufferTimeMs(100)
             .setMaxRequestsPerBatch(5)
-            .setMaxRequestsPerS3Object(100)
-            .setMaxQueueSize(100)
             .build();
 
     AstraConfigs.S3WalConfig s3WalConfig =

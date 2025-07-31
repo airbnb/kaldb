@@ -15,8 +15,8 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class S3MessageWriterImpl implements MessageWriter {
-  private static final Logger LOG = LoggerFactory.getLogger(S3MessageWriterImpl.class);
+public class S3WalMessageWriterImpl implements MessageWriter {
+  private static final Logger LOG = LoggerFactory.getLogger(S3WalMessageWriterImpl.class);
 
   private final ChunkManager<LogMessage> chunkManager;
   private final BlobStore blobStore;
@@ -24,7 +24,7 @@ public class S3MessageWriterImpl implements MessageWriter {
   private final Counter s3DownloadCounter;
   private final Counter spansProcessedCounter;
 
-  public S3MessageWriterImpl(
+  public S3WalMessageWriterImpl(
       ChunkManager<LogMessage> chunkManager, BlobStore blobStore, MeterRegistry meterRegistry) {
 
     this.chunkManager = chunkManager;
@@ -50,11 +50,11 @@ public class S3MessageWriterImpl implements MessageWriter {
         pointer.getDocCount());
 
     // Download batch from S3
-    byte[] compressedData = blobStore.downloadWalBatch(pointer.getBlobstoreFilepath());
+    byte[] serializedData = blobStore.downloadWalBatch(pointer.getBlobstoreFilepath());
     s3DownloadCounter.increment();
 
     // Deserialize batch
-    Map<String, List<Trace.Span>> indexDocs = WALBatchSerializer.deserialize(compressedData);
+    Map<String, List<Trace.Span>> indexDocs = WALBatchSerializer.deserialize(serializedData);
 
     int totalSpansProcessed = 0;
 
