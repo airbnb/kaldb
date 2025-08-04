@@ -170,15 +170,15 @@ public class Astra {
 
     boolean useS3Wal = preprocessorConfig != null && preprocessorConfig.getUseS3Wal();
 
-    boolean useOriginalWal;
+    boolean useKafkaWal;
     if (preprocessorConfig == null) {
-      // No preprocessor config - use original WAL for backward compatibility
-      useOriginalWal = true;
+      // No preprocessor config - use Kafka WAL for backward compatibility
+      useKafkaWal = true;
     } else {
-      // Default original to true if neither S3 nor original is enabled
-      useOriginalWal =
-          preprocessorConfig.getUseOriginalWal()
-              || (!preprocessorConfig.getUseS3Wal() && !preprocessorConfig.getUseOriginalWal());
+      // Default to Kafka if neither S3 nor Kafka is enabled
+      useKafkaWal =
+          preprocessorConfig.getUseKafkaWal()
+              || (!preprocessorConfig.getUseS3Wal() && !preprocessorConfig.getUseKafkaWal());
     }
 
     // Create S3 WAL BlobStore if S3 WAL is enabled
@@ -205,9 +205,6 @@ public class Astra {
               blobStore,
               astraConfig.getS3Config());
       services.add(chunkManager);
-
-      checkArgument(
-          useS3Wal || useOriginalWal, "At least one WAL type must be enabled (S3 or Original)");
 
       // Create S3 WAL indexer if enabled
       if (useS3Wal) {
@@ -237,8 +234,8 @@ public class Astra {
         services.add(s3Indexer);
       }
 
-      // Create original Kafka WAL indexer if enabled
-      if (useOriginalWal) {
+      // Create Kafka WAL indexer if enabled
+      if (useKafkaWal) {
         LOG.info(
             "Original Kafka config partition: {}",
             astraConfig.getIndexerConfig().getKafkaConfig().getKafkaTopicPartition());
