@@ -206,6 +206,23 @@ public class Astra {
               astraConfig.getS3Config());
       services.add(chunkManager);
 
+      // Create Kafka WAL indexer if enabled
+      if (useKafkaWal) {
+        LOG.info(
+            "Original Kafka config partition: {}",
+            astraConfig.getIndexerConfig().getKafkaConfig().getKafkaTopicPartition());
+        LOG.info("Creating original Kafka WAL indexer service");
+        AstraIndexer indexer =
+            new AstraIndexer(
+                chunkManager,
+                curatorFramework,
+                astraConfig.getMetadataStoreConfig(),
+                astraConfig.getIndexerConfig(),
+                astraConfig.getIndexerConfig().getKafkaConfig(),
+                meterRegistry);
+        services.add(indexer);
+      }
+
       // Create S3 WAL indexer if enabled
       if (useS3Wal) {
         checkArgument(
@@ -232,23 +249,6 @@ public class Astra {
                 astraConfig.getPreprocessorConfig().getS3WalConfig(),
                 s3WalBlobStore);
         services.add(s3Indexer);
-      }
-
-      // Create Kafka WAL indexer if enabled
-      if (useKafkaWal) {
-        LOG.info(
-            "Original Kafka config partition: {}",
-            astraConfig.getIndexerConfig().getKafkaConfig().getKafkaTopicPartition());
-        LOG.info("Creating original Kafka WAL indexer service");
-        AstraIndexer kafkaIndexer =
-            new AstraIndexer(
-                chunkManager,
-                curatorFramework,
-                astraConfig.getMetadataStoreConfig(),
-                astraConfig.getIndexerConfig(),
-                astraConfig.getIndexerConfig().getKafkaConfig(),
-                meterRegistry);
-        services.add(kafkaIndexer);
       }
 
       AstraLocalQueryService<LogMessage> searcher =
