@@ -118,10 +118,8 @@ services:
       - S3_KAFKA_TOPIC=s3-wal-pointers
       - S3_KAFKA_CLIENT_GROUP=ASTRA-s3-test
       - S3_KAFKA_TOPIC_PARTITION=0
-      - S3_WAL_MAX_BUFFER_TIME_MS=1000
+      - S3_WAL_MAX_BUFFER_TIME_MS=50
       - S3_WAL_MAX_REQUESTS_PER_BATCH=1
-      - S3_WAL_MAX_REQUESTS_PER_S3_OBJECT=1000
-      - S3_WAL_MAX_QUEUE_SIZE=10000
     depends_on:
       - zookeeper
       - kafka

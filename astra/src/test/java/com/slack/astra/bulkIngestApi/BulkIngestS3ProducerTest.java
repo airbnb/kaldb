@@ -131,7 +131,7 @@ class BulkIngestS3ProducerTest {
             .setKafkaConfig(kafkaConfig)
             .setS3WalConfig(s3WalConfig)
             .setUseS3Wal(true)
-            .setUseOriginalWal(false)
+            .setUseKafkaWal(false)
             .setServerConfig(serverConfig)
             .setPreprocessorInstanceCount(1)
             .setRateLimiterMaxBurstSeconds(1)

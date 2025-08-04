@@ -156,7 +156,7 @@ preprocessorConfig:
   datasetRateLimitPeriodSecs: ${ASTRA_PREPROCESSOR_DATASET_RATE_LIMIT_PERIOD_SECS:-60}
 
   useS3Wal: ${USE_S3_WAL:-false}
-  useOriginalWal: ${USE_ORIGINAL_WAL:-true}
+  useKafkaWal: ${USE_KAFKA_WAL:-true}
   s3WalConfig:
     s3Config:
       s3AccessKey: ${S3_ACCESS_KEY:-access}
