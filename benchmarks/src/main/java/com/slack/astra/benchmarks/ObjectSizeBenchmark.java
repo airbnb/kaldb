@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+
 public class ObjectSizeBenchmark {
 
   private HttpClient httpClient;
@@ -261,7 +262,6 @@ public class ObjectSizeBenchmark {
 
       System.out.printf("S3 objects found: %d%n", objectCount);
       System.out.printf("Actual S3 storage: %d bytes%n", totalS3Bytes);
-
     }
     return totalS3Bytes;
   }
