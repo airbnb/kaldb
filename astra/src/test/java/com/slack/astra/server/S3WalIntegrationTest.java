@@ -227,7 +227,7 @@ public class S3WalIntegrationTest {
             .setPreprocessorInstanceCount(1)
             .setRateLimiterMaxBurstSeconds(1)
             .setUseS3Wal(true) // Enable S3 WAL
-            .setUseOriginalWal(false)
+            .setUseKafkaWal(false)
             .build();
 
     bulkIngestS3Producer =
@@ -627,7 +627,7 @@ public class S3WalIntegrationTest {
 
     return AstraConfigs.PreprocessorConfig.newBuilder()
         .setUseS3Wal(true)
-        .setUseOriginalWal(false)
+        .setUseKafkaWal(false)
         .setS3WalConfig(s3WalConfig)
         .build();
   }
