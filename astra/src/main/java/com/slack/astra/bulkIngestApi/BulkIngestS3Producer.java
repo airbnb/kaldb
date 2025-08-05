@@ -266,7 +266,7 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
     Timer.Sample uploadTimer = Timer.start(meterRegistry);
     try {
       // upload to S3 using blobstore
-      blobStore.upload(objectKey, compressedData);
+      blobStore.uploadWalBatch(objectKey, compressedData);
 
       LOG.debug(
           "Uploaded {} spans ({} bytes compressed) to S3 at key {} for partition {}",

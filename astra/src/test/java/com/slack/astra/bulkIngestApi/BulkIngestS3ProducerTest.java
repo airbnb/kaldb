@@ -206,7 +206,7 @@ class BulkIngestS3ProducerTest {
     assertThat(response.get().failedDocs()).isEqualTo(0);
 
     // Verify that the S3 upload was called
-    verify(mockBlobStore).upload(any(String.class), any(byte[].class));
+    verify(mockBlobStore).uploadWalBatch(any(String.class), any(byte[].class));
 
     assertThat(MetricsUtil.getCount("bulk_ingest_producer_s3_wal_uploads_total", meterRegistry))
         .isEqualTo(1);
@@ -280,7 +280,7 @@ class BulkIngestS3ProducerTest {
     assertThat(response.get().failedDocs()).isEqualTo(0);
 
     // Verify only 1 S3 upload (all indexes grouped into one partition)
-    verify(mockBlobStore).upload(any(String.class), any(byte[].class));
+    verify(mockBlobStore).uploadWalBatch(any(String.class), any(byte[].class));
 
     // Verify metrics show single upload with all spans
     assertThat(MetricsUtil.getCount("bulk_ingest_producer_s3_wal_uploads_total", meterRegistry))
@@ -353,7 +353,7 @@ class BulkIngestS3ProducerTest {
     assertThat(responses.stream().allMatch(r -> r.failedDocs() == 0)).isTrue();
 
     // Verify 2 S3 uploads (one per partition)
-    verify(mockBlobStore, times(2)).upload(any(String.class), any(byte[].class));
+    verify(mockBlobStore, times(2)).uploadWalBatch(any(String.class), any(byte[].class));
 
     // Verify metrics show 2 uploads with 1 span each
     assertThat(MetricsUtil.getCount("bulk_ingest_producer_s3_wal_uploads_total", meterRegistry))
@@ -426,7 +426,7 @@ class BulkIngestS3ProducerTest {
     assertThat(responseMap.values().stream().allMatch(r -> r.failedDocs() == 0)).isTrue();
 
     // KEY TEST: Verify only 1 S3 upload happened (batching!)
-    verify(mockBlobStore, times(1)).upload(any(String.class), any(byte[].class));
+    verify(mockBlobStore, times(1)).uploadWalBatch(any(String.class), any(byte[].class));
 
     // Verify only 1 Kafka message with total span count
     KafkaConsumer<String, byte[]> kafkaConsumer = getTestKafkaConsumer();

@@ -112,7 +112,7 @@ public class BlobStore {
    * @param data Compressed WAL batch data
    * @throws RuntimeException Thrown when upload fails
    */
-  public void upload(String key, byte[] data) {
+  public void uploadWalBatch(String key, byte[] data) {
     try {
       PutObjectRequest putObjectRequest =
           PutObjectRequest.builder().bucket(bucketName).key(key).build();
