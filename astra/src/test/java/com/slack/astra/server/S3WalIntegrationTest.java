@@ -107,7 +107,6 @@ public class S3WalIntegrationTest {
     // Metadata store setup
     metadataStoreConfig =
         AstraConfigs.MetadataStoreConfig.newBuilder()
-            .setMode(AstraConfigs.MetadataStoreMode.ZOOKEEPER_EXCLUSIVE)
             .setZookeeperConfig(
                 AstraConfigs.ZookeeperConfig.newBuilder()
                     .setZkConnectString(testZKServer.getConnectString())
@@ -115,7 +114,6 @@ public class S3WalIntegrationTest {
                     .setZkSessionTimeoutMs(1000)
                     .setZkConnectionTimeoutMs(1000)
                     .setSleepBetweenRetriesMs(1000)
-                    .setZkCacheInitTimeoutMs(1000)
                     .build())
             .build();
 
@@ -133,22 +131,16 @@ public class S3WalIntegrationTest {
             100,
             new SearchContext(TEST_HOST, TEST_PORT),
             curatorFramework,
-            indexerConfig,
-            metadataStoreConfig);
+            indexerConfig);
 
     chunkManagerUtil.chunkManager.startAsync();
     chunkManagerUtil.chunkManager.awaitRunning(DEFAULT_START_STOP_DURATION);
 
     // Metadata stores
-    snapshotMetadataStore =
-        new SnapshotMetadataStore(curatorFramework, metadataStoreConfig, metricsRegistry);
-    recoveryTaskStore =
-        new RecoveryTaskMetadataStore(
-            curatorFramework, metadataStoreConfig, metricsRegistry, false);
-    searchMetadataStore =
-        new SearchMetadataStore(curatorFramework, metadataStoreConfig, metricsRegistry, false);
-    datasetMetadataStore =
-        new DatasetMetadataStore(curatorFramework, metadataStoreConfig, metricsRegistry, true);
+    snapshotMetadataStore = new SnapshotMetadataStore(curatorFramework);
+    recoveryTaskStore = new RecoveryTaskMetadataStore(curatorFramework, false);
+    searchMetadataStore = new SearchMetadataStore(curatorFramework, false);
+    datasetMetadataStore = new DatasetMetadataStore(curatorFramework, true);
 
     // Setup Kafka server
     kafkaServer = new TestKafkaServer();
@@ -344,7 +336,6 @@ public class S3WalIntegrationTest {
         new AstraIndexer(
             chunkManagerUtil.chunkManager,
             curatorFramework,
-            metadataStoreConfig,
             makeIndexerConfig(1000),
             getKafkaConfig(),
             metricsRegistry,

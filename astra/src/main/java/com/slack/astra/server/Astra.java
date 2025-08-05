@@ -212,7 +212,6 @@ public class Astra {
             new AstraIndexer(
                 chunkManager,
                 curatorFramework,
-                astraConfig.getMetadataStoreConfig(),
                 astraConfig.getIndexerConfig(),
                 astraConfig.getIndexerConfig().getKafkaConfig(),
                 meterRegistry);

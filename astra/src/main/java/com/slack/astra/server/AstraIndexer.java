@@ -86,20 +86,11 @@ public class AstraIndexer extends AbstractExecutionThreadService {
   public AstraIndexer(
       IndexingChunkManager<LogMessage> chunkManager,
       AsyncCuratorFramework curatorFramework,
-      AstraConfigs.MetadataStoreConfig metadataStoreConfig,
       AstraConfigs.IndexerConfig indexerConfig,
       AstraConfigs.KafkaConfig kafkaConfig,
       MeterRegistry meterRegistry) {
 
-    this(
-        chunkManager,
-        curatorFramework,
-        metadataStoreConfig,
-        indexerConfig,
-        kafkaConfig,
-        meterRegistry,
-        null,
-        null);
+    this(chunkManager, curatorFramework, indexerConfig, kafkaConfig, meterRegistry, null, null);
   }
 
   @Override
