@@ -178,8 +178,4 @@ preprocessorConfig:
     maxOffsetDelayMessages: ${S3_WAL_MAX_OFFSET_DELAY_MESSAGES:-1000000}
     bufferConfig:
       maxBufferTimeMs: ${S3_WAL_MAX_BUFFER_TIME_MS:-1000}
-      maxBufferSizeMb: ${S3_WAL_MAX_BUFFER_SIZE_MB:-10}
-      minBufferSizeMb: ${S3_WAL_MIN_BUFFER_SIZE_MB:-1}
       maxRequestsPerBatch: ${S3_WAL_MAX_REQUESTS_PER_BATCH:-100}
-      maxRequestsPerS3Object: ${S3_WAL_MAX_REQUESTS_PER_S3_OBJECT:-1000}
-      maxQueueSize: ${S3_WAL_MAX_QUEUE_SIZE:-10000}

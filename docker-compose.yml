@@ -81,7 +81,7 @@ services:
       - ASTRA_ZK_SLEEP_RETRIES_MS=5000
       - S3_FORCE_PATH_STYLE=true
       - USE_S3_WAL=false
-      - USE_ORIGINAL_WAL=true
+      - USE_KAFKA_WAL=true
       - S3_WAL_BUCKET=test-s3-bucket
       - S3_WAL_MAX_OFFSET_DELAY_MESSAGES=1000000
     depends_on:
@@ -112,7 +112,7 @@ services:
       - ASTRA_ZK_SLEEP_RETRIES_MS=5000
       - S3_FORCE_PATH_STYLE=true
       - USE_S3_WAL=true
-      - USE_ORIGINAL_WAL=false
+      - USE_KAFKA_WAL=false
       - S3_WAL_BUCKET=test-s3-bucket
       - S3_WAL_MAX_OFFSET_DELAY_MESSAGES=1000000
       - S3_KAFKA_TOPIC=s3-wal-pointers
@@ -243,7 +243,7 @@ services:
       - ASTRA_ZK_SLEEP_RETRIES_MS=5000
       - S3_FORCE_PATH_STYLE=true
       - USE_S3_WAL=true
-      - USE_ORIGINAL_WAL=true
+      - USE_KAFKA_WAL=true
       - S3_WAL_BUCKET=test-s3-bucket
       - S3_WAL_MAX_OFFSET_DELAY_MESSAGES=1000000
     depends_on:
