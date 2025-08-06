@@ -276,7 +276,7 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
           partition);
 
     } catch (Exception e) {
-      LOG.error("Fatal: Failed to upload to S3 - stopping ingestion", e);
+      LOG.error("Failed to upload to S3", e);
       updateFailureMetrics(partition, S3_UPLOAD_FAILURES_COUNTER);
       return "S3 upload failed: " + e.getMessage();
     } finally {
@@ -310,11 +310,7 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
           recordMetadata.offset());
 
     } catch (Exception e) {
-      LOG.error(
-          "Failed to send WAL pointer for partition {} to Kafka - stopping ingestion {}",
-          partition,
-          objectKey,
-          e);
+      LOG.error("Failed to send WAL pointer for partition {} to Kafka, {}", partition, e);
       updateFailureMetrics(partition, KAFKA_POINTER_FAILURES_COUNTER);
       return "Failed to send WAL pointer to Kafka: " + e.getMessage();
     }

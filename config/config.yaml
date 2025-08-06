@@ -168,7 +168,7 @@ preprocessorConfig:
       s3ForcePathStyle: ${S3_FORCE_PATH_STYLE:-false}
     kafkaConfig:
       kafkaTopic: ${S3_KAFKA_TOPIC:-s3-wal-pointers}     # Different topic
-      kafkaTopicPartition: ${S3_KAFKA_TOPIC_PARTITION:-1} # Different partition
+      kafkaTopicPartition: ${KAFKA_TOPIC_PARTITION:-1}
       kafkaBootStrapServers: ${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092} # Same servers
       kafkaClientGroup: ${S3_KAFKA_CLIENT_GROUP:-ASTRA-s3-test}         # Different group
       enableKafkaAutoCommit: ${KAFKA_AUTO_COMMIT:-true}
