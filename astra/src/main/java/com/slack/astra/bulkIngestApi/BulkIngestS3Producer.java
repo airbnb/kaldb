@@ -16,9 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -300,14 +298,8 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
 
     try {
       // send the record to Kafka
-      RecordMetadata recordMetadata =
-          this.kafkaProducer.send(producerRecord).get(5000, TimeUnit.MILLISECONDS);
-      LOG.debug(
-          "Sent WAL pointer for partition {} to Kafka topic {} partition {} offset {}",
-          partition,
-          kafkaTopic,
-          recordMetadata.partition(),
-          recordMetadata.offset());
+      this.kafkaProducer.send(producerRecord);
+      LOG.debug("Sent WAL pointer for partition {} to Kafka topic {}", partition, kafkaTopic);
 
     } catch (Exception e) {
       LOG.error("Failed to send WAL pointer for partition {} to Kafka, {}", partition, e);
