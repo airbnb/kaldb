@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
@@ -116,9 +118,22 @@ public class BlobStore {
     try {
       PutObjectRequest putObjectRequest =
           PutObjectRequest.builder().bucket(bucketName).key(key).build();
-      s3AsyncClient.putObject(putObjectRequest, AsyncRequestBody.fromBytes(data)).get();
+
+      // Start the async upload
+      var uploadFuture =
+          s3AsyncClient.putObject(putObjectRequest, AsyncRequestBody.fromBytes(data));
+
+      try {
+        // Wait only 100ms to catch immediate connection/auth errors
+        uploadFuture.get(100, TimeUnit.MILLISECONDS);
+        // upload completed very quickly if we reach here
+      } catch (TimeoutException e) {
+        // upload continues in background and assume success if timeout passes
+        LOG.debug("S3 upload continuing in background for key: {}", key);
+      }
     } catch (ExecutionException | InterruptedException e) {
-      LOG.error("Failed to upload WAL batch to S3", e);
+      // Real errors
+      LOG.error("Failed to initiate S3 upload for key: " + key, e);
       throw new RuntimeException(e);
     }
   }
