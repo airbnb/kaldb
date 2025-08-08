@@ -4,6 +4,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static com.slack.astra.server.AstraConfig.DEFAULT_START_STOP_DURATION;
 
 import com.google.common.util.concurrent.AbstractExecutionThreadService;
+import com.slack.astra.blobfs.BlobStore;
 import com.slack.astra.chunkManager.ChunkRollOverException;
 import com.slack.astra.chunkManager.IndexingChunkManager;
 import com.slack.astra.logstore.LogMessage;
@@ -12,6 +13,8 @@ import com.slack.astra.metadata.snapshot.SnapshotMetadataStore;
 import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.astra.util.RuntimeHalterImpl;
 import com.slack.astra.writer.LogMessageWriterImpl;
+import com.slack.astra.writer.MessageWriter;
+import com.slack.astra.writer.S3WalMessageWriterImpl;
 import com.slack.astra.writer.kafka.AstraKafkaConsumer;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.io.IOException;
@@ -33,6 +36,7 @@ public class AstraIndexer extends AbstractExecutionThreadService {
   private final AstraConfigs.KafkaConfig kafkaConfig;
   private final AstraKafkaConsumer kafkaConsumer;
   private final IndexingChunkManager<LogMessage> chunkManager;
+  private final AstraConfigs.S3WalConfig s3WalConfig;
 
   /**
    * This class contains the code to needed to run a single instance of an Astra indexer. A single
@@ -57,19 +61,48 @@ public class AstraIndexer extends AbstractExecutionThreadService {
       AstraConfigs.MetadataStoreConfig metadataStoreConfig,
       AstraConfigs.IndexerConfig indexerConfig,
       AstraConfigs.KafkaConfig kafkaConfig,
-      MeterRegistry meterRegistry) {
+      MeterRegistry meterRegistry,
+      AstraConfigs.S3WalConfig s3WalConfig,
+      BlobStore blobStore) {
+
     checkNotNull(chunkManager, "Chunk manager can't be null");
     this.curatorFramework = curatorFramework;
     this.metadataStoreConfig = metadataStoreConfig;
     this.indexerConfig = indexerConfig;
     this.kafkaConfig = kafkaConfig;
     this.meterRegistry = meterRegistry;
-
+    this.s3WalConfig = s3WalConfig;
     // Create a chunk manager
     this.chunkManager = chunkManager;
     // set up indexing pipelne
-    LogMessageWriterImpl logMessageWriterImpl = new LogMessageWriterImpl(chunkManager);
-    this.kafkaConsumer = new AstraKafkaConsumer(kafkaConfig, logMessageWriterImpl, meterRegistry);
+    MessageWriter messageWriter;
+
+    if (s3WalConfig != null) {
+      messageWriter = new S3WalMessageWriterImpl(chunkManager, blobStore, meterRegistry);
+    } else {
+      messageWriter = new LogMessageWriterImpl(chunkManager);
+    }
+
+    this.kafkaConsumer = new AstraKafkaConsumer(kafkaConfig, messageWriter, meterRegistry);
+  }
+
+  public AstraIndexer(
+      IndexingChunkManager<LogMessage> chunkManager,
+      AsyncCuratorFramework curatorFramework,
+      AstraConfigs.MetadataStoreConfig metadataStoreConfig,
+      AstraConfigs.IndexerConfig indexerConfig,
+      AstraConfigs.KafkaConfig kafkaConfig,
+      MeterRegistry meterRegistry) {
+
+    this(
+        chunkManager,
+        curatorFramework,
+        metadataStoreConfig,
+        indexerConfig,
+        kafkaConfig,
+        meterRegistry,
+        null,
+        null);
   }
 
   @Override
@@ -97,7 +130,18 @@ public class AstraIndexer extends AbstractExecutionThreadService {
         new RecoveryTaskMetadataStore(curatorFramework, metadataStoreConfig, meterRegistry, true);
 
     String partitionId = kafkaConfig.getKafkaTopicPartition();
-    long maxOffsetDelay = indexerConfig.getMaxOffsetDelayMessages();
+
+    // Choose offset delay based on WAL type
+    long maxOffsetDelay;
+    if (s3WalConfig != null) {
+      // Use S3 WAL specific offset delay
+      maxOffsetDelay = s3WalConfig.getMaxOffsetDelayMessages();
+      LOG.info("Using S3 WAL offset delay: {}", maxOffsetDelay);
+    } else {
+      // Use regular Kafka WAL offset delay
+      maxOffsetDelay = indexerConfig.getMaxOffsetDelayMessages();
+      LOG.info("Using Kafka WAL offset delay: {}", maxOffsetDelay);
+    }
 
     // TODO: Move this to it's own config var.
     final long maxMessagesPerRecoveryTask = indexerConfig.getMaxMessagesPerChunk();

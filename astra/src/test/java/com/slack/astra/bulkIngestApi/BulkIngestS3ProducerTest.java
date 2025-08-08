@@ -98,6 +98,14 @@ class BulkIngestS3ProducerTest {
             .setKafkaBootStrapServers(kafkaServer.getBroker().getBrokerList().get())
             .setKafkaTopic(DOWNSTREAM_TOPIC)
             .build();
+    AstraConfigs.KafkaConfig s3kafkaConfig =
+        AstraConfigs.KafkaConfig.newBuilder()
+            .setKafkaBootStrapServers(kafkaServer.getBroker().getBrokerList().get())
+            .setKafkaTopic(DOWNSTREAM_TOPIC)
+            .setKafkaTopicPartition("0")
+            .setKafkaClientGroup("test-s3-wal-group")
+            .build();
+
     AstraConfigs.S3Config s3Config =
         AstraConfigs.S3Config.newBuilder()
             .setS3Bucket(TEST_S3_BUCKET)
@@ -114,6 +122,8 @@ class BulkIngestS3ProducerTest {
         AstraConfigs.S3WalConfig.newBuilder()
             .setS3Config(s3Config)
             .setBufferConfig(s3WalBufferConfig)
+            .setKafkaConfig(s3kafkaConfig)
+            .setMaxOffsetDelayMessages(1000000)
             .build();
 
     preprocessorConfig =
@@ -121,6 +131,7 @@ class BulkIngestS3ProducerTest {
             .setKafkaConfig(kafkaConfig)
             .setS3WalConfig(s3WalConfig)
             .setUseS3Wal(true)
+            .setUseKafkaWal(false)
             .setServerConfig(serverConfig)
             .setPreprocessorInstanceCount(1)
             .setRateLimiterMaxBurstSeconds(1)

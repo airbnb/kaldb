@@ -61,7 +61,7 @@ public class BulkIngestS3Producer extends BulkIngestProducer {
         preprocessorConfig.getS3WalConfig().getBufferConfig();
     this.blobStore = blobStore;
     this.walBucket = preprocessorConfig.getS3WalConfig().getS3Config().getS3Bucket();
-    this.kafkaTopic = preprocessorConfig.getKafkaConfig().getKafkaTopic();
+    this.kafkaTopic = preprocessorConfig.getS3WalConfig().getKafkaConfig().getKafkaTopic();
     this.s3UploadTimer = meterRegistry.timer(S3_UPLOAD_TIMER);
     this.batchWaitTimer = meterRegistry.timer(BATCH_WAIT_TIMER);
     this.producerSleepMs =

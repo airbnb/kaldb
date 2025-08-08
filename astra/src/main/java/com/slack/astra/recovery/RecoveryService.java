@@ -22,6 +22,8 @@ import com.slack.astra.metadata.snapshot.SnapshotMetadataStore;
 import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.astra.proto.metadata.Metadata;
 import com.slack.astra.writer.LogMessageWriterImpl;
+import com.slack.astra.writer.MessageWriter;
+import com.slack.astra.writer.S3WalMessageWriterImpl;
 import com.slack.astra.writer.kafka.AstraKafkaConsumer;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -84,6 +86,9 @@ public class RecoveryService extends AbstractIdleService {
   private final Timer recoveryTaskTimerSuccess;
   private final Timer recoveryTaskTimerFailure;
   private SearchMetadataStore searchMetadataStore;
+  private final BlobStore s3WalBlobStore;
+
+  private final AstraConfigs.S3WalConfig s3WalConfig;
 
   private final AstraMetadataStoreChangeListener<RecoveryNodeMetadata> recoveryNodeListener =
       this::recoveryNodeListener;
@@ -92,13 +97,18 @@ public class RecoveryService extends AbstractIdleService {
       AstraConfigs.AstraConfig AstraConfig,
       AsyncCuratorFramework curatorFramework,
       MeterRegistry meterRegistry,
-      BlobStore blobStore) {
+      BlobStore blobStore,
+      AstraConfigs.S3WalConfig s3WalConfig,
+      BlobStore s3WalBlobStore) {
+
     this.curatorFramework = curatorFramework;
     this.searchContext =
         SearchContext.fromConfig(AstraConfig.getRecoveryConfig().getServerConfig());
     this.meterRegistry = meterRegistry;
     this.blobStore = blobStore;
     this.AstraConfig = AstraConfig;
+    this.s3WalConfig = s3WalConfig;
+    this.s3WalBlobStore = s3WalBlobStore;
 
     adminClient =
         AdminClient.create(
@@ -129,6 +139,15 @@ public class RecoveryService extends AbstractIdleService {
         meterRegistry.counter(RECORDS_NO_LONGER_AVAILABLE, meterTags);
     recoveryTaskTimerSuccess = meterRegistry.timer(RECOVERY_TASK_TIMER, "successful", "true");
     recoveryTaskTimerFailure = meterRegistry.timer(RECOVERY_TASK_TIMER, "successful", "false");
+  }
+
+  public RecoveryService(
+      AstraConfigs.AstraConfig AstraConfig,
+      AsyncCuratorFramework curatorFramework,
+      MeterRegistry meterRegistry,
+      BlobStore blobStore) {
+
+    this(AstraConfig, curatorFramework, meterRegistry, blobStore, null, null);
   }
 
   @Override
@@ -316,13 +335,19 @@ public class RecoveryService extends AbstractIdleService {
                 blobStore);
 
         // Ingest data in parallel
-        LogMessageWriterImpl logMessageWriterImpl = new LogMessageWriterImpl(chunkManager);
+        MessageWriter messageWriter;
+
+        if (s3WalConfig != null) {
+          messageWriter = new S3WalMessageWriterImpl(chunkManager, s3WalBlobStore, meterRegistry);
+        } else {
+          messageWriter = new LogMessageWriterImpl(chunkManager);
+        }
         AstraKafkaConsumer kafkaConsumer =
             new AstraKafkaConsumer(
                 makeKafkaConfig(
                     AstraConfig.getRecoveryConfig().getKafkaConfig(),
                     validatedRecoveryTask.partitionId),
-                logMessageWriterImpl,
+                messageWriter,
                 meterRegistry);
 
         kafkaConsumer.prepConsumerForConsumption(validatedRecoveryTask.startOffset);
