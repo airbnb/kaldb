@@ -22,7 +22,7 @@ services:
       - KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL
       - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
       - ALLOW_PLAINTEXT_LISTENER=yes
-      - KAFKA_CREATE_TOPICS=test-topic:1:1
+      - KAFKA_CREATE_TOPICS=test-topic:1:1,s3-wal-pointers:2:1
       - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
     depends_on:
       - zookeeper
@@ -81,6 +81,7 @@ services:
       - ASTRA_ZK_SLEEP_RETRIES_MS=5000
       - S3_FORCE_PATH_STYLE=true
       - USE_S3_WAL=false
+      - USE_ORIGINAL_WAL=true
       - S3_WAL_BUCKET=test-s3-bucket
       - S3_WAL_MAX_OFFSET_DELAY_MESSAGES=1000000
     depends_on:
@@ -88,6 +89,43 @@ services:
       - kafka
       - s3
       - openzipkin
+
+  astra_preprocessor_s3:
+    image: 'slackhq/astra'
+    container_name: astra_preprocessor_s3
+    ports:
+      - 8087:8086  # Different port
+      - "5006:5005" # Different debug port
+    environment:
+      # Node specific settings
+      - NODE_ROLES=PREPROCESSOR
+      - ASTRA_PREPROCESSOR_USE_BULK_API=true
+      - ASTRA_PREPROCESSOR_SERVER_ADDRESS=astra_preprocessor
+      # Shared settings
+      - ASTRA_ZK_CONNECTION_STRING=zookeeper:2181
+      - JAVA_TOOL_OPTIONS=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - ZIPKIN_TRACING_ENDPOINT=http://openzipkin:9411/api/v2/spans
+      - S3_ENDPOINT=http://s3:9090/
+      - ASTRA_ZK_SESSION_TIMEOUT_MS=60000
+      - ASTRA_ZK_CONNECT_TIMEOUT_MS=15000
+      - ASTRA_ZK_SLEEP_RETRIES_MS=5000
+      - S3_FORCE_PATH_STYLE=true
+      - USE_S3_WAL=true
+      - USE_ORIGINAL_WAL=false
+      - S3_WAL_BUCKET=test-s3-bucket
+      - S3_WAL_MAX_OFFSET_DELAY_MESSAGES=1000000
+      - S3_KAFKA_TOPIC=s3-wal-pointers
+      - S3_KAFKA_CLIENT_GROUP=ASTRA-s3-test
+      - S3_KAFKA_TOPIC_PARTITION=0
+      - S3_WAL_MAX_BUFFER_TIME_MS=1
+      - S3_WAL_MAX_REQUESTS_PER_BATCH=1
+    depends_on:
+      - zookeeper
+      - kafka
+      - s3
+      - openzipkin
+
 
   astra_index:
     image: 'slackhq/astra'
@@ -111,9 +149,12 @@ services:
       - ASTRA_ZK_CONNECT_TIMEOUT_MS=15000
       - ASTRA_ZK_SLEEP_RETRIES_MS=5000
       - S3_FORCE_PATH_STYLE=true
-      - USE_S3_WAL=false
+      - USE_S3_WAL=true
+      - USE_KAFKA_WAL=true
       - S3_WAL_BUCKET=test-s3-bucket
       - S3_WAL_MAX_OFFSET_DELAY_MESSAGES=1000000
+      - S3_KAFKA_TOPIC_PARTITION=0
+      - S3_KAFKA_TOPIC=s3-wal-pointers
     depends_on:
       - astra_preprocessor
 
@@ -201,7 +242,8 @@ services:
       - ASTRA_ZK_CONNECT_TIMEOUT_MS=15000
       - ASTRA_ZK_SLEEP_RETRIES_MS=5000
       - S3_FORCE_PATH_STYLE=true
-      - USE_S3_WAL=false
+      - USE_S3_WAL=true
+      - USE_ORIGINAL_WAL=true
       - S3_WAL_BUCKET=test-s3-bucket
       - S3_WAL_MAX_OFFSET_DELAY_MESSAGES=1000000
     depends_on:

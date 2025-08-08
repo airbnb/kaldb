@@ -191,6 +191,14 @@ public class S3WalIntegrationTest {
             .setKafkaTopic(TEST_KAFKA_TOPIC)
             .build();
 
+    AstraConfigs.KafkaConfig s3KafkaConfig =
+        AstraConfigs.KafkaConfig.newBuilder()
+            .setKafkaBootStrapServers(kafkaServer.getBroker().getBrokerList().get())
+            .setKafkaTopic(TEST_KAFKA_TOPIC)
+            .setKafkaTopicPartition("0")
+            .setKafkaClientGroup("test-s3-wal-group")
+            .build();
+
     AstraConfigs.S3Config s3Config =
         AstraConfigs.S3Config.newBuilder()
             .setS3Bucket(S3_TEST_BUCKET)
@@ -208,6 +216,7 @@ public class S3WalIntegrationTest {
             .setS3Config(s3Config)
             .setMaxOffsetDelayMessages(1000000)
             .setBufferConfig(s3WalBufferConfig)
+            .setKafkaConfig(s3KafkaConfig)
             .build();
 
     AstraConfigs.PreprocessorConfig preprocessorConfig =
@@ -218,6 +227,7 @@ public class S3WalIntegrationTest {
             .setPreprocessorInstanceCount(1)
             .setRateLimiterMaxBurstSeconds(1)
             .setUseS3Wal(true) // Enable S3 WAL
+            .setUseKafkaWal(false)
             .build();
 
     bulkIngestS3Producer =
@@ -586,6 +596,15 @@ public class S3WalIntegrationTest {
   }
 
   private AstraConfigs.PreprocessorConfig createS3PreprocessorConfig() {
+
+    AstraConfigs.KafkaConfig s3KafkaConfig =
+        AstraConfigs.KafkaConfig.newBuilder()
+            .setKafkaBootStrapServers(kafkaServer.getBroker().getBrokerList().get())
+            .setKafkaTopic(TEST_KAFKA_TOPIC)
+            .setKafkaTopicPartition("0")
+            .setKafkaClientGroup("test-s3-wal-group")
+            .build();
+
     AstraConfigs.S3Config s3Config =
         AstraConfigs.S3Config.newBuilder()
             .setS3Bucket(S3_TEST_BUCKET)
@@ -601,12 +620,14 @@ public class S3WalIntegrationTest {
     AstraConfigs.S3WalConfig s3WalConfig =
         AstraConfigs.S3WalConfig.newBuilder()
             .setS3Config(s3Config)
+            .setKafkaConfig(s3KafkaConfig)
             .setMaxOffsetDelayMessages(100)
             .setBufferConfig(s3WalBufferConfig)
             .build();
 
     return AstraConfigs.PreprocessorConfig.newBuilder()
         .setUseS3Wal(true)
+        .setUseKafkaWal(false)
         .setS3WalConfig(s3WalConfig)
         .build();
   }
