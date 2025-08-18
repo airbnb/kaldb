@@ -34,6 +34,7 @@ import com.slack.astra.metadata.search.SearchMetadataStore;
 import com.slack.astra.metadata.snapshot.SnapshotMetadata;
 import com.slack.astra.metadata.snapshot.SnapshotMetadataStore;
 import com.slack.astra.proto.config.AstraConfigs;
+import com.slack.astra.proto.schema.Schema;
 import com.slack.astra.testlib.MessageUtil;
 import com.slack.astra.testlib.SpanUtil;
 import com.slack.astra.util.QueryBuilderUtil;
@@ -51,6 +52,8 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.TrueFileFilter;
@@ -662,6 +665,7 @@ public class IndexingChunkImplTest {
             Trace.KeyValue.newBuilder()
                 .setKey("custom.field." + i)
                 .setVStr("value" + i)
+                .setFieldType(Schema.SchemaFieldType.KEYWORD)
                 .setIndexSignal(Trace.IndexSignal.DYNAMIC_INDEX)
                 .build());
       }
@@ -671,6 +675,7 @@ public class IndexingChunkImplTest {
             Trace.KeyValue.newBuilder()
                 .setKey("schema.field." + i)
                 .setVStr("value" + i)
+                .setFieldType(Schema.SchemaFieldType.KEYWORD)
                 .setIndexSignal(Trace.IndexSignal.IN_SCHEMA_INDEX)
                 .build());
       }
@@ -703,8 +708,59 @@ public class IndexingChunkImplTest {
           chunk.getSchema().keySet().stream().filter(key -> key.startsWith("schema.field")).count();
 
       assertThat(schemaFieldsInSchema)
-          .withFailMessage("Schema should not exceed 1500 fields but had %s", dynamicFieldsInSchema)
-          .isLessThanOrEqualTo(100);
+          .withFailMessage("Schema should have all 100 fields but had %s", schemaFieldsInSchema)
+          .isEqualTo(100);
+    }
+
+    @Test
+    public void testLargeFieldsDroppedButSpanIsIndexed() throws IOException {
+      int offset = 1;
+      Trace.Span.Builder spanBuilder = SpanUtil.makeSpan(offset).toBuilder();
+
+      for (int i = 0; i < 100; i++) {
+        spanBuilder.addTags(
+            Trace.KeyValue.newBuilder()
+                .setKey("schema.field." + i)
+                .setVStr("value" + i)
+                .setFieldType(Schema.SchemaFieldType.KEYWORD)
+                .setIndexSignal(Trace.IndexSignal.IN_SCHEMA_INDEX)
+                .build());
+      }
+
+      // schema type: KEYWORD, key: error, value: 1234...9999 (greater than 32766)
+      String longMsg =
+          IntStream.range(1, 10000).boxed().map(String::valueOf).collect(Collectors.joining(""));
+      spanBuilder.addTags(
+          Trace.KeyValue.newBuilder()
+              .setKey("schema.field.tooLong")
+              .setVStr(longMsg)
+              .setFieldType(Schema.SchemaFieldType.KEYWORD)
+              .setIndexSignal(Trace.IndexSignal.IN_SCHEMA_INDEX)
+              .build());
+
+      Trace.Span spanWithLongField = spanBuilder.build();
+
+      // Add and commit the message
+      chunk.addMessage(spanWithLongField, TEST_KAFKA_PARTITION_ID, offset);
+      chunk.commit();
+
+      // The message should be accepted, though some fields may be dropped
+      assertThat(getCount(MESSAGES_RECEIVED_COUNTER, registry))
+          .withFailMessage("Expected 1 message received")
+          .isEqualTo(1);
+      assertThat(getCount(MESSAGES_FAILED_COUNTER, registry))
+          .withFailMessage("Expected 0 messages failed")
+          .isEqualTo(0);
+      assertThat(getTimerCount(COMMITS_TIMER, registry))
+          .withFailMessage("Expected 1 commit recorded")
+          .isEqualTo(1);
+
+      long schemaFieldsInSchema =
+          chunk.getSchema().keySet().stream().filter(key -> key.startsWith("schema.field")).count();
+
+      assertThat(schemaFieldsInSchema)
+          .withFailMessage("Schema should have all 100 fields but had %s", schemaFieldsInSchema)
+          .isEqualTo(100);
     }
 
     @Test
