@@ -74,6 +74,8 @@ public class S3AsyncUtil {
                       .build());
       s3AsyncClient.httpConfiguration(httpConfigurationBuilder.build());
 
+      s3AsyncClient.forcePathStyle(true);
+
       if (notNullOrEmpty(config.getS3EndPoint())) {
         String endpoint = config.getS3EndPoint();
         try {

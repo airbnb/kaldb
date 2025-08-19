@@ -86,12 +86,34 @@ services:
   astra_index:
     image: 'slackhq/astra'
     container_name: astra_index
+    pid: "host"
+    command:
+# jvisualvm
+#      - -Dcom.sun.management.jmxremote.rmi.port=5015
+#      - -Dcom.sun.management.jmxremote=true
+#      - -Dcom.sun.management.jmxremote.port=5015
+#      - -Dcom.sun.management.jmxremote.ssl=false
+#      - -Dcom.sun.management.jmxremote.authenticate=false
+#      - -Dcom.sun.management.jmxremote.local.only=false
+#      - -Djava.rmi.server.hostname=localhost
+# agent
+#      - -agentlib:jdwp=transport=dt_socket,address=0.0.0.0:5005,server=y,suspend=n
+      - -jar
+      - ./astra.jar
+      - config.yaml
     ports:
       - 8080:8080
+      - 5005:5005
+      - 5015:5015
     environment:
       # Node specific settings
       - NODE_ROLES=INDEX
       - ASTRA_INDEX_SERVER_ADDRESS=astra_index
+      - INDEXER_MAX_MESSAGES_PER_CHUNK=165346700
+      - INDEXER_MAX_BYTES_PER_CHUNK=800000000
+      - INDEXER_MAX_TIME_PER_CHUNK_SECONDS=120
+      - ASTRA_INDEX_REQUEST_TIMEOUT_MS=4200000
+      - ASTRA_INDEX_DEFAULT_QUERY_TIMEOUT_MS=3600000
       # Shared settings
       - ASTRA_ZK_CONNECTION_STRING=zookeeper:2181
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
@@ -99,11 +121,6 @@ services:
       - S3_ENDPOINT=http://dep_s3:9090
       - ASTRA_ZK_CONNECT_TIMEOUT_MS=15000
       - ASTRA_ZK_SLEEP_RETRIES_MS=5000
-      - INDEXER_MAX_MESSAGES_PER_CHUNK=165346700
-      - INDEXER_MAX_BYTES_PER_CHUNK=80000000000
-      - INDEXER_MAX_TIME_PER_CHUNK_SECONDS=1296000
-      - ASTRA_INDEX_REQUEST_TIMEOUT_MS=4200000
-      - ASTRA_INDEX_DEFAULT_QUERY_TIMEOUT_MS=3600000
     depends_on:
       - astra_preprocessor
 
@@ -124,8 +141,8 @@ services:
       - ASTRA_ZK_SESSION_TIMEOUT_MS=60000
       - ASTRA_ZK_CONNECT_TIMEOUT_MS=15000
       - ASTRA_ZK_SLEEP_RETRIES_MS=5000
-      - ASTRA_MANAGER_REPLICA_LIFESPAN_MINS=30
-      - ASTRA_MANAGER_SNAPSHOT_LIFESPAN_MINS=120
+      - ASTRA_MANAGER_REPLICA_LIFESPAN_MINS=30000
+      - ASTRA_MANAGER_SNAPSHOT_LIFESPAN_MINS=120000
     depends_on:
       - astra_preprocessor
 
