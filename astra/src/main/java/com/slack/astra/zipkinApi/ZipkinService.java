@@ -160,8 +160,12 @@ public class ZipkinService {
           .serializationInclusion(JsonInclude.Include.NON_EMPTY)
           .build();
 
-  public ZipkinService(AstraQueryServiceBase searcher) {
+  private GraphConfig graphConfig;
+
+  public ZipkinService(AstraQueryServiceBase searcher, GraphConfig graphConfig) {
     this.searcher = searcher;
+    // if this is null, any graph related endpoints will be unavailable
+    this.graphConfig = graphConfig;
   }
 
   @Get

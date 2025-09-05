@@ -10,6 +10,14 @@
             <comments>A business-friendly OSS license</comments>
         </license>
     </licenses>
+    <dependencies>
+        <dependency>
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java</artifactId>
+            <version>4.31.0</version>
+            <scope>compile</scope>
+        </dependency>
+    </dependencies>
 
     <name>Astra Parent Project</name>
     <groupId>com.slack.astra</groupId>

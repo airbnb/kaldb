@@ -47,6 +47,7 @@ import com.slack.astra.proto.metadata.Metadata;
 import com.slack.astra.proto.schema.Schema;
 import com.slack.astra.recovery.RecoveryService;
 import com.slack.astra.util.RuntimeHalterImpl;
+import com.slack.astra.zipkinApi.GraphConfig;
 import com.slack.astra.zipkinApi.ZipkinService;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Metrics;
@@ -239,12 +240,14 @@ public class Astra {
       // https://github.com/slackhq/astra/pull/564)
       final int serverPort = astraConfig.getQueryConfig().getServerConfig().getServerPort();
 
+      GraphConfig graphConfig = GraphConfig.load(astraConfig.getQueryConfig().getDepGraphConfigFile());
+
       ArmeriaService armeriaService =
           new ArmeriaService.Builder(serverPort, "astraQuery", meterRegistry)
               .withRequestTimeout(requestTimeout)
               .withTracing(astraConfig.getTracingConfig())
               .withAnnotatedService(new ElasticsearchApiService(astraDistributedQueryService))
-              .withAnnotatedService(new ZipkinService(astraDistributedQueryService))
+              .withAnnotatedService(new ZipkinService(astraDistributedQueryService, graphConfig))
               .withGrpcService(astraDistributedQueryService)
               .build();
       services.add(armeriaService);
