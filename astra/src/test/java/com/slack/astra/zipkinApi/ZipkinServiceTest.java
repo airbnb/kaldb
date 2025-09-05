@@ -85,7 +85,7 @@ public class ZipkinServiceTest {
                 defaultLookbackMins,
                 defaultDataFreshnessInMinutes,
                 null));
-    
+
     // Build mockSearchResult
     ObjectMapper objectMapper = new ObjectMapper();
     JsonNode jsonNode =

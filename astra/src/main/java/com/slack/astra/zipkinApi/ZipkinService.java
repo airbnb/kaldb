@@ -157,7 +157,7 @@ public class ZipkinService {
   private final AstraQueryServiceBase searcher;
 
   private final BlobStore blobStore;
-  
+
   private final GraphConfig graphConfig;
 
   public static final String TRACE_CACHE_PREFIX = "traceCacheData";

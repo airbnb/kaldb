@@ -240,7 +240,8 @@ public class Astra {
       // https://github.com/slackhq/astra/pull/564)
       final int serverPort = astraConfig.getQueryConfig().getServerConfig().getServerPort();
 
-      GraphConfig graphConfig = GraphConfig.load(astraConfig.getQueryConfig().getDepGraphConfigFile());
+      GraphConfig graphConfig =
+          GraphConfig.load(astraConfig.getQueryConfig().getDepGraphConfigFile());
 
       ArmeriaService armeriaService =
           new ArmeriaService.Builder(serverPort, "astraQuery", meterRegistry)
