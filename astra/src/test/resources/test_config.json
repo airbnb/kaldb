@@ -57,6 +57,8 @@
       "requestTimeoutMs": 3000
     },
     "defaultQueryTimeoutMs": 1500,
+    "zipkinDefaultMaxSpans": 20000,
+    "zipkinDefaultLookbackMins": 10080,
     "managerConnectString": "localhost:8083"
   },
   "metadataStoreConfig": {

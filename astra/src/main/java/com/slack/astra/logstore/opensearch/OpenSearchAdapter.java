@@ -348,7 +348,22 @@ public class OpenSearchAdapter {
     try {
       XContentBuilder builder =
           XContentFactory.jsonBuilder().startObject().startObject("_doc").startObject("properties");
-      rootNode.fields().forEachRemaining((entry) -> buildObject(builder, entry));
+      // Filter out fields that start with a dot (.), e.g. ".ipv4". This is a temporary fix until we
+      // sanitize elsewhere in the pipeline. It is currently possible for index nodes to publish a
+      // segment/snapshot with this data, which causes cache nodes to fail to load the segment.
+      rootNode
+          .fields()
+          .forEachRemaining(
+              (entry) -> {
+                // if the root node includes a field that is empty, we need to skip it.
+                if (!entry.getKey().equals("")) {
+                  buildObject(builder, entry);
+                } else {
+                  LOG.warn(
+                      "Skipping empty field name with value '{}'", entry.getValue().toString());
+                }
+              });
+
       builder.endObject().endObject().endObject();
 
       mapperService.merge(
@@ -535,7 +550,11 @@ public class OpenSearchAdapter {
             new CompressedXContent(BytesReference.bytes(mapping)),
             MapperService.MergeReason.MAPPING_UPDATE);
       } catch (Exception e) {
-        LOG.error("Error doing map update errorMsg={}", e.getMessage());
+        LOG.warn(
+            "Error doing map update which affects aggregation failure for field={} errorMsg={} exception={}",
+            fieldName,
+            e.getMessage(),
+            e.getStackTrace());
       }
       return true;
     }

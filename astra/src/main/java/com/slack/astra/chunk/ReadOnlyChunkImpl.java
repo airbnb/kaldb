@@ -32,6 +32,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.EnumSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -349,7 +351,10 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
           Thread.ofVirtual().start(() -> handleChunkAssignment(cacheSlotMetadata));
         } else if (newSlotState.equals(Metadata.CacheSlotMetadata.CacheSlotState.EVICT)) {
           LOG.info("Chunk - EVICT received - {}", cacheSlotMetadata);
-          if (!cacheSlotLastKnownState.equals(Metadata.CacheSlotMetadata.CacheSlotState.LIVE)) {
+          if (!EnumSet.of(
+                  Metadata.CacheSlotMetadata.CacheSlotState.LIVE,
+                  Metadata.CacheSlotMetadata.CacheSlotState.LOADING)
+              .contains(cacheSlotLastKnownState)) {
             LOG.warn(
                 "Unexpected state transition from {} to {} - {}",
                 cacheSlotLastKnownState,
@@ -407,8 +412,19 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
       SnapshotMetadata snapshotMetadata = getSnapshotMetadata(cacheSlotMetadata.replicaId);
       blobStore.download(snapshotMetadata.snapshotId, dataDirectory);
       try (Stream<Path> fileList = Files.list(dataDirectory)) {
-        if (fileList.findAny().isEmpty()) {
+        long numFilesLocal = fileList.count();
+        if (numFilesLocal == 0) {
           throw new IOException("No files found on blob storage, released slot for re-assignment");
+        }
+
+        List<String> filesInS3 = blobStore.listFiles(snapshotMetadata.snapshotId);
+        if (numFilesLocal != filesInS3.size()) {
+          String errorString =
+              String.format(
+                  "Mismatch in number of files in S3 (%s) and local directory (%s) for snapshot %s",
+                  filesInS3.size(), numFilesLocal, snapshotMetadata.toString());
+          LOG.error(errorString);
+          throw new IOException(errorString);
         }
       }
 
@@ -440,11 +456,11 @@ public class ReadOnlyChunkImpl<T> implements Chunk<T> {
           TimeUnit.SECONDS.convert(durationNanos, TimeUnit.NANOSECONDS),
           FileUtils.byteCountToDisplaySize(FileUtils.sizeOfDirectory(dataDirectory.toFile())));
     } catch (Exception e) {
-      // if any error occurs during the chunk assignment, try to release the slot for re-assignment,
-      // disregarding any errors
-      setChunkMetadataState(cacheSlotMetadata, Metadata.CacheSlotMetadata.CacheSlotState.FREE);
-      LOG.error("Error handling chunk assignment", e);
+      LOG.error("Error handling chunk assignment for cache slot {}:", cacheSlotMetadata, e);
       assignmentTimer.stop(chunkAssignmentTimerFailure);
+      // If any error occurs during the chunk assignment, evict the chunk so eviction code cleans up
+      // the files.
+      setChunkMetadataState(cacheSlotMetadata, Metadata.CacheSlotMetadata.CacheSlotState.EVICT);
     } finally {
       chunkAssignmentLock.unlock();
     }
