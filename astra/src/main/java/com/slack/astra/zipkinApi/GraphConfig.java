@@ -92,6 +92,10 @@ public class GraphConfig {
     return rules;
   }
 
+  public void setRules(Map<String, List<RuleConfig>> rules) {
+    this.rules = rules;
+  }
+
   public static GraphConfig load(String configFile) throws IOException {
     if (!configFile.isEmpty()) {
       try {
@@ -105,6 +109,7 @@ public class GraphConfig {
         return null;
       }
     }
+
     return null;
   }
 
@@ -117,16 +122,20 @@ public class GraphConfig {
     String keyToUse = baseCfg.getDefaultKey();
     String defaultValue = baseCfg.getDefaultValue();
 
-    List<RuleConfig> relevantRules = rules.getOrDefault(logicalField, Collections.emptyList());
-    for (RuleConfig rule : relevantRules) {
-      RuleConfig.MatchConfig match = rule.getMatch();
-      if (match != null) {
-        TagConfig matchCfg = nodeMetadataTagMapping.get(match.getField());
-        if (matchCfg != null) {
-          String matchVal = tags.getOrDefault(matchCfg.getDefaultKey(), matchCfg.getDefaultValue());
-          if (match.getValue().equals(matchVal)) {
-            keyToUse = rule.getOverrideKey();
-            break; // only a single rule for a logicalField <> match field should be defined
+    if (rules != null) {
+      List<RuleConfig> relevantRules = rules.getOrDefault(logicalField, Collections.emptyList());
+
+      for (RuleConfig rule : relevantRules) {
+        RuleConfig.MatchConfig match = rule.getMatch();
+        if (match != null) {
+          TagConfig matchCfg = nodeMetadataTagMapping.get(match.getField());
+
+          if (matchCfg != null) {
+            String matchVal = tags.getOrDefault(matchCfg.getDefaultKey(), matchCfg.getDefaultValue());
+            if (match.getValue().equals(matchVal)) {
+              keyToUse = rule.getOverrideKey();
+              break; // only a single rule for a logicalField <> match field should be defined
+            }
           }
         }
       }
