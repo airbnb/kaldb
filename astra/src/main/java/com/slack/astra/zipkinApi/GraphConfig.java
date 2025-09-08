@@ -131,7 +131,8 @@ public class GraphConfig {
           TagConfig matchCfg = nodeMetadataTagMapping.get(match.getField());
 
           if (matchCfg != null) {
-            String matchVal = tags.getOrDefault(matchCfg.getDefaultKey(), matchCfg.getDefaultValue());
+            String matchVal =
+                tags.getOrDefault(matchCfg.getDefaultKey(), matchCfg.getDefaultValue());
             if (match.getValue().equals(matchVal)) {
               keyToUse = rule.getOverrideKey();
               break; // only a single rule for a logicalField <> match field should be defined
