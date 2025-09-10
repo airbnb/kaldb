@@ -15,8 +15,6 @@ import java.io.IOException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@SuppressWarnings("OptionalUsedAsFieldOrParameterType")
-
 /*
   APIs for exposing traces and their spans as subgraph dependencies.
 */
