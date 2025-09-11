@@ -83,8 +83,7 @@ public class ZipkinServiceTest {
                 mockBlobStore,
                 defaultMaxSpans,
                 defaultLookbackMins,
-                defaultDataFreshnessInMinutes,
-                null));
+                defaultDataFreshnessInMinutes));
 
     // Build mockSearchResult
     ObjectMapper objectMapper = new ObjectMapper();

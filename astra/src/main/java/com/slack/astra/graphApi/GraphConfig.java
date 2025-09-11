@@ -1,4 +1,4 @@
-package com.slack.astra.zipkinApi;
+package com.slack.astra.graphApi;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;

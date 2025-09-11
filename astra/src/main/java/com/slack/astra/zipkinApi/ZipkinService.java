@@ -158,8 +158,6 @@ public class ZipkinService {
 
   private final BlobStore blobStore;
 
-  private final GraphConfig graphConfig;
-
   public static final String TRACE_CACHE_PREFIX = "traceCacheData";
 
   private static final ObjectMapper objectMapper =
@@ -175,14 +173,12 @@ public class ZipkinService {
       BlobStore blobStore,
       int defaultMaxSpans,
       int defaultLookbackMins,
-      long defaultDataFreshnessInSeconds,
-      GraphConfig graphConfig) {
+      long defaultDataFreshnessInSeconds) {
     this.searcher = searcher;
     this.blobStore = blobStore;
     this.defaultMaxSpans = defaultMaxSpans;
     this.defaultLookbackMins = defaultLookbackMins;
     this.defaultDataFreshnessInSeconds = defaultDataFreshnessInSeconds;
-    this.graphConfig = graphConfig;
   }
 
   @Get

@@ -48,7 +48,7 @@ import com.slack.astra.proto.metadata.Metadata;
 import com.slack.astra.proto.schema.Schema;
 import com.slack.astra.recovery.RecoveryService;
 import com.slack.astra.util.RuntimeHalterImpl;
-import com.slack.astra.zipkinApi.GraphConfig;
+import com.slack.astra.graphApi.GraphConfig;
 import com.slack.astra.zipkinApi.ZipkinService;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Metrics;
@@ -255,8 +255,7 @@ public class Astra {
                       blobStore,
                       astraConfig.getQueryConfig().getZipkinDefaultMaxSpans(),
                       astraConfig.getQueryConfig().getZipkinDefaultLookbackMins(),
-                      astraConfig.getQueryConfig().getZipkinDefaultDataFreshnessSecs(),
-                      graphConfig))
+                      astraConfig.getQueryConfig().getZipkinDefaultDataFreshnessSecs()))
               .withAnnotatedService(new GraphService(astraDistributedQueryService))
               .withGrpcService(astraDistributedQueryService)
               .build();
