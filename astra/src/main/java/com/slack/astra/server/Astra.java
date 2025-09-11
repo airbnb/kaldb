@@ -23,6 +23,7 @@ import com.slack.astra.clusterManager.ReplicaEvictionService;
 import com.slack.astra.clusterManager.ReplicaRestoreService;
 import com.slack.astra.clusterManager.SnapshotDeletionService;
 import com.slack.astra.elasticsearchApi.ElasticsearchApiService;
+import com.slack.astra.graphApi.GraphService;
 import com.slack.astra.logstore.LogMessage;
 import com.slack.astra.logstore.schema.ReservedFields;
 import com.slack.astra.logstore.search.AstraDistributedQueryService;
@@ -256,6 +257,7 @@ public class Astra {
                       astraConfig.getQueryConfig().getZipkinDefaultLookbackMins(),
                       astraConfig.getQueryConfig().getZipkinDefaultDataFreshnessSecs(),
                       graphConfig))
+              .withAnnotatedService(new GraphService(astraDistributedQueryService))
               .withGrpcService(astraDistributedQueryService)
               .build();
       services.add(armeriaService);
