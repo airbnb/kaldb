@@ -34,6 +34,8 @@ public class GraphService {
   public GraphService(AstraQueryServiceBase searcher, GraphConfig graphConfig) {
     this.searcher = searcher;
     this.graphConfig = graphConfig;
+
+    LOG.info("Started GraphService with config: {}", this.graphConfig);
   }
 
   @Get
