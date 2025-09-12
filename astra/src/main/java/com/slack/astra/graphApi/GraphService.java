@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 public class GraphService {
   private static final Logger LOG = LoggerFactory.getLogger(GraphService.class);
   private final AstraQueryServiceBase searcher;
+  private final GraphConfig graphConfig;
 
   private static final ObjectMapper objectMapper =
       JsonMapper.builder()
@@ -30,8 +31,9 @@ public class GraphService {
           .serializationInclusion(JsonInclude.Include.NON_EMPTY)
           .build();
 
-  public GraphService(AstraQueryServiceBase searcher) {
+  public GraphService(AstraQueryServiceBase searcher, GraphConfig graphConfig) {
     this.searcher = searcher;
+    this.graphConfig = graphConfig;
   }
 
   @Get

@@ -256,7 +256,7 @@ public class Astra {
                       astraConfig.getQueryConfig().getZipkinDefaultMaxSpans(),
                       astraConfig.getQueryConfig().getZipkinDefaultLookbackMins(),
                       astraConfig.getQueryConfig().getZipkinDefaultDataFreshnessSecs()))
-              .withAnnotatedService(new GraphService(astraDistributedQueryService))
+              .withAnnotatedService(new GraphService(astraDistributedQueryService, graphConfig))
               .withGrpcService(astraDistributedQueryService)
               .build();
       services.add(armeriaService);
