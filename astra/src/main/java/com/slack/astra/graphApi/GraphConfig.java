@@ -1,6 +1,7 @@
 package com.slack.astra.graphApi;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -107,6 +108,7 @@ public class GraphConfig {
         String yaml = Files.readString(path);
 
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
+        mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
         return mapper.readValue(yaml, GraphConfig.class);
       } catch (Exception e) {
         LOG.warn("Failed to read or parse dependency graph config file. Returning null config", e);
