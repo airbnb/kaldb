@@ -41,7 +41,8 @@ public class GraphService {
   @Get
   @Path("/api/v1/trace/{traceId}/subgraph")
   public HttpResponse getSubgraph(@Param("traceId") String traceId) throws IOException {
-    String output = "[]";
+    String output = "['hello': 'world']";
+    LOG.info("Started GraphService with config: {}", this.graphConfig);
     return HttpResponse.of(HttpStatus.OK, MediaType.JSON_UTF_8, output);
   }
 }
