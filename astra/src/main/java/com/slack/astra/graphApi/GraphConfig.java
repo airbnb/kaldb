@@ -153,4 +153,14 @@ public class GraphConfig {
 
     return tags.getOrDefault(keyToUse, defaultValue);
   }
+
+  @Override
+  public String toString() {
+    try {
+      ObjectMapper mapper = new ObjectMapper();
+      return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(this);
+    } catch (Exception e) {
+      return "GraphConfig{error serializing to string}";
+    }
+  }
 }

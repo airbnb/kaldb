@@ -244,6 +244,8 @@ public class Astra {
       GraphConfig graphConfig =
           GraphConfig.load(astraConfig.getQueryConfig().getDepGraphConfigFile());
 
+      LOG.info("GraphConfig loaded:\n{}", graphConfig);
+
       ArmeriaService armeriaService =
           new ArmeriaService.Builder(serverPort, "astraQuery", meterRegistry)
               .withRequestTimeout(requestTimeout)
