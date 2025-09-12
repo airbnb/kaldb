@@ -1,4 +1,4 @@
-package com.slack.astra.zipkinApi;
+package com.slack.astra.graphApi;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -8,8 +8,6 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import com.slack.astra.graphApi.GraphConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -27,25 +25,15 @@ public class GraphConfigTest {
   }
 
   @Test
-  public void testMatchConfigGettersAndSetters() {
-    GraphConfig.RuleConfig.MatchConfig matchConfig = new GraphConfig.RuleConfig.MatchConfig();
-
-    matchConfig.setField("testField");
-    matchConfig.setValue("testValue");
-
-    assertThat(matchConfig.getField()).isEqualTo("testField");
-    assertThat(matchConfig.getValue()).isEqualTo("testValue");
-  }
-
-  @Test
   public void testRuleConfigGettersAndSetters() {
     GraphConfig.RuleConfig ruleConfig = new GraphConfig.RuleConfig();
-    GraphConfig.RuleConfig.MatchConfig matchConfig = new GraphConfig.RuleConfig.MatchConfig();
 
-    ruleConfig.setMatch(matchConfig);
+    ruleConfig.setField("testField");
+    ruleConfig.setValue("testValue");
     ruleConfig.setOverrideKey("overrideKey");
 
-    assertThat(ruleConfig.getMatch()).isEqualTo(matchConfig);
+    assertThat(ruleConfig.getField()).isEqualTo("testField");
+    assertThat(ruleConfig.getValue()).isEqualTo("testValue");
     assertThat(ruleConfig.getOverrideKey()).isEqualTo("overrideKey");
   }
 
@@ -53,12 +41,10 @@ public class GraphConfigTest {
   public void testGraphConfigGettersAndSetters() {
     GraphConfig graphConfig = new GraphConfig();
     Map<String, GraphConfig.TagConfig> nodeMetadataTagMapping = new HashMap<>();
-    Map<String, List<GraphConfig.RuleConfig>> rules = new HashMap<>();
 
     graphConfig.setNodeMetadataTagMapping(nodeMetadataTagMapping);
 
     assertThat(graphConfig.getNodeMetadataTagMapping()).isEqualTo(nodeMetadataTagMapping);
-    assertThat(graphConfig.getRules()).isNull();
   }
 
   @Test
@@ -69,15 +55,16 @@ public class GraphConfigTest {
           service:
             defaultKey: service.name
             defaultValue: unknown_service
+            rules:
+              - field: cluster.name
+                value: prod
+                overrideKey: prod.service.name
+              - field: cluster.name
+                value: staging
+                overrideKey: test.service.name
           cluster:
             defaultKey: cluster.name
             defaultValue: unknown_cluster
-        rules:
-          service:
-            - match:
-                field: cluster
-                value: prod
-              overrideKey: prod.service.name
         """;
 
     Path configFile = tempDir.resolve("test-config.yaml");
@@ -91,19 +78,22 @@ public class GraphConfigTest {
     GraphConfig.TagConfig serviceConfig = config.getNodeMetadataTagMapping().get("service");
     assertThat(serviceConfig.getDefaultKey()).isEqualTo("service.name");
     assertThat(serviceConfig.getDefaultValue()).isEqualTo("unknown_service");
+    assertThat(serviceConfig.getRules()).hasSize(2);
+
+    GraphConfig.RuleConfig rule1 = serviceConfig.getRules().getFirst();
+    assertThat(rule1.getOverrideKey()).isEqualTo("prod.service.name");
+    assertThat(rule1.getField()).isEqualTo("cluster.name");
+    assertThat(rule1.getValue()).isEqualTo("prod");
+
+    GraphConfig.RuleConfig rule2 = serviceConfig.getRules().get(1);
+    assertThat(rule2.getOverrideKey()).isEqualTo("test.service.name");
+    assertThat(rule2.getField()).isEqualTo("cluster.name");
+    assertThat(rule2.getValue()).isEqualTo("staging");
 
     GraphConfig.TagConfig clusterConfig = config.getNodeMetadataTagMapping().get("cluster");
     assertThat(clusterConfig.getDefaultKey()).isEqualTo("cluster.name");
     assertThat(clusterConfig.getDefaultValue()).isEqualTo("unknown_cluster");
-
-    assertThat(config.getRules()).hasSize(1);
-    List<GraphConfig.RuleConfig> serviceRules = config.getRules().get("service");
-    assertThat(serviceRules).hasSize(1);
-
-    GraphConfig.RuleConfig rule = serviceRules.get(0);
-    assertThat(rule.getOverrideKey()).isEqualTo("prod.service.name");
-    assertThat(rule.getMatch().getField()).isEqualTo("cluster");
-    assertThat(rule.getMatch().getValue()).isEqualTo("prod");
+    assertThat(clusterConfig.getRules()).hasSize(0);
   }
 
   @Test
@@ -165,10 +155,10 @@ public class GraphConfigTest {
   @Test
   public void testResolveWithMatchingRuleButMissingOverrideKey() {
     GraphConfig config = createTestConfigWithRules();
-    Map<String, String> tags = Map.of("namespace.name", "prod-ns");
+    Map<String, String> tags = Map.of("app.name", "my-app", "namespace.name", "prod-ns");
 
     String result = config.resolve(tags, "app");
-    assertThat(result).isEqualTo("unknown_app");
+    assertThat(result).isEqualTo("my-app");
   }
 
   @Test
@@ -184,24 +174,28 @@ public class GraphConfigTest {
   }
 
   @Test
-  public void testResolveWithNullMatch() {
-    GraphConfig config = new GraphConfig();
+  public void testResolveWithMultipleRules() {
+    GraphConfig config = createTestConfigWithRules();
+    Map<String, String> tags =
+        Map.of(
+            "app.name", "my-app",
+            "namespace.name", "prod-ns",
+            "cluster.name", "east",
+            "prod.app.name", "my-app-in-prod",
+            "east.app.name", "my-app-east");
 
-    Map<String, GraphConfig.TagConfig> tagMapping = new HashMap<>();
-    GraphConfig.TagConfig serviceConfig = new GraphConfig.TagConfig();
-    serviceConfig.setDefaultKey("app.name");
-    serviceConfig.setDefaultValue("unknown_app");
-    tagMapping.put("app", serviceConfig);
-    config.setNodeMetadataTagMapping(tagMapping);
+    String result = config.resolve(tags, "app");
+    assertThat(result).isEqualTo("my-app-east");
+  }
 
-    Map<String, List<GraphConfig.RuleConfig>> rules = new HashMap<>();
-    GraphConfig.RuleConfig rule = new GraphConfig.RuleConfig();
-    rule.setOverrideKey("prod.app.name");
-    rule.setMatch(null);
-    rules.put("app", List.of(rule));
-    config.setRules(rules);
-
-    Map<String, String> tags = Map.of("app.name", "my-app");
+  @Test
+  public void testResolveWithMultipleRulesNoMatch() {
+    GraphConfig config = createTestConfigWithRules();
+    Map<String, String> tags =
+        Map.of(
+            "app.name", "my-app",
+            "namespace.name", "dev-ns",
+            "cluster.name", "west");
 
     String result = config.resolve(tags, "app");
     assertThat(result).isEqualTo("my-app");
@@ -209,7 +203,6 @@ public class GraphConfigTest {
 
   private GraphConfig createTestConfig() {
     GraphConfig config = new GraphConfig();
-
     Map<String, GraphConfig.TagConfig> tagMapping = new HashMap<>();
 
     GraphConfig.TagConfig appConfig = new GraphConfig.TagConfig();
@@ -230,18 +223,17 @@ public class GraphConfigTest {
   private GraphConfig createTestConfigWithRules() {
     GraphConfig config = createTestConfig();
 
-    Map<String, List<GraphConfig.RuleConfig>> rules = new HashMap<>();
+    GraphConfig.RuleConfig rule1 = new GraphConfig.RuleConfig();
+    rule1.setField("namespace.name");
+    rule1.setValue("prod-ns");
+    rule1.setOverrideKey("prod.app.name");
 
-    GraphConfig.RuleConfig.MatchConfig matchConfig = new GraphConfig.RuleConfig.MatchConfig();
-    matchConfig.setField("namespace");
-    matchConfig.setValue("prod-ns");
+    GraphConfig.RuleConfig rule2 = new GraphConfig.RuleConfig();
+    rule2.setField("cluster.name");
+    rule2.setValue("east");
+    rule2.setOverrideKey("east.app.name");
 
-    GraphConfig.RuleConfig rule = new GraphConfig.RuleConfig();
-    rule.setMatch(matchConfig);
-    rule.setOverrideKey("prod.app.name");
-
-    rules.put("app", List.of(rule));
-    config.setRules(rules);
+    config.getNodeMetadataTagMapping().get("app").setRules(List.of(rule1, rule2));
 
     return config;
   }
