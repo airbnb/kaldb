@@ -79,7 +79,7 @@ public class CuratorBuilder {
     curator.start();
 
     LOG.info(
-        "Started curator server with the following config zkhost: {}, path prefix: {}, "
+        " server with the following config zkhost: {}, path prefix: {}, "
             + "connection timeout ms: {}, session timeout ms {} and retry policy {}",
         zkConfig.getZkConnectString(),
         zkConfig.getZkPathPrefix(),
