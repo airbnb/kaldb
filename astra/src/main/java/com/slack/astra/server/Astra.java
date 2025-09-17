@@ -241,8 +241,15 @@ public class Astra {
       // https://github.com/slackhq/astra/pull/564)
       final int serverPort = astraConfig.getQueryConfig().getServerConfig().getServerPort();
 
-      GraphConfig graphConfig =
-          GraphConfig.load(astraConfig.getQueryConfig().getDepGraphConfigFile());
+      GraphConfig graphConfig = GraphConfig.DEFAULT;
+      String depGraphConfigFile = astraConfig.getQueryConfig().getDepGraphConfigFile();
+
+      if (!depGraphConfigFile.isEmpty()) {
+        LOG.info("Loading dependency graph config file: {}", depGraphConfigFile);
+        graphConfig = GraphConfig.load(Path.of(depGraphConfigFile));
+      } else {
+        LOG.info("No dependency graph config file provided, using empty config");
+      }
 
       ArmeriaService armeriaService =
           new ArmeriaService.Builder(serverPort, "astraQuery", meterRegistry)

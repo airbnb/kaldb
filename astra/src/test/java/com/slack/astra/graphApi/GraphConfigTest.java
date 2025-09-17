@@ -6,71 +6,35 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class GraphConfigTest {
-
-  @Test
-  public void testTagConfigGettersAndSetters() {
-    GraphConfig.TagConfig tagConfig = new GraphConfig.TagConfig();
-
-    tagConfig.setDefaultKey("testKey");
-    tagConfig.setDefaultValue("testValue");
-
-    assertThat(tagConfig.getDefaultKey()).isEqualTo("testKey");
-    assertThat(tagConfig.getDefaultValue()).isEqualTo("testValue");
-  }
-
-  @Test
-  public void testRuleConfigGettersAndSetters() {
-    GraphConfig.RuleConfig ruleConfig = new GraphConfig.RuleConfig();
-
-    ruleConfig.setField("testField");
-    ruleConfig.setValue("testValue");
-    ruleConfig.setOverrideKey("overrideKey");
-
-    assertThat(ruleConfig.getField()).isEqualTo("testField");
-    assertThat(ruleConfig.getValue()).isEqualTo("testValue");
-    assertThat(ruleConfig.getOverrideKey()).isEqualTo("overrideKey");
-  }
-
-  @Test
-  public void testGraphConfigGettersAndSetters() {
-    GraphConfig graphConfig = new GraphConfig();
-    Map<String, GraphConfig.TagConfig> nodeMetadataTagMapping = new HashMap<>();
-
-    graphConfig.setNodeMetadataTagMapping(nodeMetadataTagMapping);
-
-    assertThat(graphConfig.getNodeMetadataTagMapping()).isEqualTo(nodeMetadataTagMapping);
-  }
-
   @Test
   public void testLoadValidYamlConfig(@TempDir Path tempDir) throws IOException {
     String yamlContent =
         """
-        nodeMetadataTagMapping:
+        node_metadata_tag_mapping:
           service:
-            defaultKey: service.name
-            defaultValue: unknown_service
+            default_key: service.name
+            default_value: unknown_service
             rules:
               - field: cluster.name
                 value: prod
-                overrideKey: prod.service.name
+                override_key: prod.service.name
               - field: cluster.name
                 value: staging
-                overrideKey: test.service.name
+                override_key: test.service.name
           cluster:
-            defaultKey: cluster.name
-            defaultValue: unknown_cluster
+            default_key: cluster.name
+            default_value: unknown_cluster
         """;
 
     Path configFile = tempDir.resolve("test-config.yaml");
     Files.writeString(configFile, yamlContent);
 
-    GraphConfig config = GraphConfig.load(configFile.toString());
+    GraphConfig config = GraphConfig.load(configFile);
 
     assertThat(config).isNotNull();
     assertThat(config.getNodeMetadataTagMapping()).hasSize(2);
@@ -97,15 +61,15 @@ public class GraphConfigTest {
   }
 
   @Test
-  public void testLoadEmptyConfigFile() throws IOException {
-    GraphConfig config = GraphConfig.load("");
-    assertThat(config).isNull();
+  public void testLoadNonExistentFile() throws IOException {
+    GraphConfig config = GraphConfig.load(Path.of("/non/existent/file.yaml"));
+    assertThat(config).isEqualTo(GraphConfig.DEFAULT);
   }
 
   @Test
-  public void testLoadNonExistentFile() throws IOException {
-    GraphConfig config = GraphConfig.load("/non/existent/file.yaml");
-    assertThat(config).isNull();
+  public void testLoadEmptyConfigFile() throws IOException {
+    GraphConfig config = GraphConfig.load(Path.of(""));
+    assertThat(config).isEqualTo(GraphConfig.DEFAULT);
   }
 
   @Test
@@ -119,13 +83,23 @@ public class GraphConfigTest {
     Path configFile = tempDir.resolve("invalid-config.yaml");
     Files.writeString(configFile, invalidYaml);
 
-    GraphConfig config = GraphConfig.load(configFile.toString());
-    assertThat(config).isNull();
+    GraphConfig config = GraphConfig.load(configFile);
+    assertThat(config).isEqualTo(GraphConfig.DEFAULT);
   }
 
   @Test
-  public void testResolveWithDefaultValue() {
-    GraphConfig config = createTestConfig();
+  public void testResolveWithDefaultValue() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+             node_metadata_tag_mapping:
+               app:
+                 default_key: app.name
+                 default_value: unknown_app
+               namespace:
+                 default_key: namespace.name
+                 default_value: unknown_namespace
+             """);
     Map<String, String> tags = new HashMap<>();
 
     String result = config.resolve(tags, "app");
@@ -133,8 +107,18 @@ public class GraphConfigTest {
   }
 
   @Test
-  public void testResolveWithUnknownField() {
-    GraphConfig config = createTestConfig();
+  public void testResolveWithUnknownField() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+              node_metadata_tag_mapping:
+                app:
+                  default_key: app.name
+                  default_value: unknown_app
+                namespace:
+                  default_key: namespace.name
+                  default_value: unknown_namespace
+              """);
     Map<String, String> tags = Map.of("some.tag", "some-value");
 
     String result = config.resolve(tags, "some_field");
@@ -142,8 +126,25 @@ public class GraphConfigTest {
   }
 
   @Test
-  public void testResolveWithMatchingRule() {
-    GraphConfig config = createTestConfigWithRules();
+  public void testResolveWithMatchingRule() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+              node_metadata_tag_mapping:
+                app:
+                  default_key: app.name
+                  default_value: unknown_app
+                  rules:
+                    - field: namespace.name
+                      value: prod-ns
+                      override_key: prod.app.name
+                    - field: cluster.name
+                      value: east
+                      override_key: east.app.name
+                namespace:
+                  default_key: namespace.name
+                  default_value: unknown_namespace
+              """);
     Map<String, String> tags =
         Map.of(
             "app.name", "my-app", "namespace.name", "prod-ns", "prod.app.name", "my-app-in-prod");
@@ -153,8 +154,25 @@ public class GraphConfigTest {
   }
 
   @Test
-  public void testResolveWithMatchingRuleButMissingOverrideKey() {
-    GraphConfig config = createTestConfigWithRules();
+  public void testResolveWithMatchingRuleButMissingOverrideKey() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+              node_metadata_tag_mapping:
+                app:
+                  default_key: app.name
+                  default_value: unknown_app
+                  rules:
+                    - field: namespace.name
+                      value: prod-ns
+                      override_key: prod.app.name
+                    - field: cluster.name
+                      value: east
+                      override_key: east.app.name
+                namespace:
+                  default_key: namespace.name
+                  default_value: unknown_namespace
+              """);
     Map<String, String> tags = Map.of("app.name", "my-app", "namespace.name", "prod-ns");
 
     String result = config.resolve(tags, "app");
@@ -162,8 +180,25 @@ public class GraphConfigTest {
   }
 
   @Test
-  public void testResolveWithNonMatchingRule() {
-    GraphConfig config = createTestConfigWithRules();
+  public void testResolveWithNonMatchingRule() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+              node_metadata_tag_mapping:
+                app:
+                  default_key: app.name
+                  default_value: unknown_app
+                  rules:
+                    - field: namespace.name
+                      value: prod-ns
+                      override_key: prod.app.name
+                    - field: cluster.name
+                      value: east
+                      override_key: east.app.name
+                namespace:
+                  default_key: namespace.name
+                  default_value: unknown_namespace
+              """);
     Map<String, String> tags =
         Map.of(
             "app.name", "my-app",
@@ -174,8 +209,25 @@ public class GraphConfigTest {
   }
 
   @Test
-  public void testResolveWithMultipleRules() {
-    GraphConfig config = createTestConfigWithRules();
+  public void testResolveWithMultipleRules() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+              node_metadata_tag_mapping:
+                app:
+                  default_key: app.name
+                  default_value: unknown_app
+                  rules:
+                    - field: namespace.name
+                      value: prod-ns
+                      override_key: prod.app.name
+                    - field: cluster.name
+                      value: east
+                      override_key: east.app.name
+                namespace:
+                  default_key: namespace.name
+                  default_value: unknown_namespace
+              """);
     Map<String, String> tags =
         Map.of(
             "app.name", "my-app",
@@ -189,8 +241,25 @@ public class GraphConfigTest {
   }
 
   @Test
-  public void testResolveWithMultipleRulesNoMatch() {
-    GraphConfig config = createTestConfigWithRules();
+  public void testResolveWithMultipleRulesNoMatch() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+              node_metadata_tag_mapping:
+                app:
+                  default_key: app.name
+                  default_value: unknown_app
+                  rules:
+                    - field: namespace.name
+                      value: prod-ns
+                      override_key: prod.app.name
+                    - field: cluster.name
+                      value: east
+                      override_key: east.app.name
+                namespace:
+                  default_key: namespace.name
+                  default_value: unknown_namespace
+              """);
     Map<String, String> tags =
         Map.of(
             "app.name", "my-app",
@@ -199,42 +268,5 @@ public class GraphConfigTest {
 
     String result = config.resolve(tags, "app");
     assertThat(result).isEqualTo("my-app");
-  }
-
-  private GraphConfig createTestConfig() {
-    GraphConfig config = new GraphConfig();
-    Map<String, GraphConfig.TagConfig> tagMapping = new HashMap<>();
-
-    GraphConfig.TagConfig appConfig = new GraphConfig.TagConfig();
-    appConfig.setDefaultKey("app.name");
-    appConfig.setDefaultValue("unknown_app");
-    tagMapping.put("app", appConfig);
-
-    GraphConfig.TagConfig namespaceConfig = new GraphConfig.TagConfig();
-    namespaceConfig.setDefaultKey("namespace.name");
-    namespaceConfig.setDefaultValue("unknown_namespace");
-    tagMapping.put("namespace", namespaceConfig);
-
-    config.setNodeMetadataTagMapping(tagMapping);
-
-    return config;
-  }
-
-  private GraphConfig createTestConfigWithRules() {
-    GraphConfig config = createTestConfig();
-
-    GraphConfig.RuleConfig rule1 = new GraphConfig.RuleConfig();
-    rule1.setField("namespace.name");
-    rule1.setValue("prod-ns");
-    rule1.setOverrideKey("prod.app.name");
-
-    GraphConfig.RuleConfig rule2 = new GraphConfig.RuleConfig();
-    rule2.setField("cluster.name");
-    rule2.setValue("east");
-    rule2.setOverrideKey("east.app.name");
-
-    config.getNodeMetadataTagMapping().get("app").setRules(List.of(rule1, rule2));
-
-    return config;
   }
 }
