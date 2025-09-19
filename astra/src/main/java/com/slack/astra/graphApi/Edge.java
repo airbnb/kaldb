@@ -1,12 +1,12 @@
-package com.slack.astra.zipkinApi;
+package com.slack.astra.graphApi;
 
 import java.util.Locale;
 
-/** A dependency link is an edge between two Nodes. */
-public final class DependencyLink {
+/** Represents an edge between two Nodes. */
+public final class Edge {
   String parent, child;
 
-  DependencyLink(Builder builder) {
+  Edge(Builder builder) {
     parent = builder.parent;
     child = builder.child;
   }
@@ -32,7 +32,7 @@ public final class DependencyLink {
 
     Builder() {}
 
-    Builder(DependencyLink source) {
+    Builder(Edge source) {
       this.parent = source.parent;
       this.child = source.child;
     }
@@ -49,21 +49,21 @@ public final class DependencyLink {
       return this;
     }
 
-    public DependencyLink build() {
+    public Edge build() {
       String missing = "";
       if (parent == null) missing += " parent";
       if (child == null) missing += " child";
       if (!missing.isEmpty()) throw new IllegalStateException("Missing :" + missing);
 
-      return new DependencyLink(this);
+      return new Edge(this);
     }
   }
 
   @Override
   public boolean equals(Object o) {
     if (o == this) return true;
-    if (!(o instanceof DependencyLink)) return false;
-    DependencyLink that = (DependencyLink) o;
+    if (!(o instanceof Edge)) return false;
+    Edge that = (Edge) o;
     return parent.equals(that.parent) && child.equals(that.child);
   }
 

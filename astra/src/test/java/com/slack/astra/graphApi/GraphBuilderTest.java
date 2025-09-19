@@ -1,27 +1,46 @@
-package com.slack.astra.zipkinApi;
+package com.slack.astra.graphApi;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.slack.astra.zipkinApi.ZipkinEndpointResponse;
+import com.slack.astra.zipkinApi.ZipkinSpanResponse;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class GraphBuilderTest {
-  private GraphBuilder graphBuilder;
+  private GraphBuilder defaultGraphBuilder;
+  private GraphBuilder configuredGraphBuilder;
 
   @BeforeEach
-  void setUp() {
-    graphBuilder = new GraphBuilder();
+  void setUp() throws IOException {
+    defaultGraphBuilder = new GraphBuilder(GraphConfig.DEFAULT);
+
+    // Load custom config from YAML file
+    Path configPath =
+        new File(
+                getClass()
+                    .getClassLoader()
+                    .getResource("test-dependency-graph-config.yaml")
+                    .getFile())
+            .toPath();
+    GraphConfig customConfig = GraphConfig.load(configPath);
+    configuredGraphBuilder = new GraphBuilder(customConfig);
   }
 
   @Test
   void buildFromSpans_emptyList_returnsEmptyGraph() {
     List<ZipkinSpanResponse> spans = new ArrayList<>();
-    Graph graph = graphBuilder.buildFromSpans(spans);
+    Graph graph = defaultGraphBuilder.buildFromSpans(spans);
 
     assertThat(graph.nodes).isEmpty();
     assertThat(graph.edges).isEmpty();
@@ -46,16 +65,26 @@ public class GraphBuilderTest {
                 "res1"));
     spans.add(span);
 
-    Graph graph = graphBuilder.buildFromSpans(spans);
+    Graph graph = configuredGraphBuilder.buildFromSpans(spans);
 
     assertThat(graph.nodes).hasSize(1);
     Node node = graph.nodes.get(0);
 
-    assertThat(node.getId()).isEqualTo("app1:ns1:res1");
-    assertThat(node.getApp()).isEqualTo("app1");
-    assertThat(node.getNamespace()).isEqualTo("ns1");
-    assertThat(node.getOperation()).isEqualTo("op1");
-    assertThat(node.getResource()).isEqualTo("res1");
+    // Verify the node ID matches the expected hash
+    SortedMap<String, String> expectedMetadata =
+        new TreeMap<>(
+            Map.of(
+                "app", "app1",
+                "namespace", "ns1",
+                "operation", "op1",
+                "resource", "res1"));
+    String expectedId = Node.generateIdFromMetadata(expectedMetadata);
+
+    assertThat(node.getId()).isEqualTo(expectedId);
+    assertThat(node.getMetadata().get("app")).isEqualTo("app1");
+    assertThat(node.getMetadata().get("namespace")).isEqualTo("ns1");
+    assertThat(node.getMetadata().get("operation")).isEqualTo("op1");
+    assertThat(node.getMetadata().get("resource")).isEqualTo("res1");
 
     assertThat(graph.edges).isEmpty();
   }
@@ -88,14 +117,29 @@ public class GraphBuilderTest {
     spans.add(parentSpan);
     spans.add(childSpan);
 
-    Graph graph = graphBuilder.buildFromSpans(spans);
+    Graph graph = configuredGraphBuilder.buildFromSpans(spans);
 
     assertThat(graph.nodes).hasSize(2);
     assertThat(graph.edges).hasSize(1);
 
-    DependencyLink edge = graph.edges.iterator().next();
-    assertThat(edge.parent()).isEqualTo("app1:ns1:res1");
-    assertThat(edge.child()).isEqualTo("app2:ns2:res2");
+    // Generate expected node IDs using the static method
+    SortedMap<String, String> parentMetadata = new TreeMap<>();
+    parentMetadata.put("app", "app1");
+    parentMetadata.put("namespace", "ns1");
+    parentMetadata.put("operation", "op1");
+    parentMetadata.put("resource", "res1");
+    String expectedParentId = Node.generateIdFromMetadata(parentMetadata);
+
+    SortedMap<String, String> childMetadata = new TreeMap<>();
+    childMetadata.put("app", "app2");
+    childMetadata.put("namespace", "ns2");
+    childMetadata.put("operation", "op2");
+    childMetadata.put("resource", "res2");
+    String expectedChildId = Node.generateIdFromMetadata(childMetadata);
+
+    Edge edge = graph.edges.iterator().next();
+    assertThat(edge.parent()).isEqualTo(expectedParentId);
+    assertThat(edge.child()).isEqualTo(expectedChildId);
   }
 
   @Test
@@ -114,13 +158,15 @@ public class GraphBuilderTest {
                 "tag.operation.canonical_path", "/api/users"));
     spans.add(span);
 
-    Graph graph = graphBuilder.buildFromSpans(spans);
+    Graph graph = configuredGraphBuilder.buildFromSpans(spans);
 
     assertThat(graph.nodes).hasSize(1);
     Node node = graph.nodes.get(0);
 
-    assertThat(node.getResource()).isEqualTo("/api/users");
-    assertThat(node.getId()).isEqualTo("app1:ns1:/api/users");
+    assertThat(node.getMetadata().get("resource")).isEqualTo("/api/users");
+    assertThat(node.getMetadata().get("app")).isEqualTo("app1");
+    assertThat(node.getMetadata().get("namespace")).isEqualTo("ns1");
+    assertThat(node.getMetadata().get("operation")).isEqualTo("http.request");
   }
 
   @Test
@@ -139,11 +185,11 @@ public class GraphBuilderTest {
                 "resource", "original_resource"));
     spans.add(span);
 
-    Graph graph = graphBuilder.buildFromSpans(spans);
+    Graph graph = configuredGraphBuilder.buildFromSpans(spans);
 
     assertThat(graph.nodes).hasSize(1);
     Node node = graph.nodes.get(0);
-    assertThat(node.getResource()).isEqualTo("original_resource");
+    assertThat(node.getMetadata().get("resource")).isEqualTo("original_resource");
   }
 
   @Test
@@ -153,16 +199,23 @@ public class GraphBuilderTest {
     ZipkinSpanResponse span = createSpanWithTags("span1", "trace1", null, Map.of());
     spans.add(span);
 
-    Graph graph = graphBuilder.buildFromSpans(spans);
+    Graph graph = configuredGraphBuilder.buildFromSpans(spans);
 
     assertThat(graph.nodes).hasSize(1);
     Node node = graph.nodes.get(0);
 
-    assertThat(node.getApp()).isEqualTo("unknown_app");
-    assertThat(node.getNamespace()).isEqualTo("unknown_namespace");
-    assertThat(node.getOperation()).isEqualTo("unknown_operation");
-    assertThat(node.getResource()).isEqualTo("unknown_resource");
-    assertThat(node.getId()).isEqualTo("unknown_app:unknown_namespace:unknown_resource");
+    SortedMap<String, String> expectedMetadata = new TreeMap<>();
+    expectedMetadata.put("app", "unknown_app");
+    expectedMetadata.put("namespace", "unknown_namespace");
+    expectedMetadata.put("operation", "unknown_operation");
+    expectedMetadata.put("resource", "unknown_resource");
+    String expectedId = Node.generateIdFromMetadata(expectedMetadata);
+
+    assertThat(node.getMetadata().get("app")).isEqualTo("unknown_app");
+    assertThat(node.getMetadata().get("namespace")).isEqualTo("unknown_namespace");
+    assertThat(node.getMetadata().get("operation")).isEqualTo("unknown_operation");
+    assertThat(node.getMetadata().get("resource")).isEqualTo("unknown_resource");
+    assertThat(node.getId()).isEqualTo(expectedId);
   }
 
   @Test
@@ -191,11 +244,11 @@ public class GraphBuilderTest {
     spans.add(validSpan);
     spans.add(invalidSpan);
 
-    Graph graph = graphBuilder.buildFromSpans(spans);
+    Graph graph = configuredGraphBuilder.buildFromSpans(spans);
 
     assertThat(graph.nodes).hasSize(1);
     Node node = graph.nodes.get(0);
-    assertThat(node.getId()).isEqualTo("app1:ns1:res1");
+    assertThat(node.getMetadata().get("app")).isEqualTo("app1");
   }
 
   @Test
@@ -215,7 +268,7 @@ public class GraphBuilderTest {
 
     spans.add(childSpan);
 
-    Graph graph = graphBuilder.buildFromSpans(spans);
+    Graph graph = configuredGraphBuilder.buildFromSpans(spans);
 
     assertThat(graph.nodes).hasSize(1);
     assertThat(graph.edges).isEmpty();
@@ -251,7 +304,7 @@ public class GraphBuilderTest {
     spans.add(span1);
     spans.add(span2);
 
-    Graph graph = graphBuilder.buildFromSpans(spans);
+    Graph graph = configuredGraphBuilder.buildFromSpans(spans);
 
     // should only have one unique node
     assertThat(graph.nodes).hasSize(1);
@@ -299,18 +352,39 @@ public class GraphBuilderTest {
     spans.add(child1Span);
     spans.add(child2Span);
 
-    Graph graph = graphBuilder.buildFromSpans(spans);
+    Graph graph = configuredGraphBuilder.buildFromSpans(spans);
 
     assertThat(graph.nodes).hasSize(3);
     assertThat(graph.edges).hasSize(2);
 
+    SortedMap<String, String> parentMetadata = new TreeMap<>();
+    parentMetadata.put("app", "app1");
+    parentMetadata.put("namespace", "ns1");
+    parentMetadata.put("operation", "op1");
+    parentMetadata.put("resource", "res1");
+    String expectedParentId = Node.generateIdFromMetadata(parentMetadata);
+
+    SortedMap<String, String> child1Metadata = new TreeMap<>();
+    child1Metadata.put("app", "app2");
+    child1Metadata.put("namespace", "ns2");
+    child1Metadata.put("operation", "op2");
+    child1Metadata.put("resource", "res2");
+    String expectedChild1Id = Node.generateIdFromMetadata(child1Metadata);
+
+    SortedMap<String, String> child2Metadata = new TreeMap<>();
+    child2Metadata.put("app", "app3");
+    child2Metadata.put("namespace", "ns3");
+    child2Metadata.put("operation", "op3");
+    child2Metadata.put("resource", "res3");
+    String expectedChild2Id = Node.generateIdFromMetadata(child2Metadata);
+
     // verify both edges have the same parent
-    Set<DependencyLink> edges = graph.edges;
-    assertThat(edges.stream().allMatch(edge -> edge.parent().equals("app1:ns1:res1"))).isTrue();
+    Set<Edge> edges = graph.edges;
+    assertThat(edges.stream().allMatch(edge -> edge.parent().equals(expectedParentId))).isTrue();
 
     // verify different children
-    Set<String> childIds = Set.of(edges.stream().map(DependencyLink::child).toArray(String[]::new));
-    assertThat(childIds).containsExactlyInAnyOrder("app2:ns2:res2", "app3:ns3:res3");
+    Set<String> childIds = Set.of(edges.stream().map(Edge::child).toArray(String[]::new));
+    assertThat(childIds).containsExactlyInAnyOrder(expectedChild1Id, expectedChild2Id);
   }
 
   @Test
@@ -328,7 +402,7 @@ public class GraphBuilderTest {
                 "kube.operation", "op1",
                 "resource", "res1"));
 
-    // two different child spans that reference the same parent, creating potential duplicate edges
+    // two different child spans that reference the same parent
     ZipkinSpanResponse child1Span =
         createSpanWithTags(
             "child1",
@@ -340,7 +414,7 @@ public class GraphBuilderTest {
                 "kube.operation", "op2",
                 "resource", "res2"));
 
-    // second span with same child node ID but different span ID - should create duplicate edge
+    // second span with same child node ID but different span ID - should create deduplicate edge
     ZipkinSpanResponse child2Span =
         createSpanWithTags(
             "child2",
@@ -356,7 +430,7 @@ public class GraphBuilderTest {
     spans.add(child1Span);
     spans.add(child2Span);
 
-    Graph graph = graphBuilder.buildFromSpans(spans);
+    Graph graph = configuredGraphBuilder.buildFromSpans(spans);
 
     // should have 2 nodes (parent and child - child nodes are deduplicated)
     assertThat(graph.nodes).hasSize(2);
@@ -364,9 +438,23 @@ public class GraphBuilderTest {
     // should have only 1 edge despite multiple spans creating the same parent-child relationship
     assertThat(graph.edges).hasSize(1);
 
-    DependencyLink edge = graph.edges.iterator().next();
-    assertThat(edge.parent()).isEqualTo("app1:ns1:res1");
-    assertThat(edge.child()).isEqualTo("app2:ns2:res2");
+    SortedMap<String, String> parentMetadata = new TreeMap<>();
+    parentMetadata.put("app", "app1");
+    parentMetadata.put("namespace", "ns1");
+    parentMetadata.put("operation", "op1");
+    parentMetadata.put("resource", "res1");
+    String expectedParentId = Node.generateIdFromMetadata(parentMetadata);
+
+    SortedMap<String, String> childMetadata = new TreeMap<>();
+    childMetadata.put("app", "app2");
+    childMetadata.put("namespace", "ns2");
+    childMetadata.put("operation", "op2");
+    childMetadata.put("resource", "res2");
+    String expectedChildId = Node.generateIdFromMetadata(childMetadata);
+
+    Edge edge = graph.edges.iterator().next();
+    assertThat(edge.parent()).isEqualTo(expectedParentId);
+    assertThat(edge.child()).isEqualTo(expectedChildId);
   }
 
   @Test
@@ -429,33 +517,76 @@ public class GraphBuilderTest {
     spans.add(child2Span);
     spans.add(grandchildSpan);
 
-    Graph graph = graphBuilder.buildFromSpans(spans);
+    Graph graph = configuredGraphBuilder.buildFromSpans(spans);
 
     assertThat(graph.nodes).hasSize(4);
     assertThat(graph.edges).hasSize(3);
 
-    Set<DependencyLink> edges = graph.edges;
+    SortedMap<String, String> rootMetadata = new TreeMap<>();
+    rootMetadata.put("app", "root_app");
+    rootMetadata.put("namespace", "root_ns");
+    rootMetadata.put("operation", "root_op");
+    rootMetadata.put("resource", "root_res");
+    String expectedRootId = Node.generateIdFromMetadata(rootMetadata);
+
+    SortedMap<String, String> child1Metadata = new TreeMap<>();
+    child1Metadata.put("app", "child1_app");
+    child1Metadata.put("namespace", "child1_ns");
+    child1Metadata.put("operation", "child1_op");
+    child1Metadata.put("resource", "child1_res");
+    String expectedChild1Id = Node.generateIdFromMetadata(child1Metadata);
+
+    SortedMap<String, String> child2Metadata = new TreeMap<>();
+    child2Metadata.put("app", "child2_app");
+    child2Metadata.put("namespace", "child2_ns");
+    child2Metadata.put("operation", "child2_op");
+    child2Metadata.put("resource", "child2_res");
+    String expectedChild2Id = Node.generateIdFromMetadata(child2Metadata);
+
+    SortedMap<String, String> grandchildMetadata = new TreeMap<>();
+    grandchildMetadata.put("app", "gc_app");
+    grandchildMetadata.put("namespace", "gc_ns");
+    grandchildMetadata.put("operation", "gc_op");
+    grandchildMetadata.put("resource", "gc_res");
+    String expectedGrandchildId = Node.generateIdFromMetadata(grandchildMetadata);
+
+    Set<Edge> edges = graph.edges;
 
     // root -> child1
     assertThat(edges)
         .anyMatch(
-            edge ->
-                edge.parent().equals("root_app:root_ns:root_res")
-                    && edge.child().equals("child1_app:child1_ns:child1_res"));
+            edge -> edge.parent().equals(expectedRootId) && edge.child().equals(expectedChild1Id));
 
     // root -> child2
     assertThat(edges)
         .anyMatch(
-            edge ->
-                edge.parent().equals("root_app:root_ns:root_res")
-                    && edge.child().equals("child2_app:child2_ns:child2_res"));
+            edge -> edge.parent().equals(expectedRootId) && edge.child().equals(expectedChild2Id));
 
     // child1 -> grandchild
     assertThat(edges)
         .anyMatch(
             edge ->
-                edge.parent().equals("child1_app:child1_ns:child1_res")
-                    && edge.child().equals("gc_app:gc_ns:gc_res"));
+                edge.parent().equals(expectedChild1Id)
+                    && edge.child().equals(expectedGrandchildId));
+  }
+
+  @Test
+  void buildFromSpans_defaultConfig_usesRemoteEndpointServiceName() {
+    List<ZipkinSpanResponse> spans = new ArrayList<>();
+    ZipkinSpanResponse span = new ZipkinSpanResponse("span1", "trace1");
+
+    ZipkinEndpointResponse remoteEndpoint = new ZipkinEndpointResponse();
+    remoteEndpoint.setServiceName("test-service");
+    span.setRemoteEndpoint(remoteEndpoint);
+    span.setTags(Map.of());
+
+    spans.add(span);
+
+    Graph graph = defaultGraphBuilder.buildFromSpans(spans);
+
+    assertThat(graph.nodes).hasSize(1);
+    Node node = graph.nodes.get(0);
+    assertThat(node.getMetadata().get("service")).isEqualTo("test-service");
   }
 
   private ZipkinSpanResponse createSpanWithTags(
@@ -463,6 +594,11 @@ public class GraphBuilderTest {
     ZipkinSpanResponse span = new ZipkinSpanResponse(id, traceId);
     span.setParentId(parentId);
     span.setTags(new HashMap<>(tags));
+
+    // Set up a default remote endpoint for configured tests
+    ZipkinEndpointResponse remoteEndpoint = new ZipkinEndpointResponse();
+    remoteEndpoint.setServiceName("default-service");
+    span.setRemoteEndpoint(remoteEndpoint);
 
     return span;
   }
