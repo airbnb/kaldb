@@ -57,6 +57,7 @@ queryConfig:
   managerConnectString: ${ASTRA_MANAGER_CONNECTION_STRING:-localhost:8083}
   maxSnapshotsQueriedPerBatch: ${ASTRA_QUERY_MAX_SNAPSHOTS_QUERIED_PER_BATCH:-30}
   perBatchQueryTimeoutMs: ${ASTRA_QUERY_PER_BATCH_QUERY_TIMEOUT_MS:-5000}
+  depGraphConfigFile: ${DEP_GRAPH_CONFIG_FILE:-}
 
 metadataStoreConfig:
   zookeeperConfig:

@@ -133,6 +133,7 @@ message QueryServiceConfig {
   int32 zipkin_default_max_spans = 6;
   int32 zipkin_default_lookback_mins = 7;
   int64 zipkin_default_data_freshness_secs = 8;
+  string dep_graph_config_file = 9;
 }
 
 message RedactionUpdateServiceConfig {
