@@ -23,6 +23,7 @@ import com.slack.astra.clusterManager.ReplicaEvictionService;
 import com.slack.astra.clusterManager.ReplicaRestoreService;
 import com.slack.astra.clusterManager.SnapshotDeletionService;
 import com.slack.astra.elasticsearchApi.ElasticsearchApiService;
+import com.slack.astra.graphApi.GraphConfig;
 import com.slack.astra.graphApi.GraphService;
 import com.slack.astra.logstore.LogMessage;
 import com.slack.astra.logstore.schema.ReservedFields;
@@ -276,6 +277,16 @@ public class Astra {
       // https://github.com/slackhq/astra/pull/564)
       final int serverPort = astraConfig.getQueryConfig().getServerConfig().getServerPort();
 
+      GraphConfig graphConfig = GraphConfig.DEFAULT;
+      String depGraphConfigFile = astraConfig.getQueryConfig().getDepGraphConfigFile();
+
+      if (!depGraphConfigFile.isEmpty()) {
+        LOG.info("Loading dependency graph config file: {}", depGraphConfigFile);
+        graphConfig = GraphConfig.load(Path.of(depGraphConfigFile));
+      } else {
+        LOG.info("No dependency graph config file provided, using empty config");
+      }
+
       ArmeriaService armeriaService =
           new ArmeriaService.Builder(serverPort, "astraQuery", meterRegistry)
               .withRequestTimeout(requestTimeout)
@@ -288,7 +299,7 @@ public class Astra {
                       astraConfig.getQueryConfig().getZipkinDefaultMaxSpans(),
                       astraConfig.getQueryConfig().getZipkinDefaultLookbackMins(),
                       astraConfig.getQueryConfig().getZipkinDefaultDataFreshnessSecs()))
-              .withAnnotatedService(new GraphService(astraDistributedQueryService))
+              .withAnnotatedService(new GraphService(astraDistributedQueryService, graphConfig))
               .withGrpcService(astraDistributedQueryService)
               .build();
       services.add(armeriaService);
