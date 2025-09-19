@@ -18,7 +18,7 @@ public class GraphServiceTest {
 
   @BeforeEach
   public void setup() throws IOException {
-    graphService = spy(new GraphService(searcher));
+    graphService = spy(new GraphService(searcher, GraphConfig.DEFAULT));
   }
 
   @Test
