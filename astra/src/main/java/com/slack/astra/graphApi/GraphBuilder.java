@@ -134,7 +134,7 @@ public class GraphBuilder {
         Node childNode = nodes.get(childNodeId);
 
         if (parentNode != null && childNode != null) {
-          edges.add(new Edge.Builder().parent(parentNode.getId()).child(childNode.getId()).build());
+          edges.add(new Edge(parentNode.getId(), childNode.getId()));
         } else {
           LOG.warn(
               "Missing node for parentSpanId={} (parentNodeId={}) or childNodeId={}",

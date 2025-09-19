@@ -138,8 +138,8 @@ public class GraphBuilderTest {
     String expectedChildId = Node.generateIdFromMetadata(childMetadata);
 
     Edge edge = graph.edges.iterator().next();
-    assertThat(edge.parent()).isEqualTo(expectedParentId);
-    assertThat(edge.child()).isEqualTo(expectedChildId);
+    assertThat(edge.getSourceNodeId()).isEqualTo(expectedParentId);
+    assertThat(edge.getTargetNodeId()).isEqualTo(expectedChildId);
   }
 
   @Test
@@ -380,10 +380,11 @@ public class GraphBuilderTest {
 
     // verify both edges have the same parent
     Set<Edge> edges = graph.edges;
-    assertThat(edges.stream().allMatch(edge -> edge.parent().equals(expectedParentId))).isTrue();
+    assertThat(edges.stream().allMatch(edge -> edge.getSourceNodeId().equals(expectedParentId)))
+        .isTrue();
 
     // verify different children
-    Set<String> childIds = Set.of(edges.stream().map(Edge::child).toArray(String[]::new));
+    Set<String> childIds = Set.of(edges.stream().map(Edge::getTargetNodeId).toArray(String[]::new));
     assertThat(childIds).containsExactlyInAnyOrder(expectedChild1Id, expectedChild2Id);
   }
 
@@ -453,8 +454,8 @@ public class GraphBuilderTest {
     String expectedChildId = Node.generateIdFromMetadata(childMetadata);
 
     Edge edge = graph.edges.iterator().next();
-    assertThat(edge.parent()).isEqualTo(expectedParentId);
-    assertThat(edge.child()).isEqualTo(expectedChildId);
+    assertThat(edge.getSourceNodeId()).isEqualTo(expectedParentId);
+    assertThat(edge.getTargetNodeId()).isEqualTo(expectedChildId);
   }
 
   @Test
@@ -555,19 +556,23 @@ public class GraphBuilderTest {
     // root -> child1
     assertThat(edges)
         .anyMatch(
-            edge -> edge.parent().equals(expectedRootId) && edge.child().equals(expectedChild1Id));
+            edge ->
+                edge.getSourceNodeId().equals(expectedRootId)
+                    && edge.getTargetNodeId().equals(expectedChild1Id));
 
     // root -> child2
     assertThat(edges)
         .anyMatch(
-            edge -> edge.parent().equals(expectedRootId) && edge.child().equals(expectedChild2Id));
+            edge ->
+                edge.getSourceNodeId().equals(expectedRootId)
+                    && edge.getTargetNodeId().equals(expectedChild2Id));
 
     // child1 -> grandchild
     assertThat(edges)
         .anyMatch(
             edge ->
-                edge.parent().equals(expectedChild1Id)
-                    && edge.child().equals(expectedGrandchildId));
+                edge.getSourceNodeId().equals(expectedChild1Id)
+                    && edge.getTargetNodeId().equals(expectedGrandchildId));
   }
 
   @Test

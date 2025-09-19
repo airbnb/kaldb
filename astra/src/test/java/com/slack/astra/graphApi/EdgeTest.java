@@ -8,98 +8,54 @@ import org.junit.jupiter.api.Test;
 public class EdgeTest {
 
   @Test
-  void builder_parentNull_throwsNullPointerException() {
+  void builder_sourceNull_throwsNullPointerException() {
     assertThatExceptionOfType(NullPointerException.class)
-        .isThrownBy(() -> new Edge.Builder().parent(null))
-        .withMessage("parent == null");
+        .isThrownBy(() -> new Edge(null, "target"))
+        .withMessage("sourceNodeId == null");
   }
 
   @Test
-  void builder_childNull_throwsNullPointerException() {
+  void builder_targetNull_throwsNullPointerException() {
     assertThatExceptionOfType(NullPointerException.class)
-        .isThrownBy(() -> new Edge.Builder().child(null))
-        .withMessage("child == null");
+        .isThrownBy(() -> new Edge("source", null))
+        .withMessage("targetNodeId == null");
   }
 
   @Test
-  void build_missingParent_throwsIllegalStateException() {
-    assertThatExceptionOfType(IllegalStateException.class)
-        .isThrownBy(() -> new Edge.Builder().child("child").build())
-        .withMessage("Missing : parent");
-  }
+  void build_withValidSourceAndTarget_succeeds() {
+    Edge e = new Edge("source", "target");
 
-  @Test
-  void build_missingChild_throwsIllegalStateException() {
-    assertThatExceptionOfType(IllegalStateException.class)
-        .isThrownBy(() -> new Edge.Builder().parent("parent").build())
-        .withMessage("Missing : child");
-  }
-
-  @Test
-  void build_withValidParentAndChild_succeeds() {
-    Edge link = new Edge.Builder().parent("parent").child("child").build();
-
-    assertThat(link.parent).isEqualTo("parent");
-    assertThat(link.child).isEqualTo("child");
-  }
-
-  @Test
-  void builderConstructor_copiesFromSourceDependencyLink() {
-    Edge original = new Edge.Builder().parent("parent").child("child").build();
-    Edge copy = new Edge.Builder(original).build();
-
-    assertThat(copy.parent).isEqualTo("parent");
-    assertThat(copy.child).isEqualTo("child");
-    assertThat(copy).isEqualTo(original);
-  }
-
-  @Test
-  void equals_sameObject_returnsTrue() {
-    Edge link = new Edge.Builder().parent("parent").child("child").build();
-    assertThat(link.equals(link)).isTrue();
+    assertThat(e.getSourceNodeId()).isEqualTo("source");
+    assertThat(e.getTargetNodeId()).isEqualTo("target");
   }
 
   @Test
   void equals_differentType_returnsFalse() {
-    Edge link = new Edge.Builder().parent("parent").child("child").build();
-    assertThat(link.equals(123)).isFalse();
+    Edge e = new Edge("source", "target");
+    assertThat(e.equals(123)).isFalse();
   }
 
   @Test
-  void equals_sameParentAndChild_returnsTrue() {
-    Edge link1 = new Edge.Builder().parent("parent").child("child").build();
-    Edge link2 = new Edge.Builder().parent("parent").child("child").build();
+  void equals_sameSourceAndChild_returnsTrue() {
+    Edge e1 = new Edge("source", "target");
+    Edge e2 = new Edge("source", "target");
 
-    assertThat(link1).isEqualTo(link2);
+    assertThat(e1).isEqualTo(e2);
   }
 
   @Test
-  void equals_differentParent_returnsFalse() {
-    Edge link1 = new Edge.Builder().parent("parent1").child("child").build();
-    Edge link2 = new Edge.Builder().parent("parent2").child("child").build();
+  void equals_differentSource_returnsFalse() {
+    Edge e1 = new Edge("source1", "target");
+    Edge e2 = new Edge("source2", "target");
 
-    assertThat(link1).isNotEqualTo(link2);
+    assertThat(e1).isNotEqualTo(e2);
   }
 
   @Test
   void equals_differentChild_returnsFalse() {
-    Edge link1 = new Edge.Builder().parent("parent").child("child1").build();
-    Edge link2 = new Edge.Builder().parent("parent").child("child2").build();
+    Edge e1 = new Edge("source", "target1");
+    Edge e2 = new Edge("source", "target2");
 
-    assertThat(link1).isNotEqualTo(link2);
-  }
-
-  @Test
-  void builder_overwriteParent_usesLatestValue() {
-    Edge link = new Edge.Builder().parent("parent1").parent("parent2").child("child").build();
-
-    assertThat(link.parent).isEqualTo("parent2");
-  }
-
-  @Test
-  void builder_overwriteChild_usesLatestValue() {
-    Edge link = new Edge.Builder().parent("parent").child("child1").child("child2").build();
-
-    assertThat(link.child).isEqualTo("child2");
+    assertThat(e1).isNotEqualTo(e2);
   }
 }

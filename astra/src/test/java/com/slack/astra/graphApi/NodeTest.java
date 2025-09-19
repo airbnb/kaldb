@@ -15,7 +15,7 @@ public class NodeTest {
             Map.of("app", "app", "namespace", "namespace", "resource", "resource"));
     Node node = new Node(metadata);
 
-    assertThat(node.getId()).isEqualTo("app:namespace:resource");
+    assertThat(node.getId()).isEqualTo(Node.generateIdFromMetadata(metadata));
   }
 
   @Test
