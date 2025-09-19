@@ -20,14 +20,10 @@ public final class GraphConfig {
   public static final GraphConfig DEFAULT = new GraphConfig(Map.of());
 
   /**
-   * Represents how a single logical field on a node should be mapped to span tags. Each field has:
-   * - a default key to look up in tags - a default fallback value if the key isn’t found - an
-   * optional list of rules that can override the default key Example in YAML: resource:
-   * default_key: resource default_value: unknown_resource rules: - field: operation_name value:
-   * http.request override_key: tag.operation.canonical_path In the above example, the default span
-   * tag for populating a node's resource field is "resource", however if a span's "operation_name"
-   * == "http.request", then use the "tag.operation.canonical_path" override key to instead populate
-   * a node's resource field.
+   * Represents how a single logical field on a node should be mapped to span tags.
+   *
+   * <p>Each field has: - a default key to look up in tags - a default fallback value if the key
+   * isn’t found - an optional list of rules that can override the default key
    */
   public static final class TagConfig {
     private final String defaultKey;
@@ -102,7 +98,12 @@ public final class GraphConfig {
     return nodeMetadataTagMapping;
   }
 
-  // Loads a GraphConfig from a YAML file on disk. On failure, log and return a null config.
+  /**
+   * Loads a GraphConfig from a YAML file on disk. On failure, log and return a null config.
+   *
+   * @param filePath Path of the config to load
+   * @return GraphConfig containing mappings of node metadata fields -> corresponding span tags.
+   */
   public static GraphConfig load(Path filePath) throws IOException {
     try {
       String yaml = Files.readString(filePath);
@@ -115,6 +116,12 @@ public final class GraphConfig {
     return DEFAULT;
   }
 
+  /**
+   * Loads a GraphConfig from a YAML string. On failure, log and return a null config.
+   *
+   * @param configYAML YAML string of config contents.
+   * @return GraphConfig containing mappings of node metadata fields -> corresponding span tags.
+   */
   public static GraphConfig load(String configYAML) throws IOException {
     if (!configYAML.isEmpty()) {
       try {
@@ -131,12 +138,18 @@ public final class GraphConfig {
   }
 
   /**
-   * Resolves the actual tag value for a given logical field, using the provided span tags. Steps:
-   * 1. Look up the TagConfig for this logical field (e.g. "resource"). 2. Default to using its
-   * defaultKey + defaultValue. 3. If rules are defined: - Iterate through each rule in reverse
-   * order. - If a rule’s field/value condition matches, switch keyToUse to overrideKey. 4. Finally,
-   * look up the chosen key in tags. If missing, fall back to defaultValue. Note: This logic does
-   * not currently support multiple field matches for a single rule.
+   * Resolves the actual tag value for a given logical field, using the provided span tags.
+   *
+   * <p>Steps: 1. Look up the TagConfig for this logical field (e.g. "resource"). 2. Default to
+   * using its defaultKey + defaultValue. 3. If rules are defined: - Iterate through each rule in
+   * reverse order. - If a rule’s field/value condition matches, switch keyToUse to overrideKey. 4.
+   * Finally, look up the chosen key in tags. If missing, fall back to defaultValue.
+   *
+   * <p>Note: This logic does not currently support multiple field matches for a single rule.
+   *
+   * @param tags Map of tags from the span.
+   * @param logicalField the node metadata field to resolve.
+   * @return String the value of the logical metadata field after applying all GraphConfig rules.
    */
   public String resolve(Map<String, String> tags, String logicalField) {
     TagConfig baseCfg = nodeMetadataTagMapping.get(logicalField);
