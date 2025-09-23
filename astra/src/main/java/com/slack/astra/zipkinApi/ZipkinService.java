@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -210,9 +211,11 @@ public class ZipkinService {
     return HttpResponse.of(HttpStatus.OK, MediaType.JSON_UTF_8, output);
   }
 
+  // DD trace id is a long encoded as a string.
+  private static final Pattern DIGITS = Pattern.compile("^\\d+$");
+
   private static boolean isDDTraceId(String s) {
-    // DD trace id is a long encoded as a string.
-    return s.matches("\\d+");
+    return s != null && DIGITS.matcher(s).matches();
   }
 
   @Blocking
