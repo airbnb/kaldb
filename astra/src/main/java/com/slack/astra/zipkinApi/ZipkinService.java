@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -210,6 +211,13 @@ public class ZipkinService {
     return HttpResponse.of(HttpStatus.OK, MediaType.JSON_UTF_8, output);
   }
 
+  // DD trace id is a long encoded as a string.
+  private static final Pattern DIGITS = Pattern.compile("^\\d+$");
+
+  private static boolean isDDTraceId(String s) {
+    return s != null && DIGITS.matcher(s).matches();
+  }
+
   @Blocking
   @Get("/api/v2/trace/{traceId}")
   public HttpResponse getTraceByTraceId(
@@ -218,8 +226,15 @@ public class ZipkinService {
       @Param("endTimeEpochMs") Optional<Long> endTimeEpochMs,
       @Param("maxSpans") Optional<Integer> maxSpans,
       @Header("X-User-Request") Optional<Boolean> userRequest,
+      @Header("X-DD-TRACE-ID") Optional<String> ddTraceId,
       @Header("X-Data-Freshness-In-Seconds") Optional<Long> dataFreshnessInSeconds)
       throws IOException {
+
+    String traceFieldName = "trace_id";
+    // if trace id looks like dd_trace_id, then use dd_trace_id field to search
+    if (ddTraceId.isPresent() && isDDTraceId(traceId)) {
+      traceFieldName = "dd_trace_id";
+    }
 
     // Log the custom header userRequest value if present
     if (userRequest.isPresent()) {
@@ -235,7 +250,7 @@ public class ZipkinService {
       }
     }
     JSONObject traceObject = new JSONObject();
-    traceObject.put("trace_id", traceId);
+    traceObject.put(traceFieldName, traceId);
     JSONObject queryJson = new JSONObject();
     queryJson.put("term", traceObject);
     String queryString = queryJson.toString();
