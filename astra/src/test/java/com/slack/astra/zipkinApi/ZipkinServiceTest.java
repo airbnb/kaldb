@@ -162,6 +162,36 @@ public class ZipkinServiceTest {
   }
 
   @Test
+  public void testGetTraceByTraceId_dd_trace_id() throws Exception {
+    try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
+      // Mocking Tracing and Span
+      Tracer mockTracer = mock(Tracer.class);
+      Span mockSpan = mock(Span.class);
+
+      mockedTracing.when(Tracing::currentTracer).thenReturn(mockTracer);
+      when(mockTracer.currentSpan()).thenReturn(mockSpan);
+
+      String traceId = "4541183944276361430";
+      when(searcher.doSearch(any())).thenReturn(mockSearchResult);
+
+      zipkinService.getTraceByTraceId(
+          traceId,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty());
+
+      verify(searcher)
+          .doSearch(
+              Mockito.argThat(
+                  request ->
+                      request.getHowMany() == defaultMaxSpans
+                          && request.getQuery().contains("\"dd_trace_id\":\"" + traceId + "\"")));
+    }
+  }
+
+  @Test
   public void testGetTraceByTraceId_respectsMaxSpans() throws Exception {
     try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
       // Mocking Tracing and Span

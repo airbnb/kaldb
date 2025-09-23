@@ -210,6 +210,11 @@ public class ZipkinService {
     return HttpResponse.of(HttpStatus.OK, MediaType.JSON_UTF_8, output);
   }
 
+  private static boolean isDDTraceId(String s) {
+    // DD trace id is a long encoded as a string.
+    return s.matches("\\d+");
+  }
+
   @Blocking
   @Get("/api/v2/trace/{traceId}")
   public HttpResponse getTraceByTraceId(
@@ -220,6 +225,12 @@ public class ZipkinService {
       @Header("X-User-Request") Optional<Boolean> userRequest,
       @Header("X-Data-Freshness-In-Seconds") Optional<Long> dataFreshnessInSeconds)
       throws IOException {
+
+    String traceFieldName = "trace_id";
+    // if trace id looks like dd_trace_id, then use dd_trace_id field to search
+    if (isDDTraceId(traceId)) {
+      traceFieldName = "dd_trace_id";
+    }
 
     // Log the custom header userRequest value if present
     if (userRequest.isPresent()) {
@@ -235,7 +246,7 @@ public class ZipkinService {
       }
     }
     JSONObject traceObject = new JSONObject();
-    traceObject.put("trace_id", traceId);
+    traceObject.put(traceFieldName, traceId);
     JSONObject queryJson = new JSONObject();
     queryJson.put("term", traceObject);
     String queryString = queryJson.toString();
