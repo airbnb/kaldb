@@ -120,6 +120,7 @@ public class TraceFetcherTest {
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
+              Optional.empty(),
               Optional.empty());
 
       // Assert
@@ -145,6 +146,70 @@ public class TraceFetcherTest {
 
       traceFetcher.getByTraceId(
           traceId,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty());
+
+      verify(searcher)
+          .doSearch(
+              Mockito.argThat(
+                  request ->
+                      request.getHowMany() == defaultMaxSpans
+                          && request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
+    }
+  }
+
+  @Test
+  public void testGetTraceByTraceId_dd_trace_id() throws Exception {
+    try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
+      // Mocking Tracing and Span
+      Tracer mockTracer = mock(Tracer.class);
+      Span mockSpan = mock(Span.class);
+
+      mockedTracing.when(Tracing::currentTracer).thenReturn(mockTracer);
+      when(mockTracer.currentSpan()).thenReturn(mockSpan);
+
+      String traceId = "4541183944276361430";
+      when(searcher.doSearch(any())).thenReturn(mockSearchResult);
+      String ddTraceIdHeaderVal = "value_does_not_matter";
+
+      traceFetcher.getByTraceId(
+          traceId,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of(ddTraceIdHeaderVal),
+          Optional.empty());
+
+      verify(searcher)
+          .doSearch(
+              Mockito.argThat(
+                  request ->
+                      request.getHowMany() == defaultMaxSpans
+                          && request.getQuery().contains("\"dd_trace_id\":\"" + traceId + "\"")));
+    }
+  }
+
+  @Test
+  public void testGetTraceByTraceId_dd_trace_id_Disabled() throws Exception {
+    try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
+      // Mocking Tracing and Span
+      Tracer mockTracer = mock(Tracer.class);
+      Span mockSpan = mock(Span.class);
+
+      mockedTracing.when(Tracing::currentTracer).thenReturn(mockTracer);
+      when(mockTracer.currentSpan()).thenReturn(mockSpan);
+
+      String traceId = "4541183944276361430";
+      when(searcher.doSearch(any())).thenReturn(mockSearchResult);
+
+      traceFetcher.getByTraceId(
+          traceId,
+          Optional.empty(),
           Optional.empty(),
           Optional.empty(),
           Optional.empty(),
@@ -180,6 +245,7 @@ public class TraceFetcherTest {
           Optional.empty(),
           Optional.of(maxSpansParam),
           Optional.empty(),
+          Optional.empty(),
           Optional.empty());
 
       verify(searcher)
@@ -214,6 +280,7 @@ public class TraceFetcherTest {
               Optional.empty(),
               Optional.empty(),
               Optional.of(userRequest),
+              Optional.empty(),
               Optional.empty());
 
       verify(searcher)
@@ -259,6 +326,7 @@ public class TraceFetcherTest {
               Optional.empty(),
               Optional.empty(),
               Optional.of(userRequest),
+              Optional.empty(),
               Optional.empty());
 
       verify(searcher)
@@ -301,6 +369,7 @@ public class TraceFetcherTest {
               Optional.empty(),
               Optional.empty(),
               Optional.of(userRequest),
+              Optional.empty(),
               Optional.empty());
 
       verify(mockBlobStore).readFileData(eq(traceFilePath), eq(true));
@@ -343,6 +412,7 @@ public class TraceFetcherTest {
               Optional.empty(),
               Optional.empty(),
               Optional.of(userRequest),
+              Optional.empty(),
               Optional.of(dataFreshnessInSeconds));
 
       verify(mockBlobStore).readFileData(traceFilePath, true);
@@ -393,6 +463,7 @@ public class TraceFetcherTest {
               Optional.empty(),
               Optional.empty(),
               Optional.of(userRequest),
+              Optional.empty(),
               Optional.of(dataFreshnessInSeconds));
 
       verify(mockBlobStore).readFileData(traceFilePath, true);

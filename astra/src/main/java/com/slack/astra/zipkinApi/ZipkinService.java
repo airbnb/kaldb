@@ -70,6 +70,7 @@ public class ZipkinService {
       @Param("endTimeEpochMs") Optional<Long> endTimeEpochMs,
       @Param("maxSpans") Optional<Integer> maxSpans,
       @Header("X-User-Request") Optional<Boolean> userRequest,
+      @Header("X-DD-TRACE-ID") Optional<String> ddTraceId,
       @Header("X-Data-Freshness-In-Seconds") Optional<Long> dataFreshnessInSeconds)
       throws IOException {
     String output =
@@ -79,7 +80,9 @@ public class ZipkinService {
             endTimeEpochMs,
             maxSpans,
             userRequest,
+            ddTraceId,
             dataFreshnessInSeconds);
+
     return HttpResponse.of(HttpStatus.OK, MediaType.JSON_UTF_8, output);
   }
 }

@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,14 +81,29 @@ public class TraceFetcher {
           .serializationInclusion(JsonInclude.Include.NON_EMPTY)
           .build();
 
+  // DD trace id is a long encoded as a string.
+  private static final Pattern DIGITS = Pattern.compile("^\\d+$");
+
+  private static boolean isDDTraceId(String s) {
+    return s != null && DIGITS.matcher(s).matches();
+  }
+
   private Result fetchTraceResult(
       String traceId,
       Optional<Long> startTimeEpochMs,
       Optional<Long> endTimeEpochMs,
       Optional<Integer> maxSpans,
       Optional<Boolean> userRequest,
+      Optional<String> ddTraceId,
       Optional<Long> dataFreshnessInSeconds)
       throws IOException {
+
+    String traceFieldName = "trace_id";
+    // if trace id looks like dd_trace_id, then use dd_trace_id field to search
+    if (ddTraceId.isPresent() && isDDTraceId(traceId)) {
+      traceFieldName = "dd_trace_id";
+    }
+
     // Log the custom header userRequest value if present
     if (userRequest.isPresent()) {
       LOG.info("Received custom header X-User-Request: {}", userRequest.get());
@@ -102,7 +118,7 @@ public class TraceFetcher {
     }
 
     JSONObject traceObject = new JSONObject();
-    traceObject.put("trace_id", traceId);
+    traceObject.put(traceFieldName, traceId);
     JSONObject queryJson = new JSONObject();
     queryJson.put("term", traceObject);
     String queryString = queryJson.toString();
@@ -163,6 +179,7 @@ public class TraceFetcher {
       Optional<Long> endTimeEpochMs,
       Optional<Integer> maxSpans,
       Optional<Boolean> userRequest,
+      Optional<String> ddTraceId,
       Optional<Long> dataFreshnessInSeconds)
       throws IOException {
     Result result =
@@ -172,6 +189,7 @@ public class TraceFetcher {
             endTimeEpochMs,
             maxSpans,
             userRequest,
+            ddTraceId,
             dataFreshnessInSeconds);
 
     if (result.isCached()) {
@@ -186,6 +204,7 @@ public class TraceFetcher {
       Optional<Long> endTimeEpochMs,
       Optional<Integer> maxSpans,
       Optional<Boolean> userRequest,
+      Optional<String> ddTraceId,
       Optional<Long> dataFreshnessInSeconds)
       throws IOException {
     Result result =
@@ -195,6 +214,7 @@ public class TraceFetcher {
             endTimeEpochMs,
             maxSpans,
             userRequest,
+            ddTraceId,
             dataFreshnessInSeconds);
 
     if (result.isCached()) {
