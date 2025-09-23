@@ -223,12 +223,13 @@ public class ZipkinService {
       @Param("endTimeEpochMs") Optional<Long> endTimeEpochMs,
       @Param("maxSpans") Optional<Integer> maxSpans,
       @Header("X-User-Request") Optional<Boolean> userRequest,
+      @Header("X-DD-TRACE-ID") Optional<String> ddTraceId,
       @Header("X-Data-Freshness-In-Seconds") Optional<Long> dataFreshnessInSeconds)
       throws IOException {
 
     String traceFieldName = "trace_id";
     // if trace id looks like dd_trace_id, then use dd_trace_id field to search
-    if (isDDTraceId(traceId)) {
+    if (ddTraceId.isPresent() && isDDTraceId(traceId)) {
       traceFieldName = "dd_trace_id";
     }
 
