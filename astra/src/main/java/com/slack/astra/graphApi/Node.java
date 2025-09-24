@@ -16,11 +16,7 @@ public class Node {
   }
 
   public static String generateIdFromMetadata(SortedMap<String, String> map) {
-    StringBuilder sb = new StringBuilder();
-    for (SortedMap.Entry<String, String> entry : map.entrySet()) {
-      sb.append(entry.getKey()).append("=").append(entry.getValue()).append(";");
-    }
-    return Hashing.sha256().hashString(sb.toString(), StandardCharsets.UTF_8).toString();
+    return Hashing.sha256().hashString(map.toString(), StandardCharsets.UTF_8).toString();
   }
 
   public String getId() {
@@ -35,8 +31,7 @@ public class Node {
   public boolean equals(Object o) {
     if (o == this) return true;
     if (!(o instanceof Node that)) return false;
-    return this.id.equals(that.getId())
-        && java.util.Objects.equals(this.metadata, that.getMetadata());
+    return this.id.equals(that.getId());
   }
 
   @Override
