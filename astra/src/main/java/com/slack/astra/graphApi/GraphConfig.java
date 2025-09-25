@@ -5,12 +5,15 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.slack.astra.zipkinApi.ZipkinSpanResponse;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -138,11 +141,35 @@ public final class GraphConfig {
   }
 
   /**
+   * Creates metadata for a child node from a span, using either default behavior or configured
+   * mapping.
+   *
+   * @param span ZipkinSpanResponse containing the span data
+   * @return SortedMap containing the metadata for the child node
+   */
+  public SortedMap<String, String> createMetadataFromSpan(ZipkinSpanResponse span) {
+    SortedMap<String, String> metadata = new TreeMap<>();
+
+    if (this == DEFAULT) {
+      // Default behavior: use service name from remote endpoint
+      metadata.put("service", span.getRemoteEndpoint().getServiceName());
+    } else {
+      // Use configured tag mapping
+      Map<String, String> tags = span.getTags();
+      for (String key : this.nodeMetadataTagMapping.keySet()) {
+        metadata.put(key, resolve(tags, key));
+      }
+    }
+
+    return metadata;
+  }
+
+  /**
    * Resolves the actual tag value for a given logical field, using the provided span tags.
    *
    * <p>Steps: 1. Look up the TagConfig for this logical field (e.g. "resource"). 2. Default to
    * using its defaultKey + defaultValue. 3. If rules are defined: - Iterate through each rule in
-   * reverse order. - If a rule’s field/value condition matches, switch keyToUse to overrideKey. 4.
+   * reverse order. - If a rule's field/value condition matches, switch keyToUse to overrideKey. 4.
    * Finally, look up the chosen key in tags. If missing, fall back to defaultValue.
    *
    * <p>Note: This logic does not currently support multiple field matches for a single rule.
