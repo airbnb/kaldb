@@ -2,11 +2,13 @@ package com.slack.astra.graphApi;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.slack.astra.zipkinApi.ZipkinSpanResponse;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.SortedMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -268,5 +270,48 @@ public class GraphConfigTest {
 
     String result = config.resolve(tags, "app");
     assertThat(result).isEqualTo("my-app");
+  }
+
+  @Test
+  public void testCreateMetadataFromSpan_defaultConfig_usesRemoteEndpointServiceName() {
+    GraphConfig config = GraphConfig.DEFAULT;
+    ZipkinSpanResponse span =
+        TestUtils.createSpanWithTags("span1", "trace1", null, Map.of("some.tag", "some-value"));
+
+    SortedMap<String, String> metadata = config.createMetadataFromSpan(span);
+    assertThat(metadata).hasSize(1);
+    assertThat(metadata.get("service")).isEqualTo("default-service");
+  }
+
+  @Test
+  public void testCreateMetadataFromSpan_customConfig_usesTagMapping() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+      node_metadata_tag_mapping:
+        app:
+          default_key: app.name
+          default_value: unknown_app
+        namespace:
+          default_key: namespace.name
+          default_value: unknown_namespace
+        resource:
+          default_key: resource.name
+          default_value: unknown_resource
+      """);
+
+    Map<String, String> tags =
+        Map.of(
+            "app.name", "my-app",
+            "namespace.name", "my-namespace",
+            "resource.name", "my-resource");
+    ZipkinSpanResponse span = TestUtils.createSpanWithTags("span1", "trace1", null, tags);
+
+    SortedMap<String, String> metadata = config.createMetadataFromSpan(span);
+
+    assertThat(metadata).hasSize(3);
+    assertThat(metadata.get("app")).isEqualTo("my-app");
+    assertThat(metadata.get("namespace")).isEqualTo("my-namespace");
+    assertThat(metadata.get("resource")).isEqualTo("my-resource");
   }
 }
