@@ -1,6 +1,6 @@
 package com.slack.astra.zipkinApi;
 
-import static com.slack.astra.zipkinApi.ZipkinService.TRACE_CACHE_PREFIX;
+import static com.slack.astra.zipkinApi.TraceFetcher.TRACE_CACHE_PREFIX;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -24,9 +24,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.io.Resources;
 import com.google.protobuf.util.JsonFormat;
-import com.linecorp.armeria.common.AggregatedHttpResponse;
-import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.common.HttpStatus;
 import com.slack.astra.blobfs.BlobStore;
 import com.slack.astra.blobfs.S3TestUtils;
 import com.slack.astra.proto.service.AstraSearch;
@@ -48,10 +45,10 @@ import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 
-public class ZipkinServiceTest {
+public class TraceFetcherTest {
   private static final String TEST_S3_BUCKET = "zipkin-service-test";
   @Mock private AstraQueryServiceBase searcher;
-  private ZipkinService zipkinService;
+  private TraceFetcher traceFetcher;
   private AstraSearch.SearchResult mockSearchResult;
   private AstraSearch.SearchResult mockEmptySearchResult;
   private BlobStore mockBlobStore;
@@ -76,9 +73,9 @@ public class ZipkinServiceTest {
         S3TestUtils.createS3CrtClient(S3_MOCK_EXTENSION.getServiceEndpoint());
     BlobStore blobStore = new BlobStore(s3AsyncClient, TEST_S3_BUCKET);
     mockBlobStore = spy(blobStore);
-    zipkinService =
+    traceFetcher =
         spy(
-            new ZipkinService(
+            new TraceFetcher(
                 searcher,
                 mockBlobStore,
                 defaultMaxSpans,
@@ -116,18 +113,20 @@ public class ZipkinServiceTest {
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
 
       // Act
-      HttpResponse response =
-          zipkinService.getTraceByTraceId(
+      String response =
+          traceFetcher.getByTraceId(
               traceId,
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
               Optional.empty());
-      AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
 
       // Assert
-      assertEquals(HttpStatus.OK, aggregatedResponse.status());
+      assertNotNull(response, "Response should not be null");
+      assertTrue(
+          response.contains("1234556789"),
+          "Response should contain the trace ID from search result");
     }
   }
 
@@ -144,7 +143,7 @@ public class ZipkinServiceTest {
       String traceId = "test_trace_2";
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
 
-      zipkinService.getTraceByTraceId(
+      traceFetcher.getByTraceId(
           traceId,
           Optional.empty(),
           Optional.empty(),
@@ -175,7 +174,7 @@ public class ZipkinServiceTest {
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
       int maxSpansParam = 10000;
 
-      zipkinService.getTraceByTraceId(
+      traceFetcher.getByTraceId(
           traceId,
           Optional.empty(),
           Optional.empty(),
@@ -208,8 +207,8 @@ public class ZipkinServiceTest {
 
       boolean userRequest = true;
 
-      HttpResponse response =
-          zipkinService.getTraceByTraceId(
+      String response =
+          traceFetcher.getByTraceId(
               traceId,
               Optional.empty(),
               Optional.empty(),
@@ -227,13 +226,9 @@ public class ZipkinServiceTest {
       verify(mockBlobStore).delete(anyString());
 
       assertNotNull(response, "Response should not be null");
-      response
-          .aggregate()
-          .thenAccept(
-              aggregatedResponse -> {
-                assertEquals(HttpStatus.OK, aggregatedResponse.status());
-                assertEquals(mockSearchResult.toString(), aggregatedResponse.contentUtf8());
-              });
+      assertTrue(
+          response.contains("1234556789"),
+          "Response should contain the trace ID from search result");
 
       String returnData = mockBlobStore.readFileData(traceFilePath, true);
       assertNotNull(returnData, "Decompressed data should not be null");
@@ -257,8 +252,8 @@ public class ZipkinServiceTest {
 
       boolean userRequest = true;
 
-      HttpResponse response =
-          zipkinService.getTraceByTraceId(
+      String response =
+          traceFetcher.getByTraceId(
               traceId,
               Optional.empty(),
               Optional.empty(),
@@ -276,13 +271,7 @@ public class ZipkinServiceTest {
       verify(mockBlobStore, never()).delete(anyString());
 
       assertNotNull(response, "Response should not be null");
-      response
-          .aggregate()
-          .thenAccept(
-              aggregatedResponse -> {
-                assertEquals(HttpStatus.OK, aggregatedResponse.status());
-                assertEquals(mockSearchResult.toString(), aggregatedResponse.contentUtf8());
-              });
+      assertTrue(response.contains("[]"), "Response should be empty array for empty search result");
     }
   }
 
@@ -305,8 +294,8 @@ public class ZipkinServiceTest {
 
       boolean userRequest = true;
 
-      HttpResponse response =
-          zipkinService.getTraceByTraceId(
+      String response =
+          traceFetcher.getByTraceId(
               traceId,
               Optional.empty(),
               Optional.empty(),
@@ -317,13 +306,8 @@ public class ZipkinServiceTest {
       verify(mockBlobStore).readFileData(eq(traceFilePath), eq(true));
       verify(searcher, never()).doSearch(Mockito.any());
       assertNotNull(response, "Response should not be null");
-      response
-          .aggregate()
-          .thenAccept(
-              aggregatedResponse -> {
-                assertEquals(HttpStatus.OK, aggregatedResponse.status());
-                assertEquals(mockSearchResult.toString(), aggregatedResponse.contentUtf8());
-              });
+      assertTrue(
+          response.contains("1234556789"), "Response should contain the trace ID from cached data");
 
       String returnData = mockBlobStore.readFileData(traceFilePath, true);
       assertNotNull(returnData, "Decompressed data should not be null");
@@ -352,8 +336,8 @@ public class ZipkinServiceTest {
 
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
 
-      HttpResponse response =
-          zipkinService.getTraceByTraceId(
+      String response =
+          traceFetcher.getByTraceId(
               traceId,
               Optional.empty(),
               Optional.empty(),
@@ -370,13 +354,9 @@ public class ZipkinServiceTest {
               Mockito.argThat(
                   request -> request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
       assertNotNull(response, "Response should not be null");
-      response
-          .aggregate()
-          .thenAccept(
-              aggregatedResponse -> {
-                assertEquals(HttpStatus.OK, aggregatedResponse.status());
-                assertEquals(mockSearchResult.toString(), aggregatedResponse.contentUtf8());
-              });
+      assertTrue(
+          response.contains("1234556789"),
+          "Response should contain the trace ID from search result");
 
       Path directoryDownloaded = Files.createTempDirectory(traceId);
       mockBlobStore.download(
@@ -406,8 +386,8 @@ public class ZipkinServiceTest {
 
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
 
-      HttpResponse response =
-          zipkinService.getTraceByTraceId(
+      String response =
+          traceFetcher.getByTraceId(
               traceId,
               Optional.empty(),
               Optional.empty(),
@@ -425,13 +405,9 @@ public class ZipkinServiceTest {
       verify(mockBlobStore).copyFile(anyString(), eq(traceFilePath));
       verify(mockBlobStore).delete(anyString());
       assertNotNull(response, "Response should not be null");
-      response
-          .aggregate()
-          .thenAccept(
-              aggregatedResponse -> {
-                assertEquals(HttpStatus.OK, aggregatedResponse.status());
-                assertEquals(mockSearchResult.toString(), aggregatedResponse.contentUtf8());
-              });
+      assertTrue(
+          response.contains("1234556789"),
+          "Response should contain the trace ID from search result");
 
       String returnData = mockBlobStore.readFileData(traceFilePath, true);
 
@@ -445,10 +421,10 @@ public class ZipkinServiceTest {
     String traceId = "test_trace_123";
     String jsonData =
         "[{\"id\":\"101\",\"traceId\":\"test_trace_123\",\"name\":\"test-span\",\"tags\":{\"key1\":\"value1\",\"key2\":\"value2\"}}]";
-    zipkinService.saveDataToBlobStoreCache(traceId, jsonData);
+    traceFetcher.saveDataToBlobStoreCache(traceId, jsonData);
 
     // Act
-    String retrievedData = zipkinService.retrieveDataFromBlobStoreCache(traceId);
+    String retrievedData = traceFetcher.retrieveDataFromBlobStoreCache(traceId);
 
     // Assert
     assertNotNull(retrievedData, "Retrieved data should not be null");
@@ -459,7 +435,7 @@ public class ZipkinServiceTest {
   public void testRetrieveDataFromS3_nullTraceId_throwsException() {
     // Act & Assert
     try {
-      zipkinService.retrieveDataFromBlobStoreCache(null);
+      traceFetcher.retrieveDataFromBlobStoreCache(null);
       fail("Should have thrown an exception");
     } catch (AssertionError e) {
       // Expected - assertion should fail for null traceId
@@ -470,7 +446,7 @@ public class ZipkinServiceTest {
   public void testRetrieveDataFromS3_emptyTraceId_throwsException() {
     // Act & Assert
     try {
-      zipkinService.retrieveDataFromBlobStoreCache("");
+      traceFetcher.retrieveDataFromBlobStoreCache("");
       fail("Should have thrown an exception");
     } catch (AssertionError e) {
       // Expected - assertion should fail for empty traceId
@@ -485,7 +461,7 @@ public class ZipkinServiceTest {
         "[{\"id\":\"101\",\"traceId\":\"test_trace_456\",\"name\":\"test-span\",\"tags\":{\"key1\":\"value1\",\"key2\":\"value2\"}}]";
 
     // Act
-    zipkinService.saveDataToBlobStoreCache(traceId, jsonData);
+    traceFetcher.saveDataToBlobStoreCache(traceId, jsonData);
 
     // Assert
     verify(mockBlobStore).uploadData(anyString(), anyString(), eq(true));
@@ -505,7 +481,7 @@ public class ZipkinServiceTest {
 
     // Act & Assert
     try {
-      zipkinService.saveDataToBlobStoreCache(null, jsonData);
+      traceFetcher.saveDataToBlobStoreCache(null, jsonData);
       assertTrue(false, "Should have thrown an exception");
     } catch (AssertionError e) {
       // Expected - assertion should fail for null traceId
@@ -519,7 +495,7 @@ public class ZipkinServiceTest {
 
     // Act & Assert
     try {
-      zipkinService.saveDataToBlobStoreCache("", jsonData);
+      traceFetcher.saveDataToBlobStoreCache("", jsonData);
       assertTrue(false, "Should have thrown an exception");
     } catch (AssertionError e) {
       // Expected - assertion should fail for empty traceId
@@ -531,7 +507,7 @@ public class ZipkinServiceTest {
 
     // Act & Assert
     try {
-      zipkinService.saveDataToBlobStoreCache("test_trace", null);
+      traceFetcher.saveDataToBlobStoreCache("test_trace", null);
       assertTrue(false, "Should have thrown an exception");
     } catch (AssertionError e) {
       // Expected - assertion should fail for null data
