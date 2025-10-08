@@ -50,6 +50,7 @@ import com.slack.astra.proto.metadata.Metadata;
 import com.slack.astra.proto.schema.Schema;
 import com.slack.astra.recovery.RecoveryService;
 import com.slack.astra.util.RuntimeHalterImpl;
+import com.slack.astra.zipkinApi.TraceFetcher;
 import com.slack.astra.zipkinApi.ZipkinService;
 import io.etcd.jetcd.Client;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -287,18 +288,20 @@ public class Astra {
         LOG.info("No dependency graph config file provided, using empty config");
       }
 
+      TraceFetcher tf =
+          new TraceFetcher(
+              astraDistributedQueryService,
+              blobStore,
+              astraConfig.getQueryConfig().getZipkinDefaultMaxSpans(),
+              astraConfig.getQueryConfig().getZipkinDefaultLookbackMins(),
+              astraConfig.getQueryConfig().getZipkinDefaultDataFreshnessSecs());
+
       ArmeriaService armeriaService =
           new ArmeriaService.Builder(serverPort, "astraQuery", meterRegistry)
               .withRequestTimeout(requestTimeout)
               .withTracing(astraConfig.getTracingConfig())
               .withAnnotatedService(new ElasticsearchApiService(astraDistributedQueryService))
-              .withAnnotatedService(
-                  new ZipkinService(
-                      astraDistributedQueryService,
-                      blobStore,
-                      astraConfig.getQueryConfig().getZipkinDefaultMaxSpans(),
-                      astraConfig.getQueryConfig().getZipkinDefaultLookbackMins(),
-                      astraConfig.getQueryConfig().getZipkinDefaultDataFreshnessSecs()))
+              .withAnnotatedService(new ZipkinService(tf))
               .withAnnotatedService(new GraphService(astraDistributedQueryService, graphConfig))
               .withGrpcService(astraDistributedQueryService)
               .build();
