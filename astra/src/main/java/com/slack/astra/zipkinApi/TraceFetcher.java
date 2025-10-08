@@ -58,15 +58,13 @@ public class TraceFetcher {
     this.defaultDataFreshnessInSeconds = defaultDataFreshnessInSeconds;
   }
 
-  private static record Result(String rawJson, List<ZipkinSpanResponse> {
+  private static record Result(String rawJson, List<ZipkinSpanResponse> spans) {
     Result(String rawJson) {
-      this.rawJson = rawJson;
-      this.spans = null;
+      this(rawJson, null);
     }
 
     Result(List<ZipkinSpanResponse> spans) {
-      this.spans = spans;
-      this.rawJson = null;
+      this(null, spans);
     }
 
     boolean isCached() {
