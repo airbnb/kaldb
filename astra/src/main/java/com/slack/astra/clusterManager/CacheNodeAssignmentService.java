@@ -196,6 +196,7 @@ public class CacheNodeAssignmentService extends AbstractScheduledService {
       List<SnapshotMetadata> unassignedSnapshots =
           getUnassignedSnapshots(snapshotsWithReplicas, assignedSnapshots);
       unassignedSnapshots.sort(Comparator.comparing(a -> a.snapshotId));
+      LOG.info("ZP1: Unassigned snapshots: {}", unassignedSnapshots);
 
       Map<String, CacheNodeBin> newAssignments =
           assign(
@@ -204,6 +205,7 @@ public class CacheNodeAssignmentService extends AbstractScheduledService {
               currentAssignments,
               unassignedSnapshots,
               cacheNodes);
+      LOG.info("ZP2: New assignments: {}", newAssignments);
       int successfulAssignments =
           persistAssignments(
               cacheNodeAssignmentStore,
@@ -352,7 +354,7 @@ public class CacheNodeAssignmentService extends AbstractScheduledService {
 
         if (cacheNodesByLoadingAssignments.containsKey(cacheNodeId)) {
           cacheNodesByLoadingAssignments.compute(
-              cacheNodeId, (key, loadingAssignments) -> loadingAssignments + 1);
+              cacheNodeId, (_, loadingAssignments) -> loadingAssignments + 1);
         } else {
           cacheNodesByLoadingAssignments.put(cacheNodeId, 1);
         }
@@ -390,6 +392,7 @@ public class CacheNodeAssignmentService extends AbstractScheduledService {
       cacheNodeBins.put(
           cacheNodeMetadata.id, new CacheNodeBin(cacheNodeMetadata.nodeCapacityBytes));
     }
+    LOG.info("ZP1.1: Initial bins from existing cache nodes: {}", cacheNodeBins);
 
     // Add existing assignments to bins
     for (CacheNodeAssignment assignment : currentAssignments) {
@@ -403,10 +406,15 @@ public class CacheNodeAssignmentService extends AbstractScheduledService {
       }
     }
 
+    LOG.info("ZP1.2: bins from existing assignments: {}", cacheNodeBins);
+
+    // sort in ascending order of remaining capacity
     List<CacheNodeBin> bins =
         cacheNodeBins.values().stream()
             .sorted(Comparator.comparingLong(CacheNodeBin::getRemainingCapacityBytes))
             .toList();
+
+    LOG.info("ZP1.3: bins after sorting: {}", cacheNodeBins);
 
     // do first-fit packing for remaining snapshots
     for (SnapshotMetadata snapshot : snapshotsToAssign) {
@@ -572,5 +580,10 @@ class CacheNodeBin {
   public void addSnapshot(SnapshotMetadata snapshot) {
     this.snapshots.add(snapshot);
     subtractFromSize(snapshot.sizeInBytesOnDisk);
+  }
+
+  @Override
+  public String toString() {
+    return String.format("CacheNodeBin{remainingCapacityBytes=%d}", remainingCapacityBytes);
   }
 }
