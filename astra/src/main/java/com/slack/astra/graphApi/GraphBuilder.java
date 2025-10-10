@@ -31,7 +31,7 @@ public class GraphBuilder {
    * @param config The GraphConfig to use for node metadata extraction. If GraphConfig.DEFAULT, uses
    *     service name from a span's remote endpoint.
    */
-  GraphBuilder(GraphConfig config) {
+  public GraphBuilder(GraphConfig config) {
     this.config = config;
   }
 
