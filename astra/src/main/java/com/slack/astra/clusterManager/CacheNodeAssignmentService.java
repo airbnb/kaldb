@@ -556,7 +556,7 @@ class CacheNodeBin {
   private final long totalCapacityBytes;
 
   public CacheNodeBin(long totalCapacityBytes) {
-    this.remainingCapacityBytes = totalCapacityBytes;
+    this.remainingCapacityBytes = (long) (0.9 * totalCapacityBytes); // use 90% of capacity
     this.snapshots = new ArrayList<>();
     this.totalCapacityBytes = totalCapacityBytes;
   }
