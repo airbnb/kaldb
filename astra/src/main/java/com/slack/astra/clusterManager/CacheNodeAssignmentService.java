@@ -399,7 +399,7 @@ public class CacheNodeAssignmentService extends AbstractScheduledService {
       if (cacheNodeBins.containsKey(assignment.cacheNodeId)) {
         CacheNodeBin bin = cacheNodeBins.get(assignment.cacheNodeId);
         bin.subtractFromSize(
-            snapshotMetadataStore.findSync(assignment.snapshotId).sizeInBytesOnDisk);
+            (long) (snapshotMetadataStore.findSync(assignment.snapshotId).sizeInBytesOnDisk * 1.1));
       } else {
         // delete this assignment since its cache node is no longer around
         cacheNodeAssignmentStore.deleteSync(assignment);
@@ -420,7 +420,7 @@ public class CacheNodeAssignmentService extends AbstractScheduledService {
     for (SnapshotMetadata snapshot : snapshotsToAssign) {
       boolean assigned = false;
       for (CacheNodeBin cacheNodeBin : bins) {
-        if (snapshot.sizeInBytesOnDisk <= cacheNodeBin.getRemainingCapacityBytes()) {
+        if (snapshot.sizeInBytesOnDisk * 1.1 <= cacheNodeBin.getRemainingCapacityBytes()) {
           cacheNodeBin.addSnapshot(snapshot);
           assigned = true;
           break;
@@ -556,7 +556,7 @@ class CacheNodeBin {
   private final long totalCapacityBytes;
 
   public CacheNodeBin(long totalCapacityBytes) {
-    this.remainingCapacityBytes = (long) (0.9 * totalCapacityBytes); // use 90% of capacity
+    this.remainingCapacityBytes = totalCapacityBytes;
     this.snapshots = new ArrayList<>();
     this.totalCapacityBytes = totalCapacityBytes;
   }
@@ -579,7 +579,7 @@ class CacheNodeBin {
 
   public void addSnapshot(SnapshotMetadata snapshot) {
     this.snapshots.add(snapshot);
-    subtractFromSize(snapshot.sizeInBytesOnDisk);
+    subtractFromSize((long) (snapshot.sizeInBytesOnDisk * 1.1));
   }
 
   @Override
