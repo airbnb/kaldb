@@ -52,8 +52,8 @@ public class GraphBuilder {
             .filter(span -> span.getId() != null)
             .collect(Collectors.toMap(ZipkinSpanResponse::getId, this::createChildNodeFromSpan));
 
-    // Second pass: build mapping between parentNodeId -> list of childNodeIds
-    Map<String, List<String>> parentNodeIdToChildNodeIds =
+    // Second pass: build unique edges
+    Set<Edge> edges =
         spans.stream()
             .filter(span -> span.getId() != null && span.getParentId() != null)
             .map(
@@ -61,13 +61,11 @@ public class GraphBuilder {
                   Node parentNode = spanIdToNode.get(span.getParentId());
                   Node childNode = spanIdToNode.get(span.getId());
 
-                  /*
-                  Currently, we're dropping edges where the parent or child is missing. There might be cases where we
-                  want to retain one-sided edges for diagnostic purposes or attach warnings/errors to the graph itself,
-                  in which case this logic will need updating.
-                  */
                   if (parentNode != null && childNode != null) {
-                    return Map.entry(parentNode.getId(), childNode.getId());
+                    return new Edge(
+                        parentNode.getId(),
+                        childNode.getId(),
+                        config.createMetadataFromSpan(span, GraphConfig.EntityType.EDGE));
                   } else {
                     LOG.warn(
                         "Missing parent or child node for parentSpanId={} and childSpanId={}",
@@ -77,13 +75,8 @@ public class GraphBuilder {
                   }
                 })
             .filter(Objects::nonNull)
-            .collect(
-                Collectors.groupingBy(
-                    Map.Entry::getKey,
-                    Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
+            .collect(Collectors.toSet());
 
-    // Create edges from parent-child relationships
-    Set<Edge> edges = buildEdges(parentNodeIdToChildNodeIds);
     // Dedupe nodes
     Set<Node> nodes = new HashSet<>(spanIdToNode.values());
 
@@ -98,23 +91,6 @@ public class GraphBuilder {
    * @return Node with metadata extracted from the span
    */
   private Node createChildNodeFromSpan(ZipkinSpanResponse span) {
-    return new Node(config.createMetadataFromSpan(span));
-  }
-
-  /**
-   * Builds edges representing parent-child relationships between nodes.
-   *
-   * <p>Creates edges by connecting parent nodes to their child nodes, establishing the dependency
-   * relationships in the service graph.
-   *
-   * @param parentNodeIdToChildNodeIds parentNodeIds and their list of childNodeIds
-   * @return Set of edges representing service dependencies
-   */
-  private Set<Edge> buildEdges(Map<String, List<String>> parentNodeIdToChildNodeIds) {
-    return parentNodeIdToChildNodeIds.entrySet().stream()
-        .flatMap(
-            entry ->
-                entry.getValue().stream().map(childNodeId -> new Edge(entry.getKey(), childNodeId)))
-        .collect(Collectors.toSet());
+    return new Node(config.createMetadataFromSpan(span, GraphConfig.EntityType.NODE));
   }
 }
