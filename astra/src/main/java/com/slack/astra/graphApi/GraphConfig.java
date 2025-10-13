@@ -183,10 +183,11 @@ public final class GraphConfig {
       Map<String, String> tags = span.getTags();
 
       // Use configured tag mapping
-      Set<String> keys = this.nodeMetadataTagMapping.keySet();
-      if (entityType == EntityType.EDGE) {
-        keys = this.edgeMetadataTagMapping.keySet();
-      }
+      Set<String> keys =
+          switch (entityType) {
+            case EDGE -> this.edgeMetadataTagMapping.keySet();
+            case NODE -> this.nodeMetadataTagMapping.keySet();
+          };
 
       for (String key : keys) {
         metadata.put(key, resolve(tags, key, entityType));
@@ -211,10 +212,11 @@ public final class GraphConfig {
    * @return String the value of the logical metadata field after applying all GraphConfig rules.
    */
   public String resolve(Map<String, String> tags, String logicalField, EntityType entityType) {
-    TagConfig baseCfg = nodeMetadataTagMapping.get(logicalField);
-    if (entityType == EntityType.EDGE) {
-      baseCfg = edgeMetadataTagMapping.get(logicalField);
-    }
+    TagConfig baseCfg =
+        switch (entityType) {
+          case EDGE -> this.edgeMetadataTagMapping.get(logicalField);
+          case NODE -> this.nodeMetadataTagMapping.get(logicalField);
+        };
 
     // If the config doesn't define this logical field, just return from raw tags or fallback.
     if (baseCfg == null) {
