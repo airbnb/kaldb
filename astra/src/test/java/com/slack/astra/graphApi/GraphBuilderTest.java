@@ -59,7 +59,7 @@ public class GraphBuilderTest {
                     "app1",
                     "kube.namespace",
                     "ns1",
-                    "kube.operation",
+                    "operation_name",
                     "op1",
                     "resource",
                     "res1")));
@@ -70,17 +70,16 @@ public class GraphBuilderTest {
     Node node = graph.nodes().getFirst();
 
     // Verify the node ID matches the expected hash
-    SortedMap<String, String> expectedMetadata =
+    SortedMap<String, String> expectedNodeMetadata =
         new TreeMap<>(
             Map.of(
                 "app", "app1",
                 "namespace", "ns1",
-                "operation", "op1",
                 "resource", "res1"));
-    String expectedId = Node.generateIdFromMetadata(expectedMetadata);
+    String expectedId = Node.generateIdFromMetadata(expectedNodeMetadata);
 
     assertThat(node.getId()).isEqualTo(expectedId);
-    assertThat(node.getMetadata()).isEqualTo(expectedMetadata);
+    assertThat(node.getMetadata()).isEqualTo(expectedNodeMetadata);
 
     assertThat(graph.edges()).isEmpty();
   }
@@ -96,7 +95,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app1",
                     "kube.namespace", "ns1",
-                    "kube.operation", "op1",
+                    "operation_name", "op1",
                     "resource", "res1")),
             TestUtils.createSpanWithTags(
                 "child1",
@@ -105,7 +104,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app2",
                     "kube.namespace", "ns2",
-                    "kube.operation", "op2",
+                    "operation_name", "op2",
                     "resource", "res2")));
 
     Graph graph = configuredGraphBuilder.buildFromSpans(spans);
@@ -119,7 +118,6 @@ public class GraphBuilderTest {
             Map.of(
                 "app", "app1",
                 "namespace", "ns1",
-                "operation", "op1",
                 "resource", "res1"));
     String expectedParentId = Node.generateIdFromMetadata(parentMetadata);
 
@@ -128,12 +126,14 @@ public class GraphBuilderTest {
             Map.of(
                 "app", "app2",
                 "namespace", "ns2",
-                "operation", "op2",
                 "resource", "res2"));
+
+    SortedMap<String, String> edgeMetadata = new TreeMap<>(Map.of("operation", "op2"));
     String expectedChildId = Node.generateIdFromMetadata(childMetadata);
     Edge edge = graph.edges().iterator().next();
     assertThat(edge.sourceNodeId()).isEqualTo(expectedParentId);
     assertThat(edge.targetNodeId()).isEqualTo(expectedChildId);
+    assertThat(edge.metadata()).isEqualTo(edgeMetadata);
   }
 
   @Test
@@ -147,7 +147,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app1",
                     "kube.namespace", "ns1",
-                    "kube.operation", "http.request",
+                    "operation_name", "http.request",
                     "resource", "original_resource",
                     "tag.operation.canonical_path", "/api/users")));
 
@@ -169,7 +169,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app1",
                     "kube.namespace", "ns1",
-                    "kube.operation", "http.request",
+                    "operation_name", "http.request",
                     "resource", "original_resource")));
 
     Graph graph = configuredGraphBuilder.buildFromSpans(spans);
@@ -194,7 +194,6 @@ public class GraphBuilderTest {
             Map.of(
                 "app", "unknown_app",
                 "namespace", "unknown_namespace",
-                "operation", "unknown_operation",
                 "resource", "unknown_resource"));
     String expectedId = Node.generateIdFromMetadata(expectedMetadata);
 
@@ -214,7 +213,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app1",
                     "kube.namespace", "ns1",
-                    "kube.operation", "op1",
+                    "operation_name", "op1",
                     "resource", "res1")),
             // invalid span
             TestUtils.createSpanWithTags(
@@ -224,7 +223,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app2",
                     "kube.namespace", "ns2",
-                    "kube.operation", "op2",
+                    "operation_name", "op2",
                     "resource", "res2")));
 
     Graph graph = configuredGraphBuilder.buildFromSpans(spans);
@@ -245,7 +244,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app1",
                     "kube.namespace", "ns1",
-                    "kube.operation", "op1",
+                    "operation_name", "op1",
                     "resource", "res1")));
 
     Graph graph = configuredGraphBuilder.buildFromSpans(spans);
@@ -266,7 +265,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app1",
                     "kube.namespace", "ns1",
-                    "kube.operation", "op1",
+                    "operation_name", "op1",
                     "resource", "res1")),
             TestUtils.createSpanWithTags(
                 "span2",
@@ -275,7 +274,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app1",
                     "kube.namespace", "ns1",
-                    "kube.operation", "op1",
+                    "operation_name", "op1",
                     "resource", "res1")));
 
     Graph graph = configuredGraphBuilder.buildFromSpans(spans);
@@ -296,7 +295,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app1",
                     "kube.namespace", "ns1",
-                    "kube.operation", "op1",
+                    "operation_name", "op1",
                     "resource", "res1")),
             TestUtils.createSpanWithTags(
                 "child1",
@@ -305,7 +304,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app2",
                     "kube.namespace", "ns2",
-                    "kube.operation", "op2",
+                    "operation_name", "op2",
                     "resource", "res2")),
             TestUtils.createSpanWithTags(
                 "child2",
@@ -314,7 +313,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app3",
                     "kube.namespace", "ns3",
-                    "kube.operation", "op3",
+                    "operation_name", "op3",
                     "resource", "res3")));
 
     Graph graph = configuredGraphBuilder.buildFromSpans(spans);
@@ -327,7 +326,6 @@ public class GraphBuilderTest {
             Map.of(
                 "app", "app1",
                 "namespace", "ns1",
-                "operation", "op1",
                 "resource", "res1"));
     String expectedParentId = Node.generateIdFromMetadata(parentMetadata);
 
@@ -336,7 +334,6 @@ public class GraphBuilderTest {
             Map.of(
                 "app", "app2",
                 "namespace", "ns2",
-                "operation", "op2",
                 "resource", "res2"));
     String expectedChild1Id = Node.generateIdFromMetadata(child1Metadata);
 
@@ -345,7 +342,6 @@ public class GraphBuilderTest {
             Map.of(
                 "app", "app3",
                 "namespace", "ns3",
-                "operation", "op3",
                 "resource", "res3"));
     String expectedChild2Id = Node.generateIdFromMetadata(child2Metadata);
 
@@ -353,6 +349,10 @@ public class GraphBuilderTest {
     List<Edge> edges = graph.edges();
     assertThat(edges.stream().allMatch(edge -> edge.sourceNodeId().equals(expectedParentId)))
         .isTrue();
+
+    // metadata of the edges
+    assertThat(edges.get(0).metadata()).isEqualTo(new TreeMap<>(Map.of("operation", "op2")));
+    assertThat(edges.get(1).metadata()).isEqualTo(new TreeMap<>(Map.of("operation", "op3")));
 
     // verify different children
     List<String> childIds = List.of(edges.stream().map(Edge::targetNodeId).toArray(String[]::new));
@@ -370,7 +370,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app1",
                     "kube.namespace", "ns1",
-                    "kube.operation", "op1",
+                    "operation_name", "op1",
                     "resource", "res1")),
             // two different child spans that reference the same parent
             TestUtils.createSpanWithTags(
@@ -380,7 +380,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app2",
                     "kube.namespace", "ns2",
-                    "kube.operation", "op2",
+                    "operation_name", "op2",
                     "resource", "res2")),
             // second span with same child node ID but different span ID - should create deduplicate
             // edge
@@ -391,7 +391,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app2",
                     "kube.namespace", "ns2",
-                    "kube.operation", "op2",
+                    "operation_name", "op2",
                     "resource", "res2")));
 
     Graph graph = configuredGraphBuilder.buildFromSpans(spans);
@@ -401,13 +401,14 @@ public class GraphBuilderTest {
 
     // should have only 1 edge despite multiple spans creating the same parent-child relationship
     assertThat(graph.edges()).hasSize(1);
+    assertThat(graph.edges().get(0).metadata())
+        .isEqualTo(new TreeMap<>(Map.of("operation", "op2")));
 
     SortedMap<String, String> parentMetadata =
         new TreeMap<>(
             Map.of(
                 "app", "app1",
                 "namespace", "ns1",
-                "operation", "op1",
                 "resource", "res1"));
     String expectedParentId = Node.generateIdFromMetadata(parentMetadata);
 
@@ -416,7 +417,6 @@ public class GraphBuilderTest {
             Map.of(
                 "app", "app2",
                 "namespace", "ns2",
-                "operation", "op2",
                 "resource", "res2"));
     String expectedChildId = Node.generateIdFromMetadata(childMetadata);
 
@@ -437,7 +437,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "root_app",
                     "kube.namespace", "root_ns",
-                    "kube.operation", "root_op",
+                    "operation_name", "root_op",
                     "resource", "root_res")),
             // first level children
             TestUtils.createSpanWithTags(
@@ -447,7 +447,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "child1_app",
                     "kube.namespace", "child1_ns",
-                    "kube.operation", "child1_op",
+                    "operation_name", "child1_op",
                     "resource", "child1_res")),
             TestUtils.createSpanWithTags(
                 "child2",
@@ -456,7 +456,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "child2_app",
                     "kube.namespace", "child2_ns",
-                    "kube.operation", "child2_op",
+                    "operation_name", "child2_op",
                     "resource", "child2_res")),
             // second level child
             TestUtils.createSpanWithTags(
@@ -468,7 +468,7 @@ public class GraphBuilderTest {
                     "gc_app",
                     "kube.namespace",
                     "gc_ns",
-                    "kube.operation",
+                    "operation_name",
                     "gc_op",
                     "resource",
                     "gc_res")));
@@ -483,7 +483,6 @@ public class GraphBuilderTest {
             Map.of(
                 "app", "root_app",
                 "namespace", "root_ns",
-                "operation", "root_op",
                 "resource", "root_res"));
     String expectedRootId = Node.generateIdFromMetadata(rootMetadata);
 
@@ -492,7 +491,6 @@ public class GraphBuilderTest {
             Map.of(
                 "app", "child1_app",
                 "namespace", "child1_ns",
-                "operation", "child1_op",
                 "resource", "child1_res"));
     String expectedChild1Id = Node.generateIdFromMetadata(child1Metadata);
 
@@ -501,7 +499,6 @@ public class GraphBuilderTest {
             Map.of(
                 "app", "child2_app",
                 "namespace", "child2_ns",
-                "operation", "child2_op",
                 "resource", "child2_res"));
     String expectedChild2Id = Node.generateIdFromMetadata(child2Metadata);
 
@@ -510,32 +507,31 @@ public class GraphBuilderTest {
             Map.of(
                 "app", "gc_app",
                 "namespace", "gc_ns",
-                "operation", "gc_op",
                 "resource", "gc_res"));
     String expectedGrandchildId = Node.generateIdFromMetadata(grandchildMetadata);
 
     List<Edge> edges = graph.edges();
 
-    // root -> child1
     assertThat(edges)
         .anyMatch(
             edge ->
                 edge.sourceNodeId().equals(expectedRootId)
-                    && edge.targetNodeId().equals(expectedChild1Id));
+                    && edge.targetNodeId().equals(expectedChild1Id)
+                    && edge.metadata().equals(new TreeMap<>(Map.of("operation", "child1_op"))));
 
-    // root -> child2
     assertThat(edges)
         .anyMatch(
             edge ->
                 edge.sourceNodeId().equals(expectedRootId)
-                    && edge.targetNodeId().equals(expectedChild2Id));
+                    && edge.targetNodeId().equals(expectedChild2Id)
+                    && edge.metadata().equals(new TreeMap<>(Map.of("operation", "child2_op"))));
 
-    // child1 -> grandchild
     assertThat(edges)
         .anyMatch(
             edge ->
                 edge.sourceNodeId().equals(expectedChild1Id)
-                    && edge.targetNodeId().equals(expectedGrandchildId));
+                    && edge.targetNodeId().equals(expectedGrandchildId)
+                    && edge.metadata().equals(new TreeMap<>(Map.of("operation", "gc_op"))));
   }
 
   @Test

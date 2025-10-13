@@ -17,21 +17,29 @@ public class GraphConfigTest {
   public void testLoadValidYamlConfig(@TempDir Path tempDir) throws IOException {
     String yamlContent =
         """
-        node_metadata_tag_mapping:
-          service:
-            default_key: service.name
-            default_value: unknown_service
-            rules:
-              - field: cluster.name
-                value: prod
-                override_key: prod.service.name
-              - field: cluster.name
-                value: staging
-                override_key: test.service.name
-          cluster:
-            default_key: cluster.name
-            default_value: unknown_cluster
-        """;
+              node_metadata_tag_mapping:
+                service:
+                  default_key: service.name
+                  default_value: unknown_service
+                  rules:
+                    - field: cluster.name
+                      value: prod
+                      override_key: prod.service.name
+                    - field: cluster.name
+                      value: staging
+                      override_key: test.service.name
+                cluster:
+                  default_key: cluster.name
+                  default_value: unknown_cluster
+              edge_metadata_tag_mapping:
+                operation:
+                  default_key: operation_name
+                  default_value: unknown_operation
+                  rules:
+                    - field: cluster.name
+                      value: prod
+                      override_key: operation.prod
+              """;
 
     Path configFile = tempDir.resolve("test-config.yaml");
     Files.writeString(configFile, yamlContent);
@@ -40,6 +48,7 @@ public class GraphConfigTest {
 
     assertThat(config).isNotNull();
     assertThat(config.getNodeMetadataTagMapping()).hasSize(2);
+    assertThat(config.getEdgeMetadataTagMapping()).hasSize(1);
 
     GraphConfig.TagConfig serviceConfig = config.getNodeMetadataTagMapping().get("service");
     assertThat(serviceConfig.getDefaultKey()).isEqualTo("service.name");
@@ -60,6 +69,12 @@ public class GraphConfigTest {
     assertThat(clusterConfig.getDefaultKey()).isEqualTo("cluster.name");
     assertThat(clusterConfig.getDefaultValue()).isEqualTo("unknown_cluster");
     assertThat(clusterConfig.getRules()).hasSize(0);
+
+    GraphConfig.TagConfig connectionTypeConfig =
+        config.getEdgeMetadataTagMapping().get("operation");
+    assertThat(connectionTypeConfig.getDefaultKey()).isEqualTo("operation_name");
+    assertThat(connectionTypeConfig.getDefaultValue()).isEqualTo("unknown_operation");
+    assertThat(connectionTypeConfig.getRules()).hasSize(1);
   }
 
   @Test
@@ -101,11 +116,20 @@ public class GraphConfigTest {
                namespace:
                  default_key: namespace.name
                  default_value: unknown_namespace
+             edge_metadata_tag_mapping:
+               operation:
+                 default_key: operation_name
+                 default_value: unknown_operation
              """);
     Map<String, String> tags = new HashMap<>();
 
-    String result = config.resolve(tags, "app");
+    // Node
+    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
     assertThat(result).isEqualTo("unknown_app");
+
+    // Edge
+    result = config.resolve(tags, "operation", GraphConfig.EntityType.EDGE);
+    assertThat(result).isEqualTo("unknown_operation");
   }
 
   @Test
@@ -120,10 +144,19 @@ public class GraphConfigTest {
                 namespace:
                   default_key: namespace.name
                   default_value: unknown_namespace
+              edge_metadata_tag_mapping:
+               operation:
+                 default_key: operation_name
+                 default_value: unknown_operation
               """);
     Map<String, String> tags = Map.of("some.tag", "some-value");
 
-    String result = config.resolve(tags, "some_field");
+    // Node
+    String result = config.resolve(tags, "some_field", GraphConfig.EntityType.NODE);
+    assertThat(result).isEqualTo("unknown_some_field");
+
+    // Edge
+    result = config.resolve(tags, "some_field", GraphConfig.EntityType.EDGE);
     assertThat(result).isEqualTo("unknown_some_field");
   }
 
@@ -146,13 +179,33 @@ public class GraphConfigTest {
                 namespace:
                   default_key: namespace.name
                   default_value: unknown_namespace
+              edge_metadata_tag_mapping:
+                operation:
+                  default_key: operation_name
+                  default_value: unknown_operation
+                  rules:
+                    - field: namespace.name
+                      value: prod-ns
+                      override_key: operation.prod
               """);
     Map<String, String> tags =
         Map.of(
-            "app.name", "my-app", "namespace.name", "prod-ns", "prod.app.name", "my-app-in-prod");
+            "app.name",
+            "my-app",
+            "namespace.name",
+            "prod-ns",
+            "prod.app.name",
+            "my-app-in-prod",
+            "operation.prod",
+            "prod_operation");
 
-    String result = config.resolve(tags, "app");
+    // Node
+    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
     assertThat(result).isEqualTo("my-app-in-prod");
+
+    // Edge
+    result = config.resolve(tags, "operation", GraphConfig.EntityType.EDGE);
+    assertThat(result).isEqualTo("prod_operation");
   }
 
   @Test
@@ -174,11 +227,26 @@ public class GraphConfigTest {
                 namespace:
                   default_key: namespace.name
                   default_value: unknown_namespace
+              edge_metadata_tag_mapping:
+                operation:
+                  default_key: operation_name
+                  default_value: unknown_operation
+                  rules:
+                    - field: namespace.name
+                      value: prod-ns
+                      override_key: operation.prod
               """);
-    Map<String, String> tags = Map.of("app.name", "my-app", "namespace.name", "prod-ns");
+    Map<String, String> tags =
+        Map.of(
+            "app.name", "my-app", "namespace.name", "prod-ns", "operation_name", "some_operation");
 
-    String result = config.resolve(tags, "app");
+    // Node
+    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
     assertThat(result).isEqualTo("my-app");
+
+    // Edge
+    result = config.resolve(tags, "operation", GraphConfig.EntityType.EDGE);
+    assertThat(result).isEqualTo("some_operation");
   }
 
   @Test
@@ -200,14 +268,26 @@ public class GraphConfigTest {
                 namespace:
                   default_key: namespace.name
                   default_value: unknown_namespace
+              edge_metadata_tag_mapping:
+                operation:
+                  default_key: operation_name
+                  default_value: unknown_operation
+                  rules:
+                    - field: namespace.name
+                      value: prod-ns
+                      override_key: operation.prod
               """);
     Map<String, String> tags =
         Map.of(
-            "app.name", "my-app",
-            "namespace.name", "dev-ns");
+            "app.name", "my-app", "namespace.name", "dev-ns", "operation_name", "some_operation");
 
-    String result = config.resolve(tags, "app");
+    // Node
+    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
     assertThat(result).isEqualTo("my-app");
+
+    // Edge
+    result = config.resolve(tags, "operation", GraphConfig.EntityType.EDGE);
+    assertThat(result).isEqualTo("some_operation");
   }
 
   @Test
@@ -229,17 +309,44 @@ public class GraphConfigTest {
                 namespace:
                   default_key: namespace.name
                   default_value: unknown_namespace
+              edge_metadata_tag_mapping:
+                operation:
+                  default_key: operation_name
+                  default_value: unknown_operation
+                  rules:
+                    - field: namespace.name
+                      value: prod-ns
+                      override_key: operation.prod
+                    - field: cluster.name
+                      value: east
+                      override_key: operation.east
               """);
     Map<String, String> tags =
         Map.of(
-            "app.name", "my-app",
-            "namespace.name", "prod-ns",
-            "cluster.name", "east",
-            "prod.app.name", "my-app-in-prod",
-            "east.app.name", "my-app-east");
+            "app.name",
+            "my-app",
+            "namespace.name",
+            "prod-ns",
+            "cluster.name",
+            "east",
+            "prod.app.name",
+            "my-app-in-prod",
+            "east.app.name",
+            "my-app-east",
+            "operation_name",
+            "some_operation",
+            "operation.prod",
+            "operation_prod",
+            "operation.east",
+            "operation_east");
 
-    String result = config.resolve(tags, "app");
+    // Node
+    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
     assertThat(result).isEqualTo("my-app-east");
+
+    // Edge
+    result = config.resolve(tags, "operation", GraphConfig.EntityType.EDGE);
+    assertThat(result).isEqualTo("operation_east");
   }
 
   @Test
@@ -261,30 +368,54 @@ public class GraphConfigTest {
                 namespace:
                   default_key: namespace.name
                   default_value: unknown_namespace
+              edge_metadata_tag_mapping:
+                operation:
+                  default_key: operation_name
+                  default_value: unknown_operation
+                  rules:
+                    - field: namespace.name
+                      value: prod-ns
+                      override_key: operation.prod
+                    - field: cluster.name
+                      value: east
+                      override_key: operation_east
               """);
     Map<String, String> tags =
         Map.of(
-            "app.name", "my-app",
-            "namespace.name", "dev-ns",
-            "cluster.name", "west");
+            "app.name",
+            "my-app",
+            "namespace.name",
+            "dev-ns",
+            "cluster.name",
+            "west",
+            "operation_name",
+            "some_operation",
+            "operation.prod",
+            "operation_prod");
 
-    String result = config.resolve(tags, "app");
+    // Node
+    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
     assertThat(result).isEqualTo("my-app");
+
+    // Edge
+    result = config.resolve(tags, "operation", GraphConfig.EntityType.EDGE);
+    assertThat(result).isEqualTo("some_operation");
   }
 
   @Test
-  public void testCreateMetadataFromSpan_defaultConfig_usesRemoteEndpointServiceName() {
+  public void testCreateNodeMetadataFromSpan_defaultConfig_usesRemoteEndpointServiceName() {
     GraphConfig config = GraphConfig.DEFAULT;
     ZipkinSpanResponse span =
         TestUtils.createSpanWithTags("span1", "trace1", null, Map.of("some.tag", "some-value"));
 
-    SortedMap<String, String> metadata = config.createMetadataFromSpan(span);
+    SortedMap<String, String> metadata =
+        config.createMetadataFromSpan(span, GraphConfig.EntityType.NODE);
     assertThat(metadata).hasSize(1);
     assertThat(metadata.get("service")).isEqualTo("default-service");
   }
 
   @Test
-  public void testCreateMetadataFromSpan_customConfig_usesTagMapping() throws IOException {
+  public void testCreatNodeMetadataFromSpan_customConfig_usesTagMapping() throws IOException {
     GraphConfig config =
         GraphConfig.load(
             """
@@ -307,11 +438,44 @@ public class GraphConfigTest {
             "resource.name", "my-resource");
     ZipkinSpanResponse span = TestUtils.createSpanWithTags("span1", "trace1", null, tags);
 
-    SortedMap<String, String> metadata = config.createMetadataFromSpan(span);
+    SortedMap<String, String> metadata =
+        config.createMetadataFromSpan(span, GraphConfig.EntityType.NODE);
 
     assertThat(metadata).hasSize(3);
     assertThat(metadata.get("app")).isEqualTo("my-app");
     assertThat(metadata.get("namespace")).isEqualTo("my-namespace");
     assertThat(metadata.get("resource")).isEqualTo("my-resource");
+  }
+
+  @Test
+  public void testCreateEdgeMetadataFromSpan_defaultConfig_isEmpty() {
+    GraphConfig config = GraphConfig.DEFAULT;
+    ZipkinSpanResponse span =
+        TestUtils.createSpanWithTags("span1", "trace1", null, Map.of("some.tag", "some-value"));
+
+    SortedMap<String, String> metadata =
+        config.createMetadataFromSpan(span, GraphConfig.EntityType.EDGE);
+    assertThat(metadata).isEmpty();
+  }
+
+  @Test
+  public void testCreatEdgeMetadataFromSpan_customConfig_usesTagMapping() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+                  edge_metadata_tag_mapping:
+                    operation:
+                      default_key: operation_name
+                      default_value: unknown_operation
+                  """);
+
+    Map<String, String> tags = Map.of("operation_name", "some_operation");
+    ZipkinSpanResponse span = TestUtils.createSpanWithTags("span1", "trace1", null, tags);
+
+    SortedMap<String, String> metadata =
+        config.createMetadataFromSpan(span, GraphConfig.EntityType.EDGE);
+
+    assertThat(metadata).hasSize(1);
+    assertThat(metadata.get("operation")).isEqualTo("some_operation");
   }
 }
