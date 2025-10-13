@@ -95,7 +95,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app1",
                     "kube.namespace", "ns1",
-                    "kube.operation", "op1",
+                    "operation_name", "op1",
                     "resource", "res1")),
             TestUtils.createSpanWithTags(
                 "child1",
@@ -104,7 +104,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app2",
                     "kube.namespace", "ns2",
-                    "kube.operation", "op2",
+                    "operation_name", "op2",
                     "resource", "res2")));
 
     Graph graph = configuredGraphBuilder.buildFromSpans(spans);
@@ -147,7 +147,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app1",
                     "kube.namespace", "ns1",
-                    "kube.operation", "http.request",
+                    "operation_name", "http.request",
                     "resource", "original_resource",
                     "tag.operation.canonical_path", "/api/users")));
 
@@ -169,7 +169,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app1",
                     "kube.namespace", "ns1",
-                    "kube.operation", "http.request",
+                    "operation_name", "http.request",
                     "resource", "original_resource")));
 
     Graph graph = configuredGraphBuilder.buildFromSpans(spans);
@@ -213,7 +213,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app1",
                     "kube.namespace", "ns1",
-                    "kube.operation", "op1",
+                    "operation_name", "op1",
                     "resource", "res1")),
             // invalid span
             TestUtils.createSpanWithTags(
@@ -223,7 +223,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app2",
                     "kube.namespace", "ns2",
-                    "kube.operation", "op2",
+                    "operation_name", "op2",
                     "resource", "res2")));
 
     Graph graph = configuredGraphBuilder.buildFromSpans(spans);
@@ -244,7 +244,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app1",
                     "kube.namespace", "ns1",
-                    "kube.operation", "op1",
+                    "operation_name", "op1",
                     "resource", "res1")));
 
     Graph graph = configuredGraphBuilder.buildFromSpans(spans);
@@ -265,7 +265,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app1",
                     "kube.namespace", "ns1",
-                    "kube.operation", "op1",
+                    "operation_name", "op1",
                     "resource", "res1")),
             TestUtils.createSpanWithTags(
                 "span2",
@@ -274,7 +274,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app1",
                     "kube.namespace", "ns1",
-                    "kube.operation", "op1",
+                    "operation_name", "op1",
                     "resource", "res1")));
 
     Graph graph = configuredGraphBuilder.buildFromSpans(spans);
@@ -295,7 +295,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app1",
                     "kube.namespace", "ns1",
-                    "kube.operation", "op1",
+                    "operation_name", "op1",
                     "resource", "res1")),
             TestUtils.createSpanWithTags(
                 "child1",
@@ -304,7 +304,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app2",
                     "kube.namespace", "ns2",
-                    "kube.operation", "op2",
+                    "operation_name", "op2",
                     "resource", "res2")),
             TestUtils.createSpanWithTags(
                 "child2",
@@ -313,7 +313,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app3",
                     "kube.namespace", "ns3",
-                    "kube.operation", "op3",
+                    "operation_name", "op3",
                     "resource", "res3")));
 
     Graph graph = configuredGraphBuilder.buildFromSpans(spans);
@@ -370,7 +370,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app1",
                     "kube.namespace", "ns1",
-                    "kube.operation", "op1",
+                    "operation_name", "op1",
                     "resource", "res1")),
             // two different child spans that reference the same parent
             TestUtils.createSpanWithTags(
@@ -380,7 +380,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app2",
                     "kube.namespace", "ns2",
-                    "kube.operation", "op2",
+                    "operation_name", "op2",
                     "resource", "res2")),
             // second span with same child node ID but different span ID - should create deduplicate
             // edge
@@ -391,7 +391,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "app2",
                     "kube.namespace", "ns2",
-                    "kube.operation", "op2",
+                    "operation_name", "op2",
                     "resource", "res2")));
 
     Graph graph = configuredGraphBuilder.buildFromSpans(spans);
@@ -437,7 +437,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "root_app",
                     "kube.namespace", "root_ns",
-                    "kube.operation", "root_op",
+                    "operation_name", "root_op",
                     "resource", "root_res")),
             // first level children
             TestUtils.createSpanWithTags(
@@ -447,7 +447,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "child1_app",
                     "kube.namespace", "child1_ns",
-                    "kube.operation", "child1_op",
+                    "operation_name", "child1_op",
                     "resource", "child1_res")),
             TestUtils.createSpanWithTags(
                 "child2",
@@ -456,7 +456,7 @@ public class GraphBuilderTest {
                 Map.of(
                     "kube.app", "child2_app",
                     "kube.namespace", "child2_ns",
-                    "kube.operation", "child2_op",
+                    "operation_name", "child2_op",
                     "resource", "child2_res")),
             // second level child
             TestUtils.createSpanWithTags(
@@ -468,7 +468,7 @@ public class GraphBuilderTest {
                     "gc_app",
                     "kube.namespace",
                     "gc_ns",
-                    "kube.operation",
+                    "operation_name",
                     "gc_op",
                     "resource",
                     "gc_res")));
