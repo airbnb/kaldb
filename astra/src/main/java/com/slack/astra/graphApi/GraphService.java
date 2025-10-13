@@ -47,6 +47,7 @@ public class GraphService {
   public HttpResponse getSubgraph(
       @Param("traceId") String traceId, @Header("X-User-Request") Optional<Boolean> userRequest)
       throws IOException {
+    long start = System.currentTimeMillis();
     List<ZipkinSpanResponse> trace =
         this.traceFetcher.getSpansByTraceId(
             traceId,
@@ -56,7 +57,14 @@ public class GraphService {
             userRequest,
             Optional.empty());
 
+    long end = System.currentTimeMillis();
+      LOG.info("Time to fetch trace: " + (end - start) + " ms");
+
+    start = System.currentTimeMillis();
     Graph subgraph = this.graphBuilder.buildFromSpans(trace);
+    end = System.currentTimeMillis();
+      LOG.info("Time to build subgraph: " + (end - start) + " ms");
+
     String output = objectMapper.writeValueAsString(subgraph);
     return HttpResponse.of(HttpStatus.OK, MediaType.JSON_UTF_8, output);
   }
