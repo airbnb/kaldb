@@ -92,7 +92,7 @@ public class GraphServiceTest {
                 Map.of(
                     "kube.app", "api-gateway",
                     "kube.namespace", "prod",
-                    "kube.operation", "http.request",
+                    "operation_name", "http.request",
                     "resource", "/api/users/profile")),
 
             // First level children
@@ -103,7 +103,7 @@ public class GraphServiceTest {
                 Map.of(
                     "kube.app", "auth-service",
                     "kube.namespace", "prod",
-                    "kube.operation", "http.request",
+                    "operation_name", "http.request",
                     "resource", "/api/auth/validate")),
             TestUtils.createSpanWithTags(
                 "child2",
@@ -112,7 +112,7 @@ public class GraphServiceTest {
                 Map.of(
                     "kube.app", "user-service",
                     "kube.namespace", "prod",
-                    "kube.operation", "user.fetch",
+                    "operation_name", "user.fetch",
                     "resource", "getUserProfile")),
             TestUtils.createSpanWithTags(
                 "child3",
@@ -121,7 +121,7 @@ public class GraphServiceTest {
                 Map.of(
                     "kube.app", "notification-service",
                     "kube.namespace", "prod",
-                    "kube.operation", "notify.send",
+                    "operation_name", "notify.send",
                     "resource", "sendNotification")),
 
             // Second level children (grandchildren)
@@ -132,7 +132,7 @@ public class GraphServiceTest {
                 Map.of(
                     "kube.app", "postgres-db",
                     "kube.namespace", "prod",
-                    "kube.operation", "db.query",
+                    "operation_name", "db.query",
                     "resource", "SELECT * FROM users WHERE id = ?")),
             TestUtils.createSpanWithTags(
                 "grandchild2",
@@ -141,7 +141,7 @@ public class GraphServiceTest {
                 Map.of(
                     "kube.app", "redis-cache",
                     "kube.namespace", "prod",
-                    "kube.operation", "cache.get",
+                    "operation_name", "cache.get",
                     "resource", "user:profile:12345")),
             TestUtils.createSpanWithTags(
                 "grandchild3",
@@ -150,7 +150,7 @@ public class GraphServiceTest {
                 Map.of(
                     "kube.app", "email-service",
                     "kube.namespace", "prod",
-                    "kube.operation", "email.send",
+                    "operation_name", "email.send",
                     "resource", "sendEmail")));
 
     when(traceFetcher.getSpansByTraceId(
@@ -193,7 +193,6 @@ public class GraphServiceTest {
       JsonNode metadata = node.get("metadata");
       assertTrue(metadata.has("app"));
       assertTrue(metadata.has("namespace"));
-      assertTrue(metadata.has("operation"));
       assertTrue(metadata.has("resource"));
     }
 
@@ -201,6 +200,9 @@ public class GraphServiceTest {
     for (JsonNode edge : edges) {
       assertTrue(edge.has("sourceNodeId"));
       assertTrue(edge.has("targetNodeId"));
+
+      JsonNode metadata = edge.get("metadata");
+      assertTrue(metadata.has("operation"));
     }
   }
 }
