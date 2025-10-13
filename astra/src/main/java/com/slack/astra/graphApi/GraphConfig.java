@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import org.slf4j.Logger;
@@ -20,7 +21,12 @@ import org.slf4j.LoggerFactory;
 public final class GraphConfig {
   private static final Logger LOG = LoggerFactory.getLogger(GraphConfig.class);
 
-  public static final GraphConfig DEFAULT = new GraphConfig(Map.of());
+  public static final GraphConfig DEFAULT = new GraphConfig(Map.of(), Map.of());
+
+  public enum EntityType {
+    NODE,
+    EDGE
+  }
 
   /**
    * Represents how a single logical field on a node should be mapped to span tags.
@@ -88,17 +94,33 @@ public final class GraphConfig {
     }
   }
 
-  // Holds the entire mapping for logical field names to their configuration of defaults and rules.
+  // Holds the entire mapping for logical field names to their configuration of defaults and rules
+  // for nodes.
   private final Map<String, TagConfig> nodeMetadataTagMapping;
+  // Holds the entire mapping for logical field names to their configuration of defaults and rules
+  // for nodes.
+  private final Map<String, TagConfig> edgeMetadataTagMapping;
 
   @JsonCreator
   public GraphConfig(
-      @JsonProperty("node_metadata_tag_mapping") Map<String, TagConfig> nodeMetadataTagMapping) {
-    this.nodeMetadataTagMapping = Map.copyOf(nodeMetadataTagMapping);
+      @JsonProperty("node_metadata_tag_mapping") Map<String, TagConfig> nodeMetadataTagMapping,
+      @JsonProperty("edge_metadata_tag_mapping") Map<String, TagConfig> edgeMetadataTagMapping) {
+    this.nodeMetadataTagMapping =
+        (nodeMetadataTagMapping == null)
+            ? Collections.emptyMap()
+            : Map.copyOf(nodeMetadataTagMapping);
+    this.edgeMetadataTagMapping =
+        (edgeMetadataTagMapping == null)
+            ? Collections.emptyMap()
+            : Map.copyOf(edgeMetadataTagMapping);
   }
 
   public Map<String, TagConfig> getNodeMetadataTagMapping() {
     return nodeMetadataTagMapping;
+  }
+
+  public Map<String, TagConfig> getEdgeMetadataTagMapping() {
+    return edgeMetadataTagMapping;
   }
 
   /**
@@ -141,23 +163,33 @@ public final class GraphConfig {
   }
 
   /**
-   * Creates metadata for a child node from a span, using either default behavior or configured
-   * mapping.
+   * Creates metadata for a graph entity (node or edge) from a span, using either default behavior
+   * or configured mapping.
    *
    * @param span ZipkinSpanResponse containing the span data
-   * @return SortedMap containing the metadata for the child node
+   * @return SortedMap containing the metadata for the requested entity
    */
-  public SortedMap<String, String> createMetadataFromSpan(ZipkinSpanResponse span) {
+  public SortedMap<String, String> createMetadataFromSpan(
+      ZipkinSpanResponse span, EntityType entityType) {
     SortedMap<String, String> metadata = new TreeMap<>();
 
     if (this == DEFAULT) {
-      // Default behavior: use service name from remote endpoint
-      metadata.put("service", span.getRemoteEndpoint().getServiceName());
+      // We only care about default behavior for a node, edge metadata is optional.
+      if (entityType == EntityType.NODE) {
+        // use service name from remote endpoint
+        metadata.put("service", span.getRemoteEndpoint().getServiceName());
+      }
     } else {
-      // Use configured tag mapping
       Map<String, String> tags = span.getTags();
-      for (String key : this.nodeMetadataTagMapping.keySet()) {
-        metadata.put(key, resolve(tags, key));
+
+      // Use configured tag mapping
+      Set<String> keys = this.nodeMetadataTagMapping.keySet();
+      if (entityType == EntityType.EDGE) {
+        keys = this.edgeMetadataTagMapping.keySet();
+      }
+
+      for (String key : keys) {
+        metadata.put(key, resolve(tags, key, entityType));
       }
     }
 
@@ -178,8 +210,11 @@ public final class GraphConfig {
    * @param logicalField the node metadata field to resolve.
    * @return String the value of the logical metadata field after applying all GraphConfig rules.
    */
-  public String resolve(Map<String, String> tags, String logicalField) {
+  public String resolve(Map<String, String> tags, String logicalField, EntityType entityType) {
     TagConfig baseCfg = nodeMetadataTagMapping.get(logicalField);
+    if (entityType == EntityType.EDGE) {
+      baseCfg = edgeMetadataTagMapping.get(logicalField);
+    }
 
     // If the config doesn't define this logical field, just return from raw tags or fallback.
     if (baseCfg == null) {
