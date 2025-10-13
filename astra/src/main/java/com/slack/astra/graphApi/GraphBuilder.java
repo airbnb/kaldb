@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -53,29 +52,31 @@ public class GraphBuilder {
             .collect(Collectors.toMap(ZipkinSpanResponse::getId, this::createChildNodeFromSpan));
 
     // Second pass: build unique edges
-    Set<Edge> edges =
-        spans.stream()
-            .filter(span -> span.getId() != null && span.getParentId() != null)
-            .map(
-                span -> {
-                  Node parentNode = spanIdToNode.get(span.getParentId());
-                  Node childNode = spanIdToNode.get(span.getId());
+    long missingParentOrChildCount = 0;
+    Set<Edge> edges = new HashSet<>();
 
-                  if (parentNode != null && childNode != null) {
-                    return new Edge(
-                        parentNode.getId(),
-                        childNode.getId(),
-                        config.createMetadataFromSpan(span, GraphConfig.EntityType.EDGE));
-                  } else {
-                    LOG.warn(
-                        "Missing parent or child node for parentSpanId={} and childSpanId={}",
-                        span.getParentId(),
-                        span.getId());
-                    return null;
-                  }
-                })
-            .filter(Objects::nonNull)
-            .collect(Collectors.toSet());
+    for (ZipkinSpanResponse span : spans) {
+      if (span.getId() == null || span.getParentId() == null) {
+        continue;
+      }
+
+      Node parentNode = spanIdToNode.get(span.getParentId());
+      Node childNode = spanIdToNode.get(span.getId());
+
+      if (parentNode != null && childNode != null) {
+        edges.add(
+            new Edge(
+                parentNode.getId(),
+                childNode.getId(),
+                config.createMetadataFromSpan(span, GraphConfig.EntityType.EDGE)));
+      } else {
+        missingParentOrChildCount++;
+      }
+    }
+
+    if (missingParentOrChildCount > 0) {
+      LOG.warn("Found {} spans with missing parent or child node", missingParentOrChildCount);
+    }
 
     // Dedupe nodes
     Set<Node> nodes = new HashSet<>(spanIdToNode.values());

@@ -42,6 +42,9 @@ public class GraphService {
     LOG.info("Started GraphService with GraphBuilder config: {}", graphConfig);
   }
 
+  private record SubgraphResponse(
+      Graph subgraph, long traceFetchTimeMs, long subgraphBuildTimeMs) {}
+
   @Get
   @Path("/api/v1/trace/{traceId}/subgraph")
   public HttpResponse getSubgraph(
@@ -56,16 +59,16 @@ public class GraphService {
             Optional.empty(),
             userRequest,
             Optional.empty());
-
     long end = System.currentTimeMillis();
-      LOG.info("Time to fetch trace: " + (end - start) + " ms");
+    long traceFetchTime = end - start;
 
     start = System.currentTimeMillis();
     Graph subgraph = this.graphBuilder.buildFromSpans(trace);
     end = System.currentTimeMillis();
-      LOG.info("Time to build subgraph: " + (end - start) + " ms");
+    long subgraphBuildTime = end - start;
 
-    String output = objectMapper.writeValueAsString(subgraph);
+    SubgraphResponse response = new SubgraphResponse(subgraph, traceFetchTime, subgraphBuildTime);
+    String output = objectMapper.writeValueAsString(response);
     return HttpResponse.of(HttpStatus.OK, MediaType.JSON_UTF_8, output);
   }
 }

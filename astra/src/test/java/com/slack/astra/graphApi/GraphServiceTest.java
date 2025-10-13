@@ -67,7 +67,14 @@ public class GraphServiceTest {
     assertEquals(HttpStatus.OK, aggregatedResponse.status());
 
     // Verify it's valid JSON with nodes and edges arrays
-    assertEquals("{}", aggregatedResponse.contentUtf8());
+    String content = aggregatedResponse.contentUtf8();
+    JsonNode jsonNode = objectMapper.readTree(content);
+
+    assertTrue(jsonNode.has("subgraph"));
+    assertTrue(jsonNode.has("traceFetchTimeMs"));
+    assertTrue(jsonNode.has("subgraphBuildTimeMs"));
+
+    assertTrue(jsonNode.get("subgraph").isEmpty());
   }
 
   @Test
@@ -172,12 +179,17 @@ public class GraphServiceTest {
     JsonNode jsonNode = objectMapper.readTree(content);
 
     // Verify structure
-    assertTrue(jsonNode.has("nodes"));
-    assertTrue(jsonNode.has("edges"));
+    assertTrue(jsonNode.has("subgraph"));
+    assertTrue(jsonNode.has("traceFetchTimeMs"));
+    assertTrue(jsonNode.has("subgraphBuildTimeMs"));
+
+    JsonNode subgraph = jsonNode.get("subgraph");
+    assertTrue(subgraph.has("nodes"));
+    assertTrue(subgraph.has("edges"));
 
     // Verify data content
-    JsonNode nodes = jsonNode.get("nodes");
-    JsonNode edges = jsonNode.get("edges");
+    JsonNode nodes = subgraph.get("nodes");
+    JsonNode edges = subgraph.get("edges");
 
     assertEquals(7, nodes.size(), "Should have 7 nodes (1 root + 3 children + 3 grandchildren)");
     assertEquals(
