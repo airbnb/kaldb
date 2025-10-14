@@ -48,17 +48,14 @@ public class GraphService {
   @Get
   @Path("/api/v1/trace/{traceId}/subgraph")
   public HttpResponse getSubgraph(
-      @Param("traceId") String traceId, @Header("X-User-Request") Optional<Boolean> userRequest)
+      @Param("traceId") String traceId,
+      @Param("maxSpans") Optional<Integer> maxSpans,
+      @Header("X-User-Request") Optional<Boolean> userRequest)
       throws IOException {
     long start = System.currentTimeMillis();
     List<ZipkinSpanResponse> trace =
         this.traceFetcher.getSpansByTraceId(
-            traceId,
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            userRequest,
-            Optional.empty());
+            traceId, Optional.empty(), Optional.empty(), maxSpans, userRequest, Optional.empty());
     long end = System.currentTimeMillis();
     long traceFetchTime = end - start;
 

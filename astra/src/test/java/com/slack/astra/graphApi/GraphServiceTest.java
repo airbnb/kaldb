@@ -61,7 +61,7 @@ public class GraphServiceTest {
             any(Optional.class)))
         .thenReturn(Collections.emptyList());
 
-    HttpResponse response = graphService.getSubgraph(traceId, Optional.empty());
+    HttpResponse response = graphService.getSubgraph(traceId, Optional.empty(), Optional.empty());
     AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
 
     assertEquals(HttpStatus.OK, aggregatedResponse.status());
@@ -169,7 +169,7 @@ public class GraphServiceTest {
             any(Optional.class)))
         .thenReturn(testSpans);
 
-    HttpResponse response = graphService.getSubgraph(traceId, Optional.empty());
+    HttpResponse response = graphService.getSubgraph(traceId, Optional.empty(), Optional.empty());
     AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
 
     assertEquals(HttpStatus.OK, aggregatedResponse.status());
