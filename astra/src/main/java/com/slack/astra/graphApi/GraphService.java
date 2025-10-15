@@ -8,10 +8,14 @@ import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Header;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Path;
-import com.slack.astra.server.AstraQueryServiceBase;
+import com.slack.astra.zipkinApi.TraceFetcher;
+import com.slack.astra.zipkinApi.ZipkinSpanResponse;
 import java.io.IOException;
+import java.util.List;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,8 +24,8 @@ import org.slf4j.LoggerFactory;
 */
 public class GraphService {
   private static final Logger LOG = LoggerFactory.getLogger(GraphService.class);
-  private final AstraQueryServiceBase searcher;
-  private final GraphConfig graphConfig;
+  private final TraceFetcher traceFetcher;
+  private final GraphBuilder graphBuilder;
 
   private static final ObjectMapper objectMapper =
       JsonMapper.builder()
@@ -31,17 +35,38 @@ public class GraphService {
           .serializationInclusion(JsonInclude.Include.NON_EMPTY)
           .build();
 
-  public GraphService(AstraQueryServiceBase searcher, GraphConfig graphConfig) {
-    this.searcher = searcher;
-    this.graphConfig = graphConfig;
+  public GraphService(TraceFetcher traceFetcher, GraphConfig graphConfig) {
+    this.traceFetcher = traceFetcher;
+    this.graphBuilder = new GraphBuilder(graphConfig);
 
-    LOG.info("Started GraphService with config: {}", this.graphConfig);
+    LOG.info("Started GraphService with GraphBuilder config: {}", graphConfig);
   }
+
+  private record SubgraphResponse(
+      Graph subgraph, long traceFetchTimeMs, long subgraphBuildTimeMs) {}
 
   @Get
   @Path("/api/v1/trace/{traceId}/subgraph")
-  public HttpResponse getSubgraph(@Param("traceId") String traceId) throws IOException {
-    String output = "[]";
+  public HttpResponse getSubgraph(
+      @Param("traceId") String traceId,
+      @Param("buildFilter") Optional<GraphBuilder.Filter> buildFilter,
+      @Param("maxSpans") Optional<Integer> maxSpans,
+      @Header("X-User-Request") Optional<Boolean> userRequest)
+      throws IOException {
+    long start = System.currentTimeMillis();
+    List<ZipkinSpanResponse> trace =
+        this.traceFetcher.getSpansByTraceId(
+            traceId, Optional.empty(), Optional.empty(), maxSpans, userRequest, Optional.empty());
+    long end = System.currentTimeMillis();
+    long traceFetchTime = end - start;
+
+    start = System.currentTimeMillis();
+    Graph subgraph = this.graphBuilder.buildFromSpans(trace, buildFilter);
+    end = System.currentTimeMillis();
+    long subgraphBuildTime = end - start;
+
+    SubgraphResponse response = new SubgraphResponse(subgraph, traceFetchTime, subgraphBuildTime);
+    String output = objectMapper.writeValueAsString(response);
     return HttpResponse.of(HttpStatus.OK, MediaType.JSON_UTF_8, output);
   }
 }

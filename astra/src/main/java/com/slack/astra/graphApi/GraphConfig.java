@@ -70,15 +70,21 @@ public final class GraphConfig {
     private final String field;
     private final String value;
     private final String overrideKey;
+    private final String delimiter;
+    private final Integer part;
 
     @JsonCreator
     public RuleConfig(
         @JsonProperty("field") String field,
         @JsonProperty("value") String value,
-        @JsonProperty("override_key") String overrideKey) {
+        @JsonProperty("override_key") String overrideKey,
+        @JsonProperty("delimiter") String delimiter,
+        @JsonProperty("part") Integer part) {
       this.field = field;
       this.value = value;
       this.overrideKey = overrideKey;
+      this.delimiter = delimiter;
+      this.part = part;
     }
 
     public String getField() {
@@ -91,6 +97,14 @@ public final class GraphConfig {
 
     public String getOverrideKey() {
       return overrideKey;
+    }
+
+    public String getDelimiter() {
+      return delimiter;
+    }
+
+    public Integer getPart() {
+      return part;
     }
   }
 
@@ -203,7 +217,9 @@ public final class GraphConfig {
    * <p>Steps: 1. Look up the TagConfig for this logical field (e.g. "resource"). 2. Default to
    * using its defaultKey + defaultValue. 3. If rules are defined: - Iterate through each rule in
    * reverse order. - If a rule's field/value condition matches, switch keyToUse to overrideKey. 4.
-   * Finally, look up the chosen key in tags. If missing, fall back to defaultValue.
+   * Finally, look up the chosen key in tags. If missing, fall back to defaultValue. 5. If the
+   * matching rule has delimiter and part configured, split the value and extract the specified
+   * part.
    *
    * <p>Note: This logic does not currently support multiple field matches for a single rule.
    *
@@ -225,18 +241,32 @@ public final class GraphConfig {
 
     // Later rules override earlier ones, so start from the back of the list and use the first one
     // that matches.
-    String keyToUse =
+    RuleConfig matchingRule =
         baseCfg.getRules().reversed().stream()
             .filter(
                 rule ->
                     rule.getValue()
                         .equals(tags.getOrDefault(rule.getField(), "unknown_" + rule.getField())))
-            .map(RuleConfig::getOverrideKey)
-            .filter(tags::containsKey)
+            .filter(rule -> tags.containsKey(rule.getOverrideKey()))
             .findFirst()
-            .orElse(baseCfg.getDefaultKey());
+            .orElse(null);
 
-    return tags.getOrDefault(keyToUse, baseCfg.getDefaultValue());
+    String keyToUse =
+        matchingRule != null ? matchingRule.getOverrideKey() : baseCfg.getDefaultKey();
+    String value = tags.getOrDefault(keyToUse, baseCfg.getDefaultValue());
+
+    // If a rule matched and has delimiter/part configuration, split and extract the part
+    if (matchingRule != null
+        && matchingRule.getDelimiter() != null
+        && matchingRule.getPart() != null) {
+      String[] parts = value.split(java.util.regex.Pattern.quote(matchingRule.getDelimiter()));
+      int partIndex = matchingRule.getPart();
+      if (partIndex >= 0 && partIndex < parts.length) {
+        value = parts[partIndex];
+      }
+    }
+
+    return value;
   }
 
   @Override

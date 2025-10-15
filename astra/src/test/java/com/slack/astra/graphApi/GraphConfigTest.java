@@ -403,6 +403,134 @@ public class GraphConfigTest {
   }
 
   @Test
+  public void testResolveWithDelimiterAndPart_validIndex() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+                          node_metadata_tag_mapping:
+                            app:
+                              default_key: kube.app
+                              default_value: unknown_app
+                              rules:
+                                - field: operation_name
+                                  value: http.request
+                                  override_key: target_app
+                                  delimiter: .
+                                  part: 0
+                          """);
+    Map<String, String> tags =
+        Map.of(
+            "operation_name", "http.request",
+            "target_app", "my-app.example.com");
+
+    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
+    assertThat(result).isEqualTo("my-app");
+  }
+
+  @Test
+  public void testResolveWithDelimiterAndPart_outOfBoundsIndex() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+                          node_metadata_tag_mapping:
+                            app:
+                              default_key: kube.app
+                              default_value: unknown_app
+                              rules:
+                                - field: operation_name
+                                  value: http.request
+                                  override_key: target_app
+                                  delimiter: .
+                                  part: 10
+                          """);
+    Map<String, String> tags =
+        Map.of(
+            "operation_name", "http.request",
+            "target_app", "my-app.example.com");
+
+    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
+    // Should keep original value when part index is out of bounds
+    assertThat(result).isEqualTo("my-app.example.com");
+  }
+
+  @Test
+  public void testResolveWithDelimiterAndPart_noDelimiterInValue() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+                          node_metadata_tag_mapping:
+                            app:
+                              default_key: kube.app
+                              default_value: unknown_app
+                              rules:
+                                - field: operation_name
+                                  value: http.request
+                                  override_key: target_app
+                                  delimiter: .
+                                  part: 1
+                          """);
+    Map<String, String> tags =
+        Map.of(
+            "operation_name", "http.request",
+            "target_app", "localhost");
+
+    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
+    // Should keep original value when there's no delimiter
+    assertThat(result).isEqualTo("localhost");
+  }
+
+  @Test
+  public void testResolveWithDelimiterAndPart_multipleDelimiters() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+                          node_metadata_tag_mapping:
+                            app:
+                              default_key: kube.app
+                              default_value: unknown_app
+                              rules:
+                                - field: operation_name
+                                  value: http.request
+                                  override_key: target_app
+                                  delimiter: .
+                                  part: 2
+                          """);
+    Map<String, String> tags =
+        Map.of(
+            "operation_name", "http.request",
+            "target_app", "my-app.example.com");
+
+    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
+    assertThat(result).isEqualTo("com");
+  }
+
+  @Test
+  public void testResolveWithDelimiterAndPart_noMatchingRule() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+                          node_metadata_tag_mapping:
+                            app:
+                              default_key: kube.app
+                              default_value: unknown_app
+                              rules:
+                                - field: operation_name
+                                  value: http.request
+                                  override_key: target_app
+                                  delimiter: .
+                                  part: 0
+                          """);
+    Map<String, String> tags =
+        Map.of(
+            "operation_name", "grpc.request",
+            "kube.app", "my-app");
+
+    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
+    // Should use default key without delimiter splitting
+    assertThat(result).isEqualTo("my-app");
+  }
+
+  @Test
   public void testCreateNodeMetadataFromSpan_defaultConfig_usesRemoteEndpointServiceName() {
     GraphConfig config = GraphConfig.DEFAULT;
     ZipkinSpanResponse span =

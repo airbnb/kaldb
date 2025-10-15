@@ -2,18 +2,28 @@ node_metadata_tag_mapping:
   app:
     default_key: kube.app
     default_value: unknown_app
-    rules: []
+    rules:
+      - field: operation_name
+        value: http.request
+        override_key: tag.http.target.host
+        delimiter: .
+        part: 0
   namespace:
     default_key: kube.namespace
     default_value: unknown_namespace
-    rules: []
+    rules:
+      - field: operation_name
+        value: http.request
+        override_key: tag.http.target.host
+        delimiter: .
+        part: 1
   resource:
     default_key: resource
     default_value: unknown_resource
     rules:
       - field: operation_name
         value: http.request
-        override_key: tag.operation.canonical_path
+        override_key: tag.http.target.canonical_path
 edge_metadata_tag_mapping:
   operation:
     default_key: operation_name
