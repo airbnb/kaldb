@@ -143,7 +143,6 @@ public class GraphBuilder {
               node ->
                   dfsFilter(
                       node,
-                      node.id(),
                       filter.get(),
                       edges,
                       nodes,
@@ -176,9 +175,9 @@ public class GraphBuilder {
    * State object for iterative DFS traversal.
    *
    * @param node The current span node being processed
-   * @param lastViableNodeId ID of the most recent node that matched the filter
+   * @param lastAncestorNodeId ID of the most recent ancestor that matched the filter
    */
-  private record DfsState(SpanNode node, String lastViableNodeId) {}
+  private record DfsState(SpanNode node, String lastAncestorNodeId) {}
 
   /**
    * Performs iterative DFS to find edges between nodes matching the filter.
@@ -188,10 +187,9 @@ public class GraphBuilder {
    * appear in the final graph - their children are connected directly to the last matching
    * ancestor.
    *
-   * <p>Uses an explicit stack instead of recursion to avoid stack overflow with deep trace graphs.
+   * <p>Uses an explicit stack instead of recursion to avoid issues with deep trace graphs.
    *
    * @param startNode The node to start traversal from
-   * @param initialLastViableNodeId ID of the starting viable node (usually the startNode's ID)
    * @param filter Filter to determine which nodes should appear in the final graph
    * @param edges Output set to collect edges between matching nodes
    * @param nodes Output set to collect matching nodes
@@ -200,41 +198,35 @@ public class GraphBuilder {
    */
   private void dfsFilter(
       SpanNode startNode,
-      String initialLastViableNodeId,
       Filter filter,
       Set<Edge> edges,
       Set<Node> nodes,
       Map<String, SpanNode> spanIdToSpanNodes,
       Map<String, List<SpanNode>> parentSpanIdToChildSpanNodes) {
-    // Shared visited set for this DFS traversal
     Set<String> visited = new HashSet<>();
-
-    // Use explicit stack for iterative DFS to avoid stack overflow with deep traces
     Deque<DfsState> stack = new ArrayDeque<>();
-    stack.push(new DfsState(startNode, initialLastViableNodeId));
+
+    stack.push(new DfsState(startNode, startNode.id()));
 
     while (!stack.isEmpty()) {
       DfsState state = stack.pop();
       SpanNode node = state.node();
-      String lastViableNodeId = state.lastViableNodeId();
 
-      // Skip if already visited (prevents cycles and redundant work)
+      // Skip if already visited
       if (visited.contains(node.id())) {
         continue;
       }
-
       visited.add(node.id());
 
-      // Update the "viable" node - if current node matches filter, it becomes the new viable
-      // ancestor
-      String currentViableNodeId = filter.matches(node) ? node.id() : lastViableNodeId;
+      // If the current node matches filter, it becomes the new ancestor
+      String currentAncestorNodeId = filter.matches(node) ? node.id() : state.lastAncestorNodeId();
 
       // Process all children of the current node
       List<SpanNode> children = parentSpanIdToChildSpanNodes.getOrDefault(node.id(), List.of());
       for (SpanNode child : children) {
-        if (filter.matches(child) && currentViableNodeId != null) {
-          // Child matches filter - create edge from current viable node to this child
-          SpanNode parent = spanIdToSpanNodes.get(currentViableNodeId);
+        if (filter.matches(child) && currentAncestorNodeId != null) {
+          // Child matches filter, create edge from current ancestor node to this child
+          SpanNode parent = spanIdToSpanNodes.get(currentAncestorNodeId);
           if (parent == null) {
             continue;
           }
@@ -246,12 +238,12 @@ public class GraphBuilder {
           nodes.add(target);
           edges.add(new Edge(source.getId(), target.getId(), child.edgeMetadata()));
 
-          // Continue exploration with child as the new viable node
+          // Continue exploration with child as the new ancestor node
           stack.push(new DfsState(child, child.id()));
         } else {
-          // Child doesn't match filter - traverse through it but keep current viable node
-          // This allows edges to skip over non-matching intermediate nodes
-          stack.push(new DfsState(child, currentViableNodeId));
+          // Child doesn't match filter, traverse through it but keep current ancestor node
+          // Skip over non-matching intermediate nodes
+          stack.push(new DfsState(child, currentAncestorNodeId));
         }
       }
     }

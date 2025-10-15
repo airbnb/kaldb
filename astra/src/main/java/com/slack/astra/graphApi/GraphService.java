@@ -59,7 +59,7 @@ public class GraphService {
     Optional<GraphBuilder.Filter> buildFilter = Optional.empty();
     if (buildFilterJson.isPresent()) {
       try {
-        // Parse JSON as Map<String, List<String>> and create Filter
+        // Parse JSON as Map<String, List<String>> and create GraphConfig.Filter
         TypeReference<Map<String, List<String>>> typeRef = new TypeReference<>() {};
         Map<String, List<String>> filterMap =
             objectMapper.readValue(buildFilterJson.get(), typeRef);

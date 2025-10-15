@@ -267,8 +267,6 @@ public final class GraphConfig {
     if (values.size() > 1 && baseCfg.getKeyDelimiter() != null) {
       return String.join(baseCfg.getKeyDelimiter(), values);
     }
-
-    // Single value - return as is
     return values.get(0);
   }
 
