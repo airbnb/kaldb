@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.SortedMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,11 +17,11 @@ import org.slf4j.LoggerFactory;
  * GraphBuilder constructs service dependency graphs from Zipkin span data.
  *
  * <p>This class processes distributed tracing spans to build a graph representation showing
- * relationships between services. It creates nodes representing services and edges representing
- * parent-child relationships between spans.
+ * relationships between operations. It creates nodes representing service operations and edges
+ * representing parent-child relationships between spans.
  *
- * <p>The builder supports configurable node metadata extraction through GraphConfig, allowing
- * customization of which span tags are used to populate node metadata.
+ * <p>The builder supports configurable node and edge metadata extraction through GraphConfig,
+ * allowing customization of which span tags are used to populate each entity's metadata.
  */
 public class GraphBuilder {
   private static final Logger LOG = LoggerFactory.getLogger(GraphBuilder.class);
@@ -41,25 +40,22 @@ public class GraphBuilder {
   /**
    * Filter for selecting nodes/edges in the graph based on metadata criteria.
    *
-   * <p>The filter uses OR logic: a node matches if ANY of the filter criteria match. Each filter
+   * <p>The filter uses OR logic: a span matches if ANY of the filter criteria match. Each filter
    * option is a field name (e.g., "operation", "service") mapped to a list of allowed values for
    * that field.
    *
-   * <p>Examples: {"operation": ["http.request"]} - matches nodes with operation="http.request"
-   * {"operation": ["http.request", "grpc.request"]} - matches nodes with either operation
-   * {"operation": ["http.request"], "service": ["api-gateway.prod"]} - matches nodes with
-   * operation="http.request" OR service="api-gateway.prod" {} or null - empty filter matches all
-   * nodes (no filtering)
+   * <p>Examples: {"operation": ["http.request"]} - matches spans with tag operation="http.request"
+   * {"operation": ["http.request", "grpc.request"]} - matches spans with either operation tag
+   * {"operation": ["http.request"], "kube.namespace": ["test-app-prod"]} - matches spans with
+   * operation="http.request" OR kube.namespace="test-app-prod" {} or null - empty filter matches
+   * all spans (no filtering)
    *
-   * <p>The filter checks both node metadata and edge metadata. If a field exists in either, it can
-   * be used for filtering.
-   *
-   * @param options Map of field names to lists of allowed values. If null or empty, all nodes
+   * @param options Map of field names to lists of allowed values. If null or empty, all spans
    *     match.
    */
   public record Filter(Map<String, List<String>> options) {
-    public boolean matches(SpanNode node) {
-      // Empty or null filter means no filtering - match all nodes
+    public boolean matches(ZipkinSpanResponse span) {
+      // Empty or null filter means match all spans
       if (options == null || options.isEmpty()) {
         return true;
       }
@@ -68,23 +64,16 @@ public class GraphBuilder {
         String fieldName = entry.getKey();
         List<String> allowedValues = entry.getValue();
 
-        // Skip if allowedValues is null or empty
         if (allowedValues == null || allowedValues.isEmpty()) {
           continue;
         }
 
-        // Get the actual value from node or edge metadata
-        String actualValue = node.nodeMetadata().get(fieldName);
-        if (actualValue == null) {
-          actualValue = node.edgeMetadata().get(fieldName);
-        }
-
-        // If field doesn't exist in either metadata, skip this filter option
+        String actualValue = span.getTags().get(fieldName);
         if (actualValue == null) {
           continue;
         }
 
-        // Check if actual value matches any of the allowed values
+        // Return true if ANY filter matches
         if (allowedValues.contains(actualValue)) {
           return true;
         }
@@ -94,40 +83,32 @@ public class GraphBuilder {
     }
   }
 
-  public record SpanNode(
-      String id, SortedMap<String, String> nodeMetadata, SortedMap<String, String> edgeMetadata) {}
-
   /**
-   * Builds a filtered dependency graph from a list of Zipkin spans.
+   * Builds an (optionally filtered) dependency graph from a list of Zipkin spans.
    *
-   * <p>This method processes spans to create nodes and edges representing service dependencies,
-   * filtered by the provided criteria. It starts DFS from every node matching the filter, creating
-   * edges between matching nodes while traversing through non-matching intermediate nodes.
+   * <p>This method processes spans to create nodes and edges representing operation dependencies,
+   * filtered by any specified criteria. If a filter is specified, it starts DFS from every span
+   * matching the filter, creating edges between matching spans while traversing through
+   * non-matching intermediate spans.
    *
    * @param spans List of Zipkin spans to process
-   * @param filter Filter to apply when building the graph
-   * @return Graph containing nodes and edges representing filtered service dependencies
+   * @param filter Optional filter to apply when building the graph. If empty or null, returns every
+   *     connection.
+   * @return Graph containing nodes and edges representing operation dependencies
    */
   public Graph buildFromSpans(List<ZipkinSpanResponse> spans, Optional<Filter> filter) {
-    Map<String, SpanNode> spanIdToSpanNodes = new HashMap<>();
-    Map<String, List<SpanNode>> parentSpanIdToChildSpanNodes = new HashMap<>();
+    Map<String, ZipkinSpanResponse> spanIdToSpans = new HashMap<>();
+    Map<String, List<ZipkinSpanResponse>> parentSpanIdToChildSpans = new HashMap<>();
 
     for (ZipkinSpanResponse span : spans) {
       if (span.getId() == null) {
         continue;
       }
-
-      SpanNode node =
-          new SpanNode(
-              span.getId(),
-              config.createMetadataFromSpan(span, GraphConfig.EntityType.NODE),
-              config.createMetadataFromSpan(span, GraphConfig.EntityType.EDGE));
-
-      spanIdToSpanNodes.put(span.getId(), node);
+      spanIdToSpans.put(span.getId(), span);
 
       String parentId = span.getParentId();
       if (parentId != null) {
-        parentSpanIdToChildSpanNodes.computeIfAbsent(parentId, k -> new ArrayList<>()).add(node);
+        parentSpanIdToChildSpans.computeIfAbsent(parentId, k -> new ArrayList<>()).add(span);
       }
     }
 
@@ -135,36 +116,23 @@ public class GraphBuilder {
     Set<Node> nodes = new HashSet<>();
 
     if (filter.isPresent()) {
-      // Start DFS from every node matching the filter since there is no guarantee we have a single
-      // root in this trace.
-      spanIdToSpanNodes.values().stream()
-          .filter(node -> filter.get().matches(node))
+      // Start DFS from every node matching the filter since there is no guarantee of a single root
+      // in a trace.
+      spanIdToSpans.values().stream()
+          .filter(span -> filter.get().matches(span))
           .forEach(
-              node ->
+              span ->
                   dfsFilter(
-                      node,
-                      filter.get(),
-                      edges,
-                      nodes,
-                      spanIdToSpanNodes,
-                      parentSpanIdToChildSpanNodes));
+                      span, filter.get(), edges, nodes, spanIdToSpans, parentSpanIdToChildSpans));
     } else {
-      // No filter - build graph with all edges and collect nodes along the way
-      spanIdToSpanNodes.values().stream()
+      // No filter, build graph with all edges and collect nodes along the way
+      spanIdToSpans.values().stream()
           .forEach(
-              node -> {
-                List<SpanNode> children =
-                    parentSpanIdToChildSpanNodes.getOrDefault(node.id(), List.of());
+              span -> {
+                List<ZipkinSpanResponse> children =
+                    parentSpanIdToChildSpans.getOrDefault(span.getId(), List.of());
                 children.stream()
-                    .forEach(
-                        childNode -> {
-                          Node source = new Node(node.nodeMetadata());
-                          Node target = new Node(childNode.nodeMetadata());
-                          nodes.add(source);
-                          nodes.add(target);
-                          edges.add(
-                              new Edge(source.getId(), target.getId(), childNode.edgeMetadata()));
-                        });
+                    .forEach(childSpan -> this.createDependency(nodes, edges, span, childSpan));
               });
     }
 
@@ -174,78 +142,89 @@ public class GraphBuilder {
   /**
    * State object for iterative DFS traversal.
    *
-   * @param node The current span node being processed
-   * @param lastAncestorNodeId ID of the most recent ancestor that matched the filter
+   * @param span The current span being processed
+   * @param lastAncestorSpanId ID of the most recent ancestor that matched the filter
    */
-  private record DfsState(SpanNode node, String lastAncestorNodeId) {}
+  private record DFSState(ZipkinSpanResponse span, String lastAncestorSpanId) {}
 
   /**
-   * Performs iterative DFS to find edges between nodes matching the filter.
+   * Performs iterative DFS to find edges between spans matching the filter.
    *
-   * <p>This method explores the span tree starting from a given node, creating edges only between
-   * nodes that match the filter criteria. Non-matching intermediate nodes are traversed but don't
+   * <p>This method explores the span tree starting from a given span, creating edges only between
+   * spans that match the filter criteria. Non-matching intermediate spans are traversed but don't
    * appear in the final graph - their children are connected directly to the last matching
    * ancestor.
    *
    * <p>Uses an explicit stack instead of recursion to avoid issues with deep trace graphs.
    *
-   * @param startNode The node to start traversal from
+   * @param startSpan The span to start traversal from
    * @param filter Filter to determine which nodes should appear in the final graph
-   * @param edges Output set to collect edges between matching nodes
+   * @param edges Output set to collect edges between matching spans
    * @param nodes Output set to collect matching nodes
-   * @param spanIdToSpanNodes Lookup map from span ID to SpanNode
-   * @param parentSpanIdToChildSpanNodes Map from parent span ID to list of child SpanNodes
+   * @param spanIdToSpans Lookup map from span ID to spans
+   * @param parentSpanIdToChildSpans Map from parent span ID to list of child spans
    */
   private void dfsFilter(
-      SpanNode startNode,
+      ZipkinSpanResponse startSpan,
       Filter filter,
       Set<Edge> edges,
       Set<Node> nodes,
-      Map<String, SpanNode> spanIdToSpanNodes,
-      Map<String, List<SpanNode>> parentSpanIdToChildSpanNodes) {
+      Map<String, ZipkinSpanResponse> spanIdToSpans,
+      Map<String, List<ZipkinSpanResponse>> parentSpanIdToChildSpans) {
     Set<String> visited = new HashSet<>();
-    Deque<DfsState> stack = new ArrayDeque<>();
-
-    stack.push(new DfsState(startNode, startNode.id()));
+    Deque<DFSState> stack = new ArrayDeque<>();
+    stack.push(new DFSState(startSpan, startSpan.getId()));
 
     while (!stack.isEmpty()) {
-      DfsState state = stack.pop();
-      SpanNode node = state.node();
+      DFSState state = stack.pop();
+      ZipkinSpanResponse node = state.span();
 
       // Skip if already visited
-      if (visited.contains(node.id())) {
+      if (visited.contains(node.getId())) {
         continue;
       }
-      visited.add(node.id());
+      visited.add(node.getId());
 
-      // If the current node matches filter, it becomes the new ancestor
-      String currentAncestorNodeId = filter.matches(node) ? node.id() : state.lastAncestorNodeId();
+      // If the current node matches filter, it becomes the new ancestor, otherwise keep the last
+      // one
+      String currentAncestorNodeId =
+          filter.matches(node) ? node.getId() : state.lastAncestorSpanId();
 
-      // Process all children of the current node
-      List<SpanNode> children = parentSpanIdToChildSpanNodes.getOrDefault(node.id(), List.of());
-      for (SpanNode child : children) {
+      // Process all children of the current span
+      List<ZipkinSpanResponse> children =
+          parentSpanIdToChildSpans.getOrDefault(node.getId(), List.of());
+      for (ZipkinSpanResponse child : children) {
         if (filter.matches(child) && currentAncestorNodeId != null) {
-          // Child matches filter, create edge from current ancestor node to this child
-          SpanNode parent = spanIdToSpanNodes.get(currentAncestorNodeId);
+          // Child matches filter, create edge from current ancestor to this child
+          ZipkinSpanResponse parent = spanIdToSpans.get(currentAncestorNodeId);
           if (parent == null) {
             continue;
           }
+          this.createDependency(nodes, edges, parent, child);
 
-          Node source = new Node(parent.nodeMetadata());
-          Node target = new Node(child.nodeMetadata());
-
-          nodes.add(source);
-          nodes.add(target);
-          edges.add(new Edge(source.getId(), target.getId(), child.edgeMetadata()));
-
-          // Continue exploration with child as the new ancestor node
-          stack.push(new DfsState(child, child.id()));
+          // Continue exploration with child as the new ancestor
+          stack.push(new DFSState(child, child.getId()));
         } else {
-          // Child doesn't match filter, traverse through it but keep current ancestor node
-          // Skip over non-matching intermediate nodes
-          stack.push(new DfsState(child, currentAncestorNodeId));
+          // Child doesn't match filter, traverse through it but keep current ancestor, skipping
+          // over non-matching intermediate spans.
+          stack.push(new DFSState(child, currentAncestorNodeId));
         }
       }
     }
+  }
+
+  private void createDependency(
+      Set<Node> nodes, Set<Edge> edges, ZipkinSpanResponse parent, ZipkinSpanResponse child) {
+    Node source = new Node(config.createMetadataFromSpan(parent, GraphConfig.EntityType.NODE));
+    Node target = new Node(config.createMetadataFromSpan(child, GraphConfig.EntityType.NODE));
+
+    nodes.add(source);
+    nodes.add(target);
+
+    edges.add(
+        new Edge(
+            source.getId(),
+            target.getId(),
+            config.createMetadataFromSpan(child, GraphConfig.EntityType.EDGE)));
   }
 }

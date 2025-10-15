@@ -428,7 +428,7 @@ public class GraphBuilderTest {
 
     // Filter to only include nodes with operation "http.request"
     GraphBuilder.Filter filter =
-        new GraphBuilder.Filter(Map.of("operation", List.of("http.request")));
+        new GraphBuilder.Filter(Map.of("operation_name", List.of("http.request")));
     Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.of(filter));
 
     // Should only include parent1 and child1 nodes (both match filter and have edge between them)
@@ -508,7 +508,7 @@ public class GraphBuilderTest {
 
     // Filter to only include nodes with operation "http.request"
     GraphBuilder.Filter filter =
-        new GraphBuilder.Filter(Map.of("operation", List.of("http.request")));
+        new GraphBuilder.Filter(Map.of("operation_name", List.of("http.request")));
     Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.of(filter));
 
     // Should include root and grandchild nodes, skipping intermediate child1
@@ -561,7 +561,7 @@ public class GraphBuilderTest {
 
     // Filter that doesn't match any nodes
     GraphBuilder.Filter filter =
-        new GraphBuilder.Filter(Map.of("operation", List.of("nonexistent.operation")));
+        new GraphBuilder.Filter(Map.of("operation_name", List.of("nonexistent.operation")));
     Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.of(filter));
 
     assertThat(graph.nodes()).isEmpty();
@@ -629,7 +629,7 @@ public class GraphBuilderTest {
 
     // Filter to only include nodes with operation "http.request"
     GraphBuilder.Filter filter =
-        new GraphBuilder.Filter(Map.of("operation", List.of("http.request")));
+        new GraphBuilder.Filter(Map.of("operation_name", List.of("http.request")));
     Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.of(filter));
 
     // Should include all 3 nodes since they all match
@@ -782,7 +782,7 @@ public class GraphBuilderTest {
 
     // Filter to only include nodes with operation "http.request"
     GraphBuilder.Filter filter =
-        new GraphBuilder.Filter(Map.of("operation", List.of("http.request")));
+        new GraphBuilder.Filter(Map.of("operation_name", List.of("http.request")));
     Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.of(filter));
 
     // Should include 4 matching nodes from both disconnected subtrees
@@ -889,7 +889,7 @@ public class GraphBuilderTest {
 
     // Filter with two options: matches nodes with either http.request OR grpc.request
     GraphBuilder.Filter filter =
-        new GraphBuilder.Filter(Map.of("operation", List.of("http.request", "grpc.request")));
+        new GraphBuilder.Filter(Map.of("operation_name", List.of("http.request", "grpc.request")));
     Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.of(filter));
 
     // Should include parent1 and child1 (both match at least one filter option)

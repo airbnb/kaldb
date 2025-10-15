@@ -305,7 +305,7 @@ public class GraphServiceTest {
         .thenReturn(List.of());
 
     // Invalid JSON - missing closing brace
-    String invalidFilterJson = "{\"operation\":[\"http.request\"";
+    String invalidFilterJson = "{\"operation_name\":[\"http.request\"";
 
     HttpResponse response =
         graphService.getSubgraph(
@@ -331,7 +331,7 @@ public class GraphServiceTest {
         .thenReturn(List.of());
 
     // Valid JSON but wrong structure - should be Map<String, List<String>> not Map<String, String>
-    String malformedFilterJson = "{\"operation\":\"http.request\"}";
+    String malformedFilterJson = "{\"operation_name\":\"http.request\"}";
 
     HttpResponse response =
         graphService.getSubgraph(
@@ -417,7 +417,7 @@ public class GraphServiceTest {
         .thenReturn(testSpans);
 
     // Filter to only include http.request and grpc.request operations
-    String filterJson = "{\"operation\":[\"http.request\",\"grpc.request\"]}";
+    String filterJson = "{\"operation_name\":[\"http.request\",\"grpc.request\"]}";
 
     HttpResponse response =
         graphService.getSubgraph(
