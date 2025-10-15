@@ -73,7 +73,9 @@ public class GraphBuilderTest {
                     "resource",
                     "res2",
                     "tag.http.target.canonical_path",
-                    "/v2/res2")));
+                    "/v2/res2",
+                    "tag.http.target.host",
+                    "app2.ns2")));
 
     Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.empty());
 
@@ -84,16 +86,14 @@ public class GraphBuilderTest {
     SortedMap<String, String> parentMetadata =
         new TreeMap<>(
             Map.of(
-                "app", "app1",
-                "namespace", "ns1",
+                "service", "app1.ns1",
                 "resource", "res1"));
     String expectedParentId = Node.generateIdFromMetadata(parentMetadata);
 
     SortedMap<String, String> childMetadata =
         new TreeMap<>(
             Map.of(
-                "app", "app2",
-                "namespace", "ns2",
+                "service", "app2.ns2",
                 "resource", "/v2/res2"));
 
     // uses canonical path as resource
@@ -177,24 +177,21 @@ public class GraphBuilderTest {
     SortedMap<String, String> parentMetadata =
         new TreeMap<>(
             Map.of(
-                "app", "app1",
-                "namespace", "ns1",
+                "service", "app1.ns1",
                 "resource", "res1"));
     String expectedParentId = Node.generateIdFromMetadata(parentMetadata);
 
     SortedMap<String, String> child1Metadata =
         new TreeMap<>(
             Map.of(
-                "app", "app2",
-                "namespace", "ns2",
+                "service", "app2.ns2",
                 "resource", "res2"));
     String expectedChild1Id = Node.generateIdFromMetadata(child1Metadata);
 
     SortedMap<String, String> child2Metadata =
         new TreeMap<>(
             Map.of(
-                "app", "app3",
-                "namespace", "ns3",
+                "service", "app3.ns3",
                 "resource", "res3"));
     String expectedChild2Id = Node.generateIdFromMetadata(child2Metadata);
 
@@ -260,16 +257,14 @@ public class GraphBuilderTest {
     SortedMap<String, String> parentMetadata =
         new TreeMap<>(
             Map.of(
-                "app", "app1",
-                "namespace", "ns1",
+                "service", "app1.ns1",
                 "resource", "res1"));
     String expectedParentId = Node.generateIdFromMetadata(parentMetadata);
 
     SortedMap<String, String> childMetadata =
         new TreeMap<>(
             Map.of(
-                "app", "app2",
-                "namespace", "ns2",
+                "service", "app2.ns2",
                 "resource", "res2"));
     String expectedChildId = Node.generateIdFromMetadata(childMetadata);
 
@@ -334,32 +329,28 @@ public class GraphBuilderTest {
     SortedMap<String, String> rootMetadata =
         new TreeMap<>(
             Map.of(
-                "app", "root_app",
-                "namespace", "root_ns",
+                "service", "root_app.root_ns",
                 "resource", "root_res"));
     String expectedRootId = Node.generateIdFromMetadata(rootMetadata);
 
     SortedMap<String, String> child1Metadata =
         new TreeMap<>(
             Map.of(
-                "app", "child1_app",
-                "namespace", "child1_ns",
+                "service", "child1_app.child1_ns",
                 "resource", "child1_res"));
     String expectedChild1Id = Node.generateIdFromMetadata(child1Metadata);
 
     SortedMap<String, String> child2Metadata =
         new TreeMap<>(
             Map.of(
-                "app", "child2_app",
-                "namespace", "child2_ns",
+                "service", "child2_app.child2_ns",
                 "resource", "child2_res"));
     String expectedChild2Id = Node.generateIdFromMetadata(child2Metadata);
 
     SortedMap<String, String> grandchildMetadata =
         new TreeMap<>(
             Map.of(
-                "app", "gc_app",
-                "namespace", "gc_ns",
+                "service", "gc_app.gc_ns",
                 "resource", "gc_res"));
     String expectedGrandchildId = Node.generateIdFromMetadata(grandchildMetadata);
 
@@ -396,19 +387,35 @@ public class GraphBuilderTest {
                 "trace1",
                 null,
                 Map.of(
-                    "kube.app", "app1",
-                    "kube.namespace", "ns1",
-                    "operation_name", "http.request",
-                    "resource", "res1")),
+                    "kube.app",
+                    "app1",
+                    "kube.namespace",
+                    "ns1",
+                    "operation_name",
+                    "http.request",
+                    "resource",
+                    "res1",
+                    "tag.http.target.canonical_path",
+                    "/v2/target1",
+                    "tag.http.target.host",
+                    "target_app1.target_ns1")),
             TestUtils.createSpanWithTags(
                 "child1",
                 "trace1",
                 "parent1",
                 Map.of(
-                    "kube.app", "app2",
-                    "kube.namespace", "ns2",
-                    "operation_name", "http.request",
-                    "resource", "res2")),
+                    "kube.app",
+                    "app2",
+                    "kube.namespace",
+                    "ns2",
+                    "operation_name",
+                    "http.request",
+                    "resource",
+                    "res2",
+                    "tag.http.target.canonical_path",
+                    "/v2/target2",
+                    "tag.http.target.host",
+                    "target_app2.target_ns2")),
             TestUtils.createSpanWithTags(
                 "child2",
                 "trace1",
@@ -420,7 +427,8 @@ public class GraphBuilderTest {
                     "resource", "res3")));
 
     // Filter to only include nodes with operation "http.request"
-    GraphBuilder.Filter filter = new GraphBuilder.Filter(Map.of("operation", "http.request"));
+    GraphBuilder.Filter filter =
+        new GraphBuilder.Filter(Map.of("operation", List.of("http.request")));
     Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.of(filter));
 
     // Should only include parent1 and child1 nodes (both match filter and have edge between them)
@@ -430,17 +438,15 @@ public class GraphBuilderTest {
     SortedMap<String, String> parentMetadata =
         new TreeMap<>(
             Map.of(
-                "app", "app1",
-                "namespace", "ns1",
-                "resource", "res1"));
+                "service", "target_app1.target_ns1",
+                "resource", "/v2/target1"));
     String expectedParentId = Node.generateIdFromMetadata(parentMetadata);
 
     SortedMap<String, String> child1Metadata =
         new TreeMap<>(
             Map.of(
-                "app", "app2",
-                "namespace", "ns2",
-                "resource", "res2"));
+                "service", "target_app2.target_ns2",
+                "resource", "/v2/target2"));
     String expectedChild1Id = Node.generateIdFromMetadata(child1Metadata);
 
     Edge edge = graph.edges().get(0);
@@ -459,10 +465,18 @@ public class GraphBuilderTest {
                 "trace1",
                 null,
                 Map.of(
-                    "kube.app", "root_app",
-                    "kube.namespace", "root_ns",
-                    "operation_name", "http.request",
-                    "resource", "root_res")),
+                    "kube.app",
+                    "root_app",
+                    "kube.namespace",
+                    "root_ns",
+                    "operation_name",
+                    "http.request",
+                    "resource",
+                    "root_res",
+                    "tag.http.target.canonical_path",
+                    "/v2/target1",
+                    "tag.http.target.host",
+                    "target_app1.target_ns1")),
             // intermediate child - operation: op2 (doesn't match filter)
             TestUtils.createSpanWithTags(
                 "child1",
@@ -479,13 +493,22 @@ public class GraphBuilderTest {
                 "trace1",
                 "child1",
                 Map.of(
-                    "kube.app", "gc_app",
-                    "kube.namespace", "gc_ns",
-                    "operation_name", "http.request",
-                    "resource", "gc_res")));
+                    "kube.app",
+                    "gc_app",
+                    "kube.namespace",
+                    "gc_ns",
+                    "operation_name",
+                    "http.request",
+                    "resource",
+                    "gc_res",
+                    "tag.http.target.canonical_path",
+                    "/v2/target2",
+                    "tag.http.target.host",
+                    "target_app2.target_ns2")));
 
     // Filter to only include nodes with operation "http.request"
-    GraphBuilder.Filter filter = new GraphBuilder.Filter(Map.of("operation", "http.request"));
+    GraphBuilder.Filter filter =
+        new GraphBuilder.Filter(Map.of("operation", List.of("http.request")));
     Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.of(filter));
 
     // Should include root and grandchild nodes, skipping intermediate child1
@@ -495,17 +518,15 @@ public class GraphBuilderTest {
     SortedMap<String, String> rootMetadata =
         new TreeMap<>(
             Map.of(
-                "app", "root_app",
-                "namespace", "root_ns",
-                "resource", "root_res"));
+                "service", "target_app1.target_ns1",
+                "resource", "/v2/target1"));
     String expectedRootId = Node.generateIdFromMetadata(rootMetadata);
 
     SortedMap<String, String> grandchildMetadata =
         new TreeMap<>(
             Map.of(
-                "app", "gc_app",
-                "namespace", "gc_ns",
-                "resource", "gc_res"));
+                "service", "target_app2.target_ns2",
+                "resource", "/v2/target2"));
     String expectedGrandchildId = Node.generateIdFromMetadata(grandchildMetadata);
 
     // Should have edge directly from root to grandchild (skipping intermediate)
@@ -540,7 +561,7 @@ public class GraphBuilderTest {
 
     // Filter that doesn't match any nodes
     GraphBuilder.Filter filter =
-        new GraphBuilder.Filter(Map.of("operation", "nonexistent.operation"));
+        new GraphBuilder.Filter(Map.of("operation", List.of("nonexistent.operation")));
     Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.of(filter));
 
     assertThat(graph.nodes()).isEmpty();
@@ -557,33 +578,58 @@ public class GraphBuilderTest {
                 "trace1",
                 null,
                 Map.of(
-                    "kube.app", "root_app",
-                    "kube.namespace", "root_ns",
-                    "operation_name", "http.request",
-                    "resource", "root_res")),
+                    "kube.app",
+                    "root_app",
+                    "kube.namespace",
+                    "root_ns",
+                    "operation_name",
+                    "http.request",
+                    "resource",
+                    "root_res",
+                    "tag.http.target.canonical_path",
+                    "/v2/target1",
+                    "tag.http.target.host",
+                    "target_app1.target_ns1")),
             // child1 - http.request
             TestUtils.createSpanWithTags(
                 "child1",
                 "trace1",
                 "root",
                 Map.of(
-                    "kube.app", "child1_app",
-                    "kube.namespace", "child1_ns",
-                    "operation_name", "http.request",
-                    "resource", "child1_res")),
+                    "kube.app",
+                    "child1_app",
+                    "kube.namespace",
+                    "child1_ns",
+                    "operation_name",
+                    "http.request",
+                    "resource",
+                    "child1_res",
+                    "tag.http.target.canonical_path",
+                    "/v2/target2",
+                    "tag.http.target.host",
+                    "target_app2.target_app2")),
             // child2 - http.request
             TestUtils.createSpanWithTags(
                 "child2",
                 "trace1",
                 "root",
                 Map.of(
-                    "kube.app", "child2_app",
-                    "kube.namespace", "child2_ns",
-                    "operation_name", "http.request",
-                    "resource", "child2_res")));
+                    "kube.app",
+                    "child2_app",
+                    "kube.namespace",
+                    "child2_ns",
+                    "operation_name",
+                    "http.request",
+                    "resource",
+                    "child2_res",
+                    "tag.http.target.canonical_path",
+                    "/v2/target3",
+                    "tag.http.target.host",
+                    "target_app3.target+_ns3")));
 
     // Filter to only include nodes with operation "http.request"
-    GraphBuilder.Filter filter = new GraphBuilder.Filter(Map.of("operation", "http.request"));
+    GraphBuilder.Filter filter =
+        new GraphBuilder.Filter(Map.of("operation", List.of("http.request")));
     Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.of(filter));
 
     // Should include all 3 nodes since they all match
@@ -594,9 +640,8 @@ public class GraphBuilderTest {
     SortedMap<String, String> rootMetadata =
         new TreeMap<>(
             Map.of(
-                "app", "root_app",
-                "namespace", "root_ns",
-                "resource", "root_res"));
+                "service", "target_app1.target_ns1",
+                "resource", "/v2/target1"));
     String expectedRootId = Node.generateIdFromMetadata(rootMetadata);
 
     // Both edges should originate from root
@@ -623,19 +668,35 @@ public class GraphBuilderTest {
                 "trace1",
                 "intermediate1",
                 Map.of(
-                    "kube.app", "child1_app",
-                    "kube.namespace", "child1_ns",
-                    "operation_name", "http.request",
-                    "resource", "child1_res")),
+                    "kube.app",
+                    "child1_app",
+                    "kube.namespace",
+                    "child1_ns",
+                    "operation_name",
+                    "http.request",
+                    "resource",
+                    "child1_res",
+                    "tag.http.target.canonical_path",
+                    "/v2/target1",
+                    "tag.http.target.host",
+                    "target_app1.target_ns1")),
             TestUtils.createSpanWithTags(
                 "grandchild1",
                 "trace1",
                 "child1",
                 Map.of(
-                    "kube.app", "gc1_app",
-                    "kube.namespace", "gc1_ns",
-                    "operation_name", "http.request",
-                    "resource", "gc1_res")),
+                    "kube.app",
+                    "gc1_app",
+                    "kube.namespace",
+                    "gc1_ns",
+                    "operation_name",
+                    "http.request",
+                    "resource",
+                    "gc1_res",
+                    "tag.http.target.canonical_path",
+                    "/v2/target2",
+                    "tag.http.target.host",
+                    "target_app2.target_ns2")),
             // Second subtree: non-matching nodes -> matching -> more non-matching -> matching leaf
             // intermediate2a (parent missing) -> intermediate2b -> intermediate2c -> matching1 ->
             // intermediate2d -> intermediate2e -> matching2
@@ -671,10 +732,18 @@ public class GraphBuilderTest {
                 "trace1",
                 "intermediate2c",
                 Map.of(
-                    "kube.app", "match1_app",
-                    "kube.namespace", "match1_ns",
-                    "operation_name", "http.request",
-                    "resource", "match1_res")),
+                    "kube.app",
+                    "match1_app",
+                    "kube.namespace",
+                    "match1_ns",
+                    "operation_name",
+                    "http.request",
+                    "resource",
+                    "match1_res",
+                    "tag.http.target.canonical_path",
+                    "/v2/target3",
+                    "tag.http.target.host",
+                    "target_app3.target_ns3")),
             TestUtils.createSpanWithTags(
                 "intermediate2d",
                 "trace1",
@@ -698,13 +767,22 @@ public class GraphBuilderTest {
                 "trace1",
                 "intermediate2e",
                 Map.of(
-                    "kube.app", "match2_app",
-                    "kube.namespace", "match2_ns",
-                    "operation_name", "http.request",
-                    "resource", "match2_res")));
+                    "kube.app",
+                    "match2_app",
+                    "kube.namespace",
+                    "match2_ns",
+                    "operation_name",
+                    "http.request",
+                    "resource",
+                    "match2_res",
+                    "tag.http.target.canonical_path",
+                    "/v2/target4",
+                    "tag.http.target.host",
+                    "target_app4.target_ns4")));
 
     // Filter to only include nodes with operation "http.request"
-    GraphBuilder.Filter filter = new GraphBuilder.Filter(Map.of("operation", "http.request"));
+    GraphBuilder.Filter filter =
+        new GraphBuilder.Filter(Map.of("operation", List.of("http.request")));
     Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.of(filter));
 
     // Should include 4 matching nodes from both disconnected subtrees
@@ -716,33 +794,29 @@ public class GraphBuilderTest {
     SortedMap<String, String> child1Metadata =
         new TreeMap<>(
             Map.of(
-                "app", "child1_app",
-                "namespace", "child1_ns",
-                "resource", "child1_res"));
+                "service", "target_app1.target_ns1",
+                "resource", "/v2/target1"));
     String expectedChild1Id = Node.generateIdFromMetadata(child1Metadata);
 
     SortedMap<String, String> grandchild1Metadata =
         new TreeMap<>(
             Map.of(
-                "app", "gc1_app",
-                "namespace", "gc1_ns",
-                "resource", "gc1_res"));
+                "service", "target_app2.target_ns2",
+                "resource", "/v2/target2"));
     String expectedGrandchild1Id = Node.generateIdFromMetadata(grandchild1Metadata);
 
     SortedMap<String, String> matching1Metadata =
         new TreeMap<>(
             Map.of(
-                "app", "match1_app",
-                "namespace", "match1_ns",
-                "resource", "match1_res"));
+                "service", "target_app3.target_ns3",
+                "resource", "/v2/target3"));
     String expectedMatching1Id = Node.generateIdFromMetadata(matching1Metadata);
 
     SortedMap<String, String> matching2Metadata =
         new TreeMap<>(
             Map.of(
-                "app", "match2_app",
-                "namespace", "match2_ns",
-                "resource", "match2_res"));
+                "service", "target_app4.target_ns4",
+                "resource", "/v2/target4"));
     String expectedMatching2Id = Node.generateIdFromMetadata(matching2Metadata);
 
     // Verify both disconnected edges exist
@@ -770,20 +844,38 @@ public class GraphBuilderTest {
                 "trace1",
                 null,
                 Map.of(
-                    "kube.app", "app1",
-                    "kube.namespace", "ns1",
-                    "operation_name", "http.request",
-                    "resource", "res1")),
-            // Child with operation: grpc.request (different operation, but same namespace)
+                    "kube.app",
+                    "app1",
+                    "kube.namespace",
+                    "ns1",
+                    "operation_name",
+                    "http.request",
+                    "resource",
+                    "res1",
+                    "tag.http.target.canonical_path",
+                    "/v2/target1",
+                    "tag.http.target.host",
+                    "target_app1.target_ns1")),
+            // Child with operation: grpc.request
             TestUtils.createSpanWithTags(
                 "child1",
                 "trace1",
                 "parent1",
+                // this should use the default key since there are no rules for grpc.request
+                // operations
                 Map.of(
-                    "kube.app", "app2",
-                    "kube.namespace", "ns1",
-                    "operation_name", "grpc.request",
-                    "resource", "res2")),
+                    "kube.app",
+                    "app2",
+                    "kube.namespace",
+                    "ns2",
+                    "operation_name",
+                    "grpc.request",
+                    "resource",
+                    "res2",
+                    "tag.http.target.canonical_path",
+                    "/v2/target2",
+                    "tag.http.target.host",
+                    "target_app2.target_ns2")),
             // Grandchild with operation: other (doesn't match either filter option)
             TestUtils.createSpanWithTags(
                 "grandchild1",
@@ -797,7 +889,7 @@ public class GraphBuilderTest {
 
     // Filter with two options: matches nodes with either http.request OR grpc.request
     GraphBuilder.Filter filter =
-        new GraphBuilder.Filter(Map.of("operation", "http.request", "namespace", "ns1"));
+        new GraphBuilder.Filter(Map.of("operation", List.of("http.request", "grpc.request")));
     Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.of(filter));
 
     // Should include parent1 and child1 (both match at least one filter option)
@@ -807,16 +899,14 @@ public class GraphBuilderTest {
     SortedMap<String, String> parentMetadata =
         new TreeMap<>(
             Map.of(
-                "app", "app1",
-                "namespace", "ns1",
-                "resource", "res1"));
+                "service", "target_app1.target_ns1",
+                "resource", "/v2/target1"));
     String expectedParentId = Node.generateIdFromMetadata(parentMetadata);
 
     SortedMap<String, String> childMetadata =
         new TreeMap<>(
             Map.of(
-                "app", "app2",
-                "namespace", "ns1",
+                "service", "app2.ns2",
                 "resource", "res2"));
     String expectedChildId = Node.generateIdFromMetadata(childMetadata);
 

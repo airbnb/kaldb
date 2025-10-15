@@ -19,26 +19,32 @@ public class GraphConfigTest {
         """
               node_metadata_tag_mapping:
                 service:
-                  default_key: service.name
+                  default_key:
+                    - service.name
                   default_value: unknown_service
                   rules:
                     - field: cluster.name
                       value: prod
-                      override_key: prod.service.name
+                      override_key:
+                        - prod.service.name
                     - field: cluster.name
                       value: staging
-                      override_key: test.service.name
+                      override_key:
+                        - test.service.name
                 cluster:
-                  default_key: cluster.name
+                  default_key:
+                    - cluster.name
                   default_value: unknown_cluster
               edge_metadata_tag_mapping:
                 operation:
-                  default_key: operation_name
+                  default_key:
+                    - operation_name
                   default_value: unknown_operation
                   rules:
                     - field: cluster.name
                       value: prod
-                      override_key: operation.prod
+                      override_key:
+                        - operation.prod
               """;
 
     Path configFile = tempDir.resolve("test-config.yaml");
@@ -51,28 +57,28 @@ public class GraphConfigTest {
     assertThat(config.getEdgeMetadataTagMapping()).hasSize(1);
 
     GraphConfig.TagConfig serviceConfig = config.getNodeMetadataTagMapping().get("service");
-    assertThat(serviceConfig.getDefaultKey()).isEqualTo("service.name");
+    assertThat(serviceConfig.getDefaultKey()).containsExactly("service.name");
     assertThat(serviceConfig.getDefaultValue()).isEqualTo("unknown_service");
     assertThat(serviceConfig.getRules()).hasSize(2);
 
     GraphConfig.RuleConfig rule1 = serviceConfig.getRules().getFirst();
-    assertThat(rule1.getOverrideKey()).isEqualTo("prod.service.name");
+    assertThat(rule1.getOverrideKey()).containsExactly("prod.service.name");
     assertThat(rule1.getField()).isEqualTo("cluster.name");
     assertThat(rule1.getValue()).isEqualTo("prod");
 
     GraphConfig.RuleConfig rule2 = serviceConfig.getRules().get(1);
-    assertThat(rule2.getOverrideKey()).isEqualTo("test.service.name");
+    assertThat(rule2.getOverrideKey()).containsExactly("test.service.name");
     assertThat(rule2.getField()).isEqualTo("cluster.name");
     assertThat(rule2.getValue()).isEqualTo("staging");
 
     GraphConfig.TagConfig clusterConfig = config.getNodeMetadataTagMapping().get("cluster");
-    assertThat(clusterConfig.getDefaultKey()).isEqualTo("cluster.name");
+    assertThat(clusterConfig.getDefaultKey()).containsExactly("cluster.name");
     assertThat(clusterConfig.getDefaultValue()).isEqualTo("unknown_cluster");
     assertThat(clusterConfig.getRules()).hasSize(0);
 
     GraphConfig.TagConfig connectionTypeConfig =
         config.getEdgeMetadataTagMapping().get("operation");
-    assertThat(connectionTypeConfig.getDefaultKey()).isEqualTo("operation_name");
+    assertThat(connectionTypeConfig.getDefaultKey()).containsExactly("operation_name");
     assertThat(connectionTypeConfig.getDefaultValue()).isEqualTo("unknown_operation");
     assertThat(connectionTypeConfig.getRules()).hasSize(1);
   }
@@ -111,14 +117,17 @@ public class GraphConfigTest {
             """
              node_metadata_tag_mapping:
                app:
-                 default_key: app.name
+                 default_key:
+                   - app.name
                  default_value: unknown_app
                namespace:
-                 default_key: namespace.name
+                 default_key:
+                   - namespace.name
                  default_value: unknown_namespace
              edge_metadata_tag_mapping:
                operation:
-                 default_key: operation_name
+                 default_key:
+                   - operation_name
                  default_value: unknown_operation
              """);
     Map<String, String> tags = new HashMap<>();
@@ -139,14 +148,17 @@ public class GraphConfigTest {
             """
               node_metadata_tag_mapping:
                 app:
-                  default_key: app.name
+                  default_key:
+                    - app.name
                   default_value: unknown_app
                 namespace:
-                  default_key: namespace.name
+                  default_key:
+                    - namespace.name
                   default_value: unknown_namespace
               edge_metadata_tag_mapping:
                operation:
-                 default_key: operation_name
+                 default_key:
+                   - operation_name
                  default_value: unknown_operation
               """);
     Map<String, String> tags = Map.of("some.tag", "some-value");
@@ -167,26 +179,32 @@ public class GraphConfigTest {
             """
               node_metadata_tag_mapping:
                 app:
-                  default_key: app.name
+                  default_key:
+                    - app.name
                   default_value: unknown_app
                   rules:
                     - field: namespace.name
                       value: prod-ns
-                      override_key: prod.app.name
+                      override_key:
+                        - prod.app.name
                     - field: cluster.name
                       value: east
-                      override_key: east.app.name
+                      override_key:
+                        - east.app.name
                 namespace:
-                  default_key: namespace.name
+                  default_key:
+                    - namespace.name
                   default_value: unknown_namespace
               edge_metadata_tag_mapping:
                 operation:
-                  default_key: operation_name
+                  default_key:
+                    - operation_name
                   default_value: unknown_operation
                   rules:
                     - field: namespace.name
                       value: prod-ns
-                      override_key: operation.prod
+                      override_key:
+                        - operation.prod
               """);
     Map<String, String> tags =
         Map.of(
@@ -215,38 +233,44 @@ public class GraphConfigTest {
             """
               node_metadata_tag_mapping:
                 app:
-                  default_key: app.name
+                  default_key:
+                    - app.name
                   default_value: unknown_app
                   rules:
                     - field: namespace.name
                       value: prod-ns
-                      override_key: prod.app.name
+                      override_key:
+                        - prod.app.name
                     - field: cluster.name
                       value: east
-                      override_key: east.app.name
+                      override_key:
+                        - east.app.name
                 namespace:
-                  default_key: namespace.name
+                  default_key:
+                    - namespace.name
                   default_value: unknown_namespace
               edge_metadata_tag_mapping:
                 operation:
-                  default_key: operation_name
+                  default_key:
+                    - operation_name
                   default_value: unknown_operation
                   rules:
                     - field: namespace.name
                       value: prod-ns
-                      override_key: operation.prod
+                      override_key:
+                        - operation.prod
               """);
     Map<String, String> tags =
         Map.of(
             "app.name", "my-app", "namespace.name", "prod-ns", "operation_name", "some_operation");
 
-    // Node
+    // Node - rule matches but override key is missing, should return default value
     String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
-    assertThat(result).isEqualTo("my-app");
+    assertThat(result).isEqualTo("unknown_app");
 
-    // Edge
+    // Edge - rule matches but override key is missing, should return default value
     result = config.resolve(tags, "operation", GraphConfig.EntityType.EDGE);
-    assertThat(result).isEqualTo("some_operation");
+    assertThat(result).isEqualTo("unknown_operation");
   }
 
   @Test
@@ -256,26 +280,32 @@ public class GraphConfigTest {
             """
               node_metadata_tag_mapping:
                 app:
-                  default_key: app.name
+                  default_key:
+                    - app.name
                   default_value: unknown_app
                   rules:
                     - field: namespace.name
                       value: prod-ns
-                      override_key: prod.app.name
+                      override_key:
+                        - prod.app.name
                     - field: cluster.name
                       value: east
-                      override_key: east.app.name
+                      override_key:
+                        - east.app.name
                 namespace:
-                  default_key: namespace.name
+                  default_key:
+                    - namespace.name
                   default_value: unknown_namespace
               edge_metadata_tag_mapping:
                 operation:
-                  default_key: operation_name
+                  default_key:
+                    - operation_name
                   default_value: unknown_operation
                   rules:
                     - field: namespace.name
                       value: prod-ns
-                      override_key: operation.prod
+                      override_key:
+                        - operation.prod
               """);
     Map<String, String> tags =
         Map.of(
@@ -297,29 +327,36 @@ public class GraphConfigTest {
             """
               node_metadata_tag_mapping:
                 app:
-                  default_key: app.name
+                  default_key:
+                    - app.name
                   default_value: unknown_app
                   rules:
                     - field: namespace.name
                       value: prod-ns
-                      override_key: prod.app.name
+                      override_key:
+                        - prod.app.name
                     - field: cluster.name
                       value: east
-                      override_key: east.app.name
+                      override_key:
+                        - east.app.name
                 namespace:
-                  default_key: namespace.name
+                  default_key:
+                    - namespace.name
                   default_value: unknown_namespace
               edge_metadata_tag_mapping:
                 operation:
-                  default_key: operation_name
+                  default_key:
+                    - operation_name
                   default_value: unknown_operation
                   rules:
                     - field: namespace.name
                       value: prod-ns
-                      override_key: operation.prod
+                      override_key:
+                        - operation.prod
                     - field: cluster.name
                       value: east
-                      override_key: operation.east
+                      override_key:
+                        - operation.east
               """);
     Map<String, String> tags =
         Map.of(
@@ -356,29 +393,36 @@ public class GraphConfigTest {
             """
               node_metadata_tag_mapping:
                 app:
-                  default_key: app.name
+                  default_key:
+                    - app.name
                   default_value: unknown_app
                   rules:
                     - field: namespace.name
                       value: prod-ns
-                      override_key: prod.app.name
+                      override_key:
+                        - prod.app.name
                     - field: cluster.name
                       value: east
-                      override_key: east.app.name
+                      override_key:
+                        - east.app.name
                 namespace:
-                  default_key: namespace.name
+                  default_key:
+                    - namespace.name
                   default_value: unknown_namespace
               edge_metadata_tag_mapping:
                 operation:
-                  default_key: operation_name
+                  default_key:
+                    - operation_name
                   default_value: unknown_operation
                   rules:
                     - field: namespace.name
                       value: prod-ns
-                      override_key: operation.prod
+                      override_key:
+                        - operation.prod
                     - field: cluster.name
                       value: east
-                      override_key: operation_east
+                      override_key:
+                        - operation_east
               """);
     Map<String, String> tags =
         Map.of(
@@ -403,131 +447,130 @@ public class GraphConfigTest {
   }
 
   @Test
-  public void testResolveWithDelimiterAndPart_validIndex() throws IOException {
+  public void testResolveWithMultipleDefaultKeys() throws IOException {
     GraphConfig config =
         GraphConfig.load(
             """
                           node_metadata_tag_mapping:
-                            app:
-                              default_key: kube.app
-                              default_value: unknown_app
-                              rules:
-                                - field: operation_name
-                                  value: http.request
-                                  override_key: target_app
-                                  delimiter: .
-                                  part: 0
+                            service:
+                              default_key:
+                                - kube.app
+                                - kube.namespace
+                              default_value: unknown_service
+                              key_delimiter: .
                           """);
-    Map<String, String> tags =
-        Map.of(
-            "operation_name", "http.request",
-            "target_app", "my-app.example.com");
+    Map<String, String> tags = Map.of("kube.app", "my-app", "kube.namespace", "prod");
 
-    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
+    String result = config.resolve(tags, "service", GraphConfig.EntityType.NODE);
+    assertThat(result).isEqualTo("my-app.prod");
+  }
+
+  @Test
+  public void testResolveWithMultipleDefaultKeys_missingKey() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+                          node_metadata_tag_mapping:
+                            service:
+                              default_key:
+                                - kube.app
+                                - kube.namespace
+                              default_value: unknown_service
+                              key_delimiter: .
+                          """);
+    Map<String, String> tags = Map.of("kube.app", "my-app");
+
+    String result = config.resolve(tags, "service", GraphConfig.EntityType.NODE);
+    // Should return default value when any key is missing
+    assertThat(result).isEqualTo("unknown_service");
+  }
+
+  @Test
+  public void testResolveWithSingleDefaultKey() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+                          node_metadata_tag_mapping:
+                            service:
+                              default_key:
+                                - kube.app
+                              default_value: unknown_service
+                          """);
+    Map<String, String> tags = Map.of("kube.app", "my-app");
+
+    String result = config.resolve(tags, "service", GraphConfig.EntityType.NODE);
     assertThat(result).isEqualTo("my-app");
   }
 
   @Test
-  public void testResolveWithDelimiterAndPart_outOfBoundsIndex() throws IOException {
+  public void testResolveWithMultipleOverrideKeys() throws IOException {
     GraphConfig config =
         GraphConfig.load(
             """
                           node_metadata_tag_mapping:
-                            app:
-                              default_key: kube.app
-                              default_value: unknown_app
+                            service:
+                              default_key:
+                                - kube.app
+                                - kube.namespace
+                              default_value: unknown_service
+                              key_delimiter: .
                               rules:
                                 - field: operation_name
                                   value: http.request
-                                  override_key: target_app
-                                  delimiter: .
-                                  part: 10
+                                  override_key:
+                                    - tag.http.target.host
+                                    - tag.http.method
                           """);
     Map<String, String> tags =
         Map.of(
-            "operation_name", "http.request",
-            "target_app", "my-app.example.com");
+            "kube.app",
+            "my-app",
+            "kube.namespace",
+            "prod",
+            "operation_name",
+            "http.request",
+            "tag.http.target.host",
+            "api.example.com",
+            "tag.http.method",
+            "GET");
 
-    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
-    // Should keep original value when part index is out of bounds
-    assertThat(result).isEqualTo("my-app.example.com");
+    String result = config.resolve(tags, "service", GraphConfig.EntityType.NODE);
+    assertThat(result).isEqualTo("api.example.com.GET");
   }
 
   @Test
-  public void testResolveWithDelimiterAndPart_noDelimiterInValue() throws IOException {
+  public void testResolveWithMultipleOverrideKeys_missingKey() throws IOException {
     GraphConfig config =
         GraphConfig.load(
             """
                           node_metadata_tag_mapping:
-                            app:
-                              default_key: kube.app
-                              default_value: unknown_app
+                            service:
+                              default_key:
+                                - kube.app
+                                - kube.namespace
+                              default_value: unknown_service
+                              key_delimiter: .
                               rules:
                                 - field: operation_name
                                   value: http.request
-                                  override_key: target_app
-                                  delimiter: .
-                                  part: 1
+                                  override_key:
+                                    - tag.http.target.host
+                                    - tag.http.method
                           """);
     Map<String, String> tags =
         Map.of(
-            "operation_name", "http.request",
-            "target_app", "localhost");
+            "kube.app",
+            "my-app",
+            "kube.namespace",
+            "prod",
+            "operation_name",
+            "http.request",
+            "tag.http.target.host",
+            "api.example.com");
 
-    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
-    // Should keep original value when there's no delimiter
-    assertThat(result).isEqualTo("localhost");
-  }
-
-  @Test
-  public void testResolveWithDelimiterAndPart_multipleDelimiters() throws IOException {
-    GraphConfig config =
-        GraphConfig.load(
-            """
-                          node_metadata_tag_mapping:
-                            app:
-                              default_key: kube.app
-                              default_value: unknown_app
-                              rules:
-                                - field: operation_name
-                                  value: http.request
-                                  override_key: target_app
-                                  delimiter: .
-                                  part: 2
-                          """);
-    Map<String, String> tags =
-        Map.of(
-            "operation_name", "http.request",
-            "target_app", "my-app.example.com");
-
-    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
-    assertThat(result).isEqualTo("com");
-  }
-
-  @Test
-  public void testResolveWithDelimiterAndPart_noMatchingRule() throws IOException {
-    GraphConfig config =
-        GraphConfig.load(
-            """
-                          node_metadata_tag_mapping:
-                            app:
-                              default_key: kube.app
-                              default_value: unknown_app
-                              rules:
-                                - field: operation_name
-                                  value: http.request
-                                  override_key: target_app
-                                  delimiter: .
-                                  part: 0
-                          """);
-    Map<String, String> tags =
-        Map.of(
-            "operation_name", "grpc.request",
-            "kube.app", "my-app");
-
-    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
-    // Should use default key without delimiter splitting
-    assertThat(result).isEqualTo("my-app");
+    String result = config.resolve(tags, "service", GraphConfig.EntityType.NODE);
+    // Should return default value since override key is missing tag.http.method
+    assertThat(result).isEqualTo("unknown_service");
   }
 
   @Test
@@ -549,13 +592,16 @@ public class GraphConfigTest {
             """
       node_metadata_tag_mapping:
         app:
-          default_key: app.name
+          default_key:
+            - app.name
           default_value: unknown_app
         namespace:
-          default_key: namespace.name
+          default_key:
+            - namespace.name
           default_value: unknown_namespace
         resource:
-          default_key: resource.name
+          default_key:
+            - resource.name
           default_value: unknown_resource
       """);
 
@@ -593,7 +639,8 @@ public class GraphConfigTest {
             """
                   edge_metadata_tag_mapping:
                     operation:
-                      default_key: operation_name
+                      default_key:
+                        - operation_name
                       default_value: unknown_operation
                   """);
 

@@ -31,30 +31,39 @@ public final class GraphConfig {
   /**
    * Represents how a single logical field on a node should be mapped to span tags.
    *
-   * <p>Each field has: - a default key to look up in tags - a default fallback value if the key
-   * isn’t found - an optional list of rules that can override the default key
+   * <p>Each field has: - default key (can be a list) to look up in tags (combined with delimiter if
+   * multiple) - a default fallback value if the keys aren't found - an optional delimiter for
+   * combining multiple key values - an optional list of rules that can override the default key
    */
   public static final class TagConfig {
-    private final String defaultKey;
+    private final List<String> defaultKey;
     private final String defaultValue;
+    private final String keyDelimiter;
     private final List<RuleConfig> rules;
 
     @JsonCreator
     public TagConfig(
-        @JsonProperty("default_key") String defaultKey,
+        @JsonProperty("default_key") List<String> defaultKey,
         @JsonProperty("default_value") String defaultValue,
+        @JsonProperty("key_delimiter") String keyDelimiter,
         @JsonProperty("rules") List<RuleConfig> rules) {
-      this.defaultKey = defaultKey;
+      this.defaultKey = (defaultKey == null) ? Collections.emptyList() : List.copyOf(defaultKey);
       this.defaultValue = defaultValue;
+      // Set default keyDelimiter to "." if null or empty
+      this.keyDelimiter = (keyDelimiter == null || keyDelimiter.isEmpty()) ? "." : keyDelimiter;
       this.rules = (rules == null) ? Collections.emptyList() : List.copyOf(rules);
     }
 
-    public String getDefaultKey() {
+    public List<String> getDefaultKey() {
       return defaultKey;
     }
 
     public String getDefaultValue() {
       return defaultValue;
+    }
+
+    public String getKeyDelimiter() {
+      return keyDelimiter;
     }
 
     public List<RuleConfig> getRules() {
@@ -69,22 +78,16 @@ public final class GraphConfig {
   public static class RuleConfig {
     private final String field;
     private final String value;
-    private final String overrideKey;
-    private final String delimiter;
-    private final Integer part;
+    private final List<String> overrideKey;
 
     @JsonCreator
     public RuleConfig(
         @JsonProperty("field") String field,
         @JsonProperty("value") String value,
-        @JsonProperty("override_key") String overrideKey,
-        @JsonProperty("delimiter") String delimiter,
-        @JsonProperty("part") Integer part) {
+        @JsonProperty("override_key") List<String> overrideKey) {
       this.field = field;
       this.value = value;
-      this.overrideKey = overrideKey;
-      this.delimiter = delimiter;
-      this.part = part;
+      this.overrideKey = (overrideKey == null) ? Collections.emptyList() : List.copyOf(overrideKey);
     }
 
     public String getField() {
@@ -95,16 +98,8 @@ public final class GraphConfig {
       return value;
     }
 
-    public String getOverrideKey() {
+    public List<String> getOverrideKey() {
       return overrideKey;
-    }
-
-    public String getDelimiter() {
-      return delimiter;
-    }
-
-    public Integer getPart() {
-      return part;
     }
   }
 
@@ -214,12 +209,11 @@ public final class GraphConfig {
   /**
    * Resolves the actual tag value for a given logical field, using the provided span tags.
    *
-   * <p>Steps: 1. Look up the TagConfig for this logical field (e.g. "resource"). 2. Default to
-   * using its defaultKey + defaultValue. 3. If rules are defined: - Iterate through each rule in
-   * reverse order. - If a rule's field/value condition matches, switch keyToUse to overrideKey. 4.
-   * Finally, look up the chosen key in tags. If missing, fall back to defaultValue. 5. If the
-   * matching rule has delimiter and part configured, split the value and extract the specified
-   * part.
+   * <p>Steps: 1. Look up the TagConfig for this logical field (e.g. "resource"). 2. Check if any
+   * rules match: - Iterate through each rule in reverse order. - If a rule's field/value condition
+   * matches, use the overrideKey to look up the value. 3. If no rule matches, use the defaultKey: -
+   * Look up each keyPart from defaultKey list in the tags map. - Combine the values with the
+   * delimiter if multiple parts are present. - If any part is missing, fall back to defaultValue.
    *
    * <p>Note: This logic does not currently support multiple field matches for a single rule.
    *
@@ -247,26 +241,35 @@ public final class GraphConfig {
                 rule ->
                     rule.getValue()
                         .equals(tags.getOrDefault(rule.getField(), "unknown_" + rule.getField())))
-            .filter(rule -> tags.containsKey(rule.getOverrideKey()))
             .findFirst()
             .orElse(null);
 
-    String keyToUse =
+    // Determine which key to use (override or default)
+    List<String> keyToUse =
         matchingRule != null ? matchingRule.getOverrideKey() : baseCfg.getDefaultKey();
-    String value = tags.getOrDefault(keyToUse, baseCfg.getDefaultValue());
 
-    // If a rule matched and has delimiter/part configuration, split and extract the part
-    if (matchingRule != null
-        && matchingRule.getDelimiter() != null
-        && matchingRule.getPart() != null) {
-      String[] parts = value.split(java.util.regex.Pattern.quote(matchingRule.getDelimiter()));
-      int partIndex = matchingRule.getPart();
-      if (partIndex >= 0 && partIndex < parts.length) {
-        value = parts[partIndex];
-      }
+    if (keyToUse == null || keyToUse.isEmpty()) {
+      return baseCfg.getDefaultValue();
     }
 
-    return value;
+    // Collect values for all parts in a key
+    List<String> values = new java.util.ArrayList<>();
+    for (String keyPart : keyToUse) {
+      String value = tags.get(keyPart);
+      if (value == null) {
+        // If any key is missing, return the default value
+        return baseCfg.getDefaultValue();
+      }
+      values.add(value);
+    }
+
+    // Combine values with delimiter if present and multiple keys exist
+    if (values.size() > 1 && baseCfg.getKeyDelimiter() != null) {
+      return String.join(baseCfg.getKeyDelimiter(), values);
+    }
+
+    // Single value - return as is
+    return values.get(0);
   }
 
   @Override

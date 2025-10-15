@@ -8,7 +8,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
@@ -39,16 +38,25 @@ public class GraphBuilder {
     this.config = config;
   }
 
-  public record Filter(Map<String, String> options) {
+  public record Filter(Map<String, List<String>> options) {
     public boolean matches(SpanNode node) {
-      for (Map.Entry<String, String> entry : this.options().entrySet()) {
-        if (!node.nodeMetadata().containsKey(entry.getKey())
-            && !node.edgeMetadata().containsKey(entry.getKey())) {
+      for (Map.Entry<String, List<String>> entry : this.options().entrySet()) {
+        String fieldName = entry.getKey();
+        List<String> allowedValues = entry.getValue();
+
+        // Get the actual value from node or edge metadata
+        String actualValue = node.nodeMetadata().get(fieldName);
+        if (actualValue == null) {
+          actualValue = node.edgeMetadata().get(fieldName);
+        }
+
+        // If field doesn't exist in either metadata, skip this filter option
+        if (actualValue == null) {
           continue;
         }
 
-        if (Objects.equals(node.nodeMetadata().get(entry.getKey()), entry.getValue())
-            || Objects.equals(node.edgeMetadata().get(entry.getKey()), entry.getValue())) {
+        // Check if actual value matches any of the allowed values
+        if (allowedValues.contains(actualValue)) {
           return true;
         }
       }
