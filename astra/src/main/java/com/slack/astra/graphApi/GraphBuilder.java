@@ -38,11 +38,40 @@ public class GraphBuilder {
     this.config = config;
   }
 
+  /**
+   * Filter for selecting nodes/edges in the graph based on metadata criteria.
+   *
+   * <p>The filter uses OR logic: a node matches if ANY of the filter criteria match. Each filter
+   * option is a field name (e.g., "operation", "service") mapped to a list of allowed values for
+   * that field.
+   *
+   * <p>Examples: {"operation": ["http.request"]} - matches nodes with operation="http.request"
+   * {"operation": ["http.request", "grpc.request"]} - matches nodes with either operation
+   * {"operation": ["http.request"], "service": ["api-gateway.prod"]} - matches nodes with
+   * operation="http.request" OR service="api-gateway.prod" {} or null - empty filter matches all
+   * nodes (no filtering)
+   *
+   * <p>The filter checks both node metadata and edge metadata. If a field exists in either, it can
+   * be used for filtering.
+   *
+   * @param options Map of field names to lists of allowed values. If null or empty, all nodes
+   *     match.
+   */
   public record Filter(Map<String, List<String>> options) {
     public boolean matches(SpanNode node) {
+      // Empty or null filter means no filtering - match all nodes
+      if (options == null || options.isEmpty()) {
+        return true;
+      }
+
       for (Map.Entry<String, List<String>> entry : this.options().entrySet()) {
         String fieldName = entry.getKey();
         List<String> allowedValues = entry.getValue();
+
+        // Skip if allowedValues is null or empty
+        if (allowedValues == null || allowedValues.isEmpty()) {
+          continue;
+        }
 
         // Get the actual value from node or edge metadata
         String actualValue = node.nodeMetadata().get(fieldName);
@@ -158,9 +187,6 @@ public class GraphBuilder {
    * nodes that match the filter criteria. Non-matching intermediate nodes are traversed but don't
    * appear in the final graph - their children are connected directly to the last matching
    * ancestor.
-   *
-   * <p>Since span graphs are trees (each child has exactly one parent), a single shared visited set
-   * is sufficient to prevent cycles and redundant traversal.
    *
    * <p>Uses an explicit stack instead of recursion to avoid stack overflow with deep trace graphs.
    *

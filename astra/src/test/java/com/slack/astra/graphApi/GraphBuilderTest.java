@@ -915,4 +915,45 @@ public class GraphBuilderTest {
     assertThat(edge.targetNodeId()).isEqualTo(expectedChildId);
     assertThat(edge.metadata()).isEqualTo(new TreeMap<>(Map.of("operation", "grpc.request")));
   }
+
+  @Test
+  void buildFromSpans_withEmptyFilter_returnsAllNodes() {
+    List<ZipkinSpanResponse> spans =
+        List.of(
+            TestUtils.createSpanWithTags(
+                "parent1",
+                "trace1",
+                null,
+                Map.of(
+                    "kube.app", "app1",
+                    "kube.namespace", "ns1",
+                    "operation_name", "op1",
+                    "resource", "res1")),
+            TestUtils.createSpanWithTags(
+                "child1",
+                "trace1",
+                "parent1",
+                Map.of(
+                    "kube.app", "app2",
+                    "kube.namespace", "ns2",
+                    "operation_name", "op2",
+                    "resource", "res2")),
+            TestUtils.createSpanWithTags(
+                "child2",
+                "trace1",
+                "parent1",
+                Map.of(
+                    "kube.app", "app3",
+                    "kube.namespace", "ns3",
+                    "operation_name", "op3",
+                    "resource", "res3")));
+
+    // Empty filter - should match all nodes
+    GraphBuilder.Filter emptyFilter = new GraphBuilder.Filter(Map.of());
+    Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.of(emptyFilter));
+
+    // Should include all nodes and edges (same as no filter)
+    assertThat(graph.nodes()).hasSize(3);
+    assertThat(graph.edges()).hasSize(2);
+  }
 }

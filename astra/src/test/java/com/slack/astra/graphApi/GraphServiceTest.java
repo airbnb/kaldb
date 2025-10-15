@@ -98,10 +98,18 @@ public class GraphServiceTest {
                 traceId,
                 null,
                 Map.of(
-                    "kube.app", "api-gateway",
-                    "kube.namespace", "prod",
-                    "operation_name", "http.request",
-                    "resource", "/api/users/profile")),
+                    "kube.app",
+                    "api-gateway",
+                    "kube.namespace",
+                    "prod",
+                    "operation_name",
+                    "http.request",
+                    "resource",
+                    "some_resource",
+                    "tag.http.target.canonical_path",
+                    "/api/users/profile",
+                    "tag.http.target.host",
+                    "app1.ns1")),
 
             // First level children
             TestUtils.createSpanWithTags(
@@ -109,10 +117,18 @@ public class GraphServiceTest {
                 traceId,
                 "root",
                 Map.of(
-                    "kube.app", "auth-service",
-                    "kube.namespace", "prod",
-                    "operation_name", "http.request",
-                    "resource", "/api/auth/validate")),
+                    "kube.app",
+                    "auth-service",
+                    "kube.namespace",
+                    "prod",
+                    "operation_name",
+                    "http.request",
+                    "resource",
+                    "some_resource2",
+                    "tag.http.target.canonical_path",
+                    "/api/auth/validate",
+                    "tag.http.target.host",
+                    "app2.ns2")),
             TestUtils.createSpanWithTags(
                 "child2",
                 traceId,
@@ -205,8 +221,7 @@ public class GraphServiceTest {
       assertTrue(node.has("metadata"));
 
       JsonNode metadata = node.get("metadata");
-      assertTrue(metadata.has("app"));
-      assertTrue(metadata.has("namespace"));
+      assertTrue(metadata.has("service"));
       assertTrue(metadata.has("resource"));
     }
 
@@ -218,5 +233,209 @@ public class GraphServiceTest {
       JsonNode metadata = edge.get("metadata");
       assertTrue(metadata.has("operation"));
     }
+  }
+
+  @Test
+  public void testGetSubgraphByTraceId_withEmptyFilter() throws Exception {
+    String traceId = "test_trace_empty_filter";
+
+    List<com.slack.astra.zipkinApi.ZipkinSpanResponse> testSpans =
+        List.of(
+            TestUtils.createSpanWithTags(
+                "parent1",
+                traceId,
+                null,
+                Map.of(
+                    "kube.app", "app1",
+                    "kube.namespace", "prod",
+                    "operation_name", "http.request",
+                    "resource", "resource1")),
+            TestUtils.createSpanWithTags(
+                "child1",
+                traceId,
+                "parent1",
+                Map.of(
+                    "kube.app", "app2",
+                    "kube.namespace", "prod",
+                    "operation_name", "db.query",
+                    "resource", "resource2")));
+
+    when(traceFetcher.getSpansByTraceId(
+            anyString(),
+            any(Optional.class),
+            any(Optional.class),
+            any(Optional.class),
+            any(Optional.class),
+            any(Optional.class)))
+        .thenReturn(testSpans);
+
+    // Empty filter JSON - should return all nodes (no filtering applied)
+    String emptyFilterJson = "{}";
+
+    HttpResponse response =
+        graphService.getSubgraph(
+            traceId, Optional.of(emptyFilterJson), Optional.empty(), Optional.empty());
+    AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
+
+    assertEquals(HttpStatus.OK, aggregatedResponse.status());
+
+    String content = aggregatedResponse.contentUtf8();
+    JsonNode jsonNode = objectMapper.readTree(content);
+
+    JsonNode subgraph = jsonNode.get("subgraph");
+    JsonNode nodes = subgraph.get("nodes");
+    JsonNode edges = subgraph.get("edges");
+
+    // Empty filter should return all nodes and edges
+    assertEquals(2, nodes.size(), "Empty filter should return all 2 nodes");
+    assertEquals(1, edges.size(), "Empty filter should return all 1 edge");
+  }
+
+  @Test
+  public void testGetSubgraphByTraceId_withInvalidFilterJson() throws Exception {
+    String traceId = "test_trace_invalid_filter";
+
+    when(traceFetcher.getSpansByTraceId(
+            anyString(),
+            any(Optional.class),
+            any(Optional.class),
+            any(Optional.class),
+            any(Optional.class),
+            any(Optional.class)))
+        .thenReturn(List.of());
+
+    // Invalid JSON - missing closing brace
+    String invalidFilterJson = "{\"operation\":[\"http.request\"";
+
+    HttpResponse response =
+        graphService.getSubgraph(
+            traceId, Optional.of(invalidFilterJson), Optional.empty(), Optional.empty());
+    AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
+
+    assertEquals(HttpStatus.BAD_REQUEST, aggregatedResponse.status());
+    String content = aggregatedResponse.contentUtf8();
+    assertTrue(content.contains("Invalid buildFilter JSON"));
+  }
+
+  @Test
+  public void testGetSubgraphByTraceId_withMalformedFilterStructure() throws Exception {
+    String traceId = "test_trace_malformed_filter";
+
+    when(traceFetcher.getSpansByTraceId(
+            anyString(),
+            any(Optional.class),
+            any(Optional.class),
+            any(Optional.class),
+            any(Optional.class),
+            any(Optional.class)))
+        .thenReturn(List.of());
+
+    // Valid JSON but wrong structure - should be Map<String, List<String>> not Map<String, String>
+    String malformedFilterJson = "{\"operation\":\"http.request\"}";
+
+    HttpResponse response =
+        graphService.getSubgraph(
+            traceId, Optional.of(malformedFilterJson), Optional.empty(), Optional.empty());
+    AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
+
+    assertEquals(HttpStatus.BAD_REQUEST, aggregatedResponse.status());
+    String content = aggregatedResponse.contentUtf8();
+    assertTrue(content.contains("Invalid buildFilter JSON"));
+  }
+
+  @Test
+  public void testGetSubgraphByTraceId_withValidFilter() throws Exception {
+    String traceId = "test_trace_with_filter";
+
+    // Create spans with different operations
+    List<com.slack.astra.zipkinApi.ZipkinSpanResponse> testSpans =
+        List.of(
+            // Root span with http.request
+            TestUtils.createSpanWithTags(
+                "root",
+                traceId,
+                null,
+                Map.of(
+                    "kube.app",
+                    "api-gateway",
+                    "kube.namespace",
+                    "prod",
+                    "operation_name",
+                    "http.request",
+                    "resource",
+                    "some_resource",
+                    "tag.http.target.canonical_path",
+                    "/api/endpoint",
+                    "tag.http.target.host",
+                    "gateway.prod")),
+            // Child with http.request
+            TestUtils.createSpanWithTags(
+                "child1",
+                traceId,
+                "root",
+                Map.of(
+                    "kube.app",
+                    "service1",
+                    "kube.namespace",
+                    "prod",
+                    "operation_name",
+                    "http.request",
+                    "resource",
+                    "some_resource2",
+                    "tag.http.target.canonical_path",
+                    "/api/service1",
+                    "tag.http.target.host",
+                    "service1.prod")),
+            // Child with grpc.request
+            TestUtils.createSpanWithTags(
+                "child2",
+                traceId,
+                "root",
+                Map.of(
+                    "kube.app", "service2",
+                    "kube.namespace", "prod",
+                    "operation_name", "grpc.request",
+                    "resource", "grpcMethod")),
+            // Child with db.query (should be filtered out)
+            TestUtils.createSpanWithTags(
+                "child3",
+                traceId,
+                "root",
+                Map.of(
+                    "kube.app", "database",
+                    "kube.namespace", "prod",
+                    "operation_name", "db.query",
+                    "resource", "SELECT * FROM users")));
+
+    when(traceFetcher.getSpansByTraceId(
+            anyString(),
+            any(Optional.class),
+            any(Optional.class),
+            any(Optional.class),
+            any(Optional.class),
+            any(Optional.class)))
+        .thenReturn(testSpans);
+
+    // Filter to only include http.request and grpc.request operations
+    String filterJson = "{\"operation\":[\"http.request\",\"grpc.request\"]}";
+
+    HttpResponse response =
+        graphService.getSubgraph(
+            traceId, Optional.of(filterJson), Optional.empty(), Optional.empty());
+    AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
+
+    assertEquals(HttpStatus.OK, aggregatedResponse.status());
+
+    String content = aggregatedResponse.contentUtf8();
+    JsonNode jsonNode = objectMapper.readTree(content);
+
+    JsonNode subgraph = jsonNode.get("subgraph");
+    JsonNode nodes = subgraph.get("nodes");
+    JsonNode edges = subgraph.get("edges");
+
+    // Should have 3 nodes (root, child1, child2) - child3 with db.query is filtered out
+    assertEquals(3, nodes.size(), "Should have 3 nodes after filtering");
+    // Should have 2 edges (root->child1, root->child2)
+    assertEquals(2, edges.size(), "Should have 2 edges after filtering");
   }
 }

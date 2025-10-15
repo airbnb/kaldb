@@ -1,6 +1,7 @@
 package com.slack.astra.graphApi;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
@@ -15,6 +16,7 @@ import com.slack.astra.zipkinApi.TraceFetcher;
 import com.slack.astra.zipkinApi.ZipkinSpanResponse;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,10 +51,28 @@ public class GraphService {
   @Path("/api/v1/trace/{traceId}/subgraph")
   public HttpResponse getSubgraph(
       @Param("traceId") String traceId,
-      @Param("buildFilter") Optional<GraphBuilder.Filter> buildFilter,
+      @Param("buildFilter") Optional<String> buildFilterJson,
       @Param("maxSpans") Optional<Integer> maxSpans,
       @Header("X-User-Request") Optional<Boolean> userRequest)
       throws IOException {
+    // Parse the filter from JSON string if provided
+    Optional<GraphBuilder.Filter> buildFilter = Optional.empty();
+    if (buildFilterJson.isPresent()) {
+      try {
+        // Parse JSON as Map<String, List<String>> and create Filter
+        TypeReference<Map<String, List<String>>> typeRef = new TypeReference<>() {};
+        Map<String, List<String>> filterMap =
+            objectMapper.readValue(buildFilterJson.get(), typeRef);
+        buildFilter = Optional.of(new GraphBuilder.Filter(filterMap));
+      } catch (Exception e) {
+        LOG.error("Failed to parse buildFilter JSON: {}", buildFilterJson.get(), e);
+        return HttpResponse.of(
+            HttpStatus.BAD_REQUEST,
+            MediaType.PLAIN_TEXT_UTF_8,
+            "Invalid buildFilter JSON: " + e.getMessage());
+      }
+    }
+
     long start = System.currentTimeMillis();
     List<ZipkinSpanResponse> trace =
         this.traceFetcher.getSpansByTraceId(
