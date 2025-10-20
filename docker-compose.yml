@@ -1,15 +1,16 @@
 version: "3"
 services:
   zookeeper:
-    image: 'bitnami/zookeeper:3.6.3'
+    image: zookeeper:3.9
     container_name: dep_zookeeper
     ports:
-      - '2181:2181'
+      - "2181:2181"
     environment:
-      - ALLOW_ANONYMOUS_LOGIN=yes
+      ZOO_STANDALONE_ENABLED: "true"
+      ZOO_4LW_COMMANDS_WHITELIST: "ruok,stat"
 
   kafka:
-    image: 'bitnami/kafka:3.2.3'
+    image: 'bitnamilegacy/kafka:3.2.3'
     container_name: dep_kafka
     ports:
       - '9092:9092'
