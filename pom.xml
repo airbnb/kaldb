@@ -24,6 +24,7 @@
     <modules>
         <module>benchmarks</module>
         <module>astra</module>
+        <module>tools/loadgen</module>
     </modules>
 
     <build>

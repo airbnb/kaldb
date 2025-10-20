@@ -1,9 +1,13 @@
-package com.slack.astra.tools;
+package com.slack.astra.tools.loadgen;
 
 import java.io.IOException;
 import java.net.URI;
-import java.net.http.*;
-import java.time.*;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
