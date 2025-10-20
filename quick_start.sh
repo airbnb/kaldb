@@ -106,23 +106,27 @@ docker exec dep_kafka kafka-topics.sh \
   --if-not-exists \
   --bootstrap-server localhost:9092 || true
 
-echo "🧩 Creating Astra dataset metadata..."
-curl -s -XPOST http://localhost:8081/api/v1/datasets \
-  -H "Content-Type: application/json" \
+# CreateDatasetMetadata
+echo "🧩 Creating dataset metadata via Manager API..."
+curl -sS -XPOST \
+  -H 'content-type: application/json; charset=utf-8; protocol=gRPC' \
+  'http://localhost:8083/slack.proto.astra.ManagerApiService/CreateDatasetMetadata' \
   -d '{
-    "name": "test-dataset",
-    "topic": "test-topic-in",
-    "retention": "P7D"
-  }' || echo "Dataset may already exist."
+    "name": "test",
+    "owner": "test@email.com",
+    "serviceNamePattern": "_all"
+  }' || echo "CreateDatasetMetadata may have already been applied."
 
-echo "📦 Updating Astra partition assignment..."
-curl -s -XPOST http://localhost:8081/api/v1/partitions/assignments \
-  -H "Content-Type: application/json" \
+# UpdatePartitionAssignment
+echo "📦 Applying partition assignment via Manager API..."
+curl -sS -XPOST \
+  -H 'content-type: application/json; charset=utf-8; protocol=gRPC' \
+  'http://localhost:8083/slack.proto.astra.ManagerApiService/UpdatePartitionAssignment' \
   -d '{
-    "dataset": "test-dataset",
-    "numPartitions": 1,
-    "replicas": 1
-  }' || echo "Partition assignment may already exist."
+    "name": "test",
+    "throughputBytes": "4000000",
+    "partitionIds": ["0"]
+  }' || echo "UpdatePartitionAssignment may have already been applied."
 
 # ------------------------------------------------------------------------------
 # Step 7. Summary
