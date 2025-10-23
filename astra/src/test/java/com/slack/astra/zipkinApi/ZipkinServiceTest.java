@@ -124,6 +124,7 @@ public class ZipkinServiceTest {
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
+              Optional.empty(),
               Optional.empty());
       AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
 
@@ -147,6 +148,7 @@ public class ZipkinServiceTest {
 
       zipkinService.getTraceByTraceId(
           traceId,
+          Optional.empty(),
           Optional.empty(),
           Optional.empty(),
           Optional.empty(),
@@ -184,6 +186,7 @@ public class ZipkinServiceTest {
           Optional.empty(),
           Optional.empty(),
           Optional.of(ddTraceIdHeaderVal),
+          Optional.empty(),
           Optional.empty());
 
       verify(searcher)
@@ -210,6 +213,7 @@ public class ZipkinServiceTest {
 
       zipkinService.getTraceByTraceId(
           traceId,
+          Optional.empty(),
           Optional.empty(),
           Optional.empty(),
           Optional.empty(),
@@ -247,6 +251,7 @@ public class ZipkinServiceTest {
           Optional.of(maxSpansParam),
           Optional.empty(),
           Optional.empty(),
+          Optional.empty(),
           Optional.empty());
 
       verify(searcher)
@@ -281,6 +286,7 @@ public class ZipkinServiceTest {
               Optional.empty(),
               Optional.empty(),
               Optional.of(userRequest),
+              Optional.empty(),
               Optional.empty(),
               Optional.empty());
 
@@ -332,6 +338,7 @@ public class ZipkinServiceTest {
               Optional.empty(),
               Optional.of(userRequest),
               Optional.empty(),
+              Optional.empty(),
               Optional.empty());
 
       verify(searcher)
@@ -381,6 +388,7 @@ public class ZipkinServiceTest {
               Optional.empty(),
               Optional.of(userRequest),
               Optional.empty(),
+              Optional.empty(),
               Optional.empty());
 
       verify(mockBlobStore).readFileData(eq(traceFilePath), eq(true));
@@ -428,6 +436,7 @@ public class ZipkinServiceTest {
               Optional.empty(),
               Optional.empty(),
               Optional.of(userRequest),
+              Optional.empty(),
               Optional.empty(),
               Optional.of(dataFreshnessInSeconds));
 
@@ -483,6 +492,7 @@ public class ZipkinServiceTest {
               Optional.empty(),
               Optional.empty(),
               Optional.of(userRequest),
+              Optional.empty(),
               Optional.empty(),
               Optional.of(dataFreshnessInSeconds));
 

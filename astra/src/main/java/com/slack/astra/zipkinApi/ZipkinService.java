@@ -227,6 +227,7 @@ public class ZipkinService {
       @Param("maxSpans") Optional<Integer> maxSpans,
       @Header("X-User-Request") Optional<Boolean> userRequest,
       @Header("X-DD-TRACE-ID") Optional<String> ddTraceId,
+      @Header("X-E2E-hex-base64") Optional<String> searchByHexAndBase64,
       @Header("X-Data-Freshness-In-Seconds") Optional<Long> dataFreshnessInSeconds)
       throws IOException {
 
