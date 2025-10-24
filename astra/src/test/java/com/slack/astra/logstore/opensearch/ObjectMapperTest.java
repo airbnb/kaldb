@@ -29,8 +29,12 @@ import com.slack.astra.proto.config.AstraConfigs;
 import com.slack.astra.testlib.AstraConfigUtil;
 import com.slack.astra.testlib.MessageUtil;
 import com.slack.astra.testlib.SpanUtil;
+import com.slack.astra.testlib.TestEtcdClusterFactory;
 import com.slack.astra.util.QueryBuilderUtil;
 import com.slack.service.murron.trace.Trace;
+import io.etcd.jetcd.ByteSequence;
+import io.etcd.jetcd.Client;
+import io.etcd.jetcd.launcher.EtcdCluster;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -62,6 +66,8 @@ public class ObjectMapperTest {
   private BlobStore blobStore;
   private TestingServer localZkServer;
   private AsyncCuratorFramework curatorFramework;
+  private static EtcdCluster etcdCluster;
+  private Client etcdClient;
 
   @BeforeEach
   public void setUp() throws Exception {
@@ -81,6 +87,18 @@ public class ObjectMapperTest {
             .build();
 
     curatorFramework = CuratorBuilder.build(metricsRegistry, zkConfig);
+
+    etcdCluster = TestEtcdClusterFactory.start();
+
+    // Create etcd client
+    etcdClient =
+        Client.builder()
+            .endpoints(
+                etcdCluster.clientEndpoints().stream().map(Object::toString).toArray(String[]::new))
+            .namespace(
+                ByteSequence.from(
+                    "shouldHandleChunkLivecycle", java.nio.charset.StandardCharsets.UTF_8))
+            .build();
   }
 
   @AfterEach
@@ -92,6 +110,7 @@ public class ObjectMapperTest {
     }
     curatorFramework.unwrap().close();
     localZkServer.stop();
+    etcdClient.close();
   }
 
   private void initChunkManager(
@@ -99,9 +118,21 @@ public class ObjectMapperTest {
       BlobStore blobStore,
       ListeningExecutorService listeningExecutorService)
       throws IOException, TimeoutException {
+    AstraConfigs.EtcdConfig etcdConfig =
+        AstraConfigs.EtcdConfig.newBuilder()
+            .addAllEndpoints(etcdCluster.clientEndpoints().stream().map(Object::toString).toList())
+            .setConnectionTimeoutMs(5000)
+            .setKeepaliveTimeoutMs(3000)
+            .setOperationsMaxRetries(3)
+            .setOperationsTimeoutMs(3000)
+            .setRetryDelayMs(100)
+            .setNamespace("ObjectMapperTest")
+            .setEnabled(true)
+            .setEphemeralNodeTtlMs(3000)
+            .setEphemeralNodeMaxRetries(3)
+            .build();
     AstraConfigs.MetadataStoreConfig metadataStoreConfig =
         AstraConfigs.MetadataStoreConfig.newBuilder()
-            .setMode(AstraConfigs.MetadataStoreMode.ZOOKEEPER_EXCLUSIVE)
             .setZookeeperConfig(
                 AstraConfigs.ZookeeperConfig.newBuilder()
                     .setZkConnectString(localZkServer.getConnectString())
@@ -110,8 +141,11 @@ public class ObjectMapperTest {
                     .setZkConnectionTimeoutMs(1500)
                     .setSleepBetweenRetriesMs(1000)
                     .setZkCacheInitTimeoutMs(1000)
+                    .setEnabled(true)
                     .build())
+            .setEtcdConfig(etcdConfig)
             .build();
+
     SearchContext searchContext = new SearchContext(TEST_HOST, TEST_PORT);
     chunkManager =
         new IndexingChunkManager<>(
@@ -122,8 +156,10 @@ public class ObjectMapperTest {
             blobStore,
             listeningExecutorService,
             curatorFramework,
+            etcdClient,
             searchContext,
             AstraConfigUtil.makeIndexerConfig(TEST_PORT, 1000, 100),
+            AstraConfigs.AstraConfig.newBuilder().build().getLuceneConfig(),
             metadataStoreConfig);
     chunkManager.startAsync();
     chunkManager.awaitRunning(DEFAULT_START_STOP_DURATION);
