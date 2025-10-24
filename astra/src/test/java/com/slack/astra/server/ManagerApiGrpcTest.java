@@ -911,6 +911,7 @@ public class ManagerApiGrpcTest {
     assertThat(deleteRedactedFieldResponse.getStartTimeEpochMs()).isEqualTo(start);
     assertThat(deleteRedactedFieldResponse.getEndTimeEpochMs()).isEqualTo(end);
 
+    // TODO: Temp fix. Fails in CI. Possible race condition.
     await()
         .untilAsserted(
             () -> assertThat(fieldRedactionMetadataStore.hasSync(redactionName)).isFalse());
