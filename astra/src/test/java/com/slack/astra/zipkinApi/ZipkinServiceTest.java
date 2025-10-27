@@ -199,6 +199,149 @@ public class ZipkinServiceTest {
   }
 
   @Test
+  public void testGetTraceByTraceIdHexBase64_base_64() throws Exception {
+    try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
+      // Mocking Tracing and Span
+      Tracer mockTracer = mock(Tracer.class);
+      Span mockSpan = mock(Span.class);
+
+      mockedTracing.when(Tracing::currentTracer).thenReturn(mockTracer);
+      when(mockTracer.currentSpan()).thenReturn(mockSpan);
+
+      String traceId = "zRbQfLjF1JInhgVQygG2HQ==";
+      String convertedTraceId = "cd16d07cb8c5d49227860550ca01b61d";
+      when(searcher.doSearch(any())).thenReturn(mockSearchResult);
+      String searchByHexAndBase64 = "value_does_not_matter";
+
+      zipkinService.getTraceByTraceId(
+          traceId,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of(searchByHexAndBase64),
+          Optional.empty());
+
+      verify(searcher)
+          .doSearch(
+              Mockito.argThat(
+                  request ->
+                      request.getHowMany() == defaultMaxSpans
+                          && request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")
+                          && request
+                              .getQuery()
+                              .contains("\"trace_id\":\"" + convertedTraceId + "\"")));
+    }
+  }
+
+  @Test
+  public void testGetTraceByTraceIdHexBase64_hex() throws Exception {
+    try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
+      // Mocking Tracing and Span
+      Tracer mockTracer = mock(Tracer.class);
+      Span mockSpan = mock(Span.class);
+
+      mockedTracing.when(Tracing::currentTracer).thenReturn(mockTracer);
+      when(mockTracer.currentSpan()).thenReturn(mockSpan);
+
+      String traceId = "cd16d07cb8c5d49227860550ca01b61d";
+      String convertedTraceId = "zRbQfLjF1JInhgVQygG2HQ==";
+      when(searcher.doSearch(any())).thenReturn(mockSearchResult);
+      String searchByHexAndBase64 = "value_does_not_matter";
+
+      zipkinService.getTraceByTraceId(
+          traceId,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of(searchByHexAndBase64),
+          Optional.empty());
+
+      verify(searcher)
+          .doSearch(
+              Mockito.argThat(
+                  request ->
+                      request.getHowMany() == defaultMaxSpans
+                          && request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")
+                          && request
+                              .getQuery()
+                              .contains("\"trace_id\":\"" + convertedTraceId + "\"")));
+    }
+  }
+
+  @Test
+  public void testGetTraceByTraceIdHexBase64_invalid_to_convert() throws Exception {
+    try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
+      // Mocking Tracing and Span
+      Tracer mockTracer = mock(Tracer.class);
+      Span mockSpan = mock(Span.class);
+
+      mockedTracing.when(Tracing::currentTracer).thenReturn(mockTracer);
+      when(mockTracer.currentSpan()).thenReturn(mockSpan);
+
+      String traceId = "invalid_id";
+      when(searcher.doSearch(any())).thenReturn(mockSearchResult);
+      String searchByHexAndBase64 = "value_does_not_matter";
+
+      zipkinService.getTraceByTraceId(
+          traceId,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of(searchByHexAndBase64),
+          Optional.empty());
+
+      verify(searcher)
+          .doSearch(
+              Mockito.argThat(
+                  request ->
+                      request.getHowMany() == defaultMaxSpans
+                          && request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
+    }
+  }
+
+  @Test
+  public void testGetTraceByTraceIdHexBase64_disabled() throws Exception {
+    try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
+      // Mocking Tracing and Span
+      Tracer mockTracer = mock(Tracer.class);
+      Span mockSpan = mock(Span.class);
+
+      mockedTracing.when(Tracing::currentTracer).thenReturn(mockTracer);
+      when(mockTracer.currentSpan()).thenReturn(mockSpan);
+
+      String traceId = "cd16d07cb8c5d49227860550ca01b61d";
+      String convertedTraceId = "zRbQfLjF1JInhgVQygG2HQ==";
+      when(searcher.doSearch(any())).thenReturn(mockSearchResult);
+
+      zipkinService.getTraceByTraceId(
+          traceId,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty());
+
+      verify(searcher)
+          .doSearch(
+              Mockito.argThat(
+                  request ->
+                      request.getHowMany() == defaultMaxSpans
+                          && request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")
+                          && !request
+                              .getQuery()
+                              .contains("\"trace_id\":\"" + convertedTraceId + "\"")));
+    }
+  }
+
+  @Test
   public void testGetTraceByTraceId_dd_trace_id_Disabled() throws Exception {
     try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
       // Mocking Tracing and Span

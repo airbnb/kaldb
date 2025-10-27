@@ -30,6 +30,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -38,6 +39,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
+import org.apache.commons.codec.binary.Hex;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -218,6 +221,53 @@ public class ZipkinService {
     return s != null && DIGITS.matcher(s).matches();
   }
 
+  private static String convertTraceId(String traceId) {
+    if (traceId == null || traceId.isEmpty()) return null;
+
+    // Try hex → base64
+    if (traceId.matches("^[0-9a-fA-F]+$") && traceId.length() % 2 == 0) {
+      try {
+        byte[] bytes = Hex.decodeHex(traceId.toCharArray());
+        return Base64.getEncoder().encodeToString(bytes);
+      } catch (Exception ignored) {
+        return null;
+      }
+    }
+
+    // Try base64 → hex
+    try {
+      byte[] bytes = Base64.getDecoder().decode(traceId);
+      return Hex.encodeHexString(bytes);
+    } catch (Exception ignored) {
+      return null;
+    }
+  }
+
+  private static JSONObject buildTraceIdQuery(String traceFieldName, List<String> traceIds) {
+    JSONArray shouldArray = new JSONArray();
+
+    for (String traceId : traceIds) {
+      if (traceId == null || traceId.isEmpty()) continue;
+
+      JSONObject term = new JSONObject();
+      term.put(traceFieldName, traceId);
+
+      JSONObject termQuery = new JSONObject();
+      termQuery.put("term", term);
+
+      shouldArray.put(termQuery);
+    }
+
+    JSONObject boolQuery = new JSONObject();
+    boolQuery.put("should", shouldArray);
+    boolQuery.put("minimum_should_match", 1);
+
+    JSONObject queryJson = new JSONObject();
+    queryJson.put("bool", boolQuery);
+
+    return queryJson;
+  }
+
   @Blocking
   @Get("/api/v2/trace/{traceId}")
   public HttpResponse getTraceByTraceId(
@@ -232,9 +282,15 @@ public class ZipkinService {
       throws IOException {
 
     String traceFieldName = "trace_id";
-    // if trace id looks like dd_trace_id, then use dd_trace_id field to search
+    List<String> traceIds = new ArrayList<>(List.of(traceId));
+    // if trace id looks like dd_trace_id, then use dd_trace_id field to search. If true, ignores
+    // the hex/base64 flag
     if (ddTraceId.isPresent() && isDDTraceId(traceId)) {
       traceFieldName = "dd_trace_id";
+    } else if (searchByHexAndBase64.isPresent()) {
+      String convertedId = convertTraceId(traceId);
+      traceIds.add(convertedId);
+      System.out.println("CONVERSION: \ntraceId: " + traceId + "\nconvertedId: " + convertedId);
     }
 
     // Log the custom header userRequest value if present
@@ -250,11 +306,9 @@ public class ZipkinService {
         return HttpResponse.of(HttpStatus.OK, MediaType.ANY_APPLICATION_TYPE, traceData);
       }
     }
-    JSONObject traceObject = new JSONObject();
-    traceObject.put(traceFieldName, traceId);
-    JSONObject queryJson = new JSONObject();
-    queryJson.put("term", traceObject);
+    JSONObject queryJson = buildTraceIdQuery(traceFieldName, traceIds);
     String queryString = queryJson.toString();
+    System.out.println("queryString: " + queryString);
     long startTime =
         startTimeEpochMs.orElseGet(
             () -> Instant.now().minus(this.defaultLookbackMins, ChronoUnit.MINUTES).toEpochMilli());
