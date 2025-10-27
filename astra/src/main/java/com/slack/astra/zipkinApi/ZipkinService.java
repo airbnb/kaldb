@@ -290,7 +290,7 @@ public class ZipkinService {
     } else if (searchByHexAndBase64.isPresent()) {
       String convertedId = convertTraceId(traceId);
       traceIds.add(convertedId);
-      System.out.println("CONVERSION: \ntraceId: " + traceId + "\nconvertedId: " + convertedId);
+      LOG.info("CONVERSION: \ntraceId: " + traceId + "\nconvertedId: " + convertedId);
     }
 
     // Log the custom header userRequest value if present
@@ -308,7 +308,7 @@ public class ZipkinService {
     }
     JSONObject queryJson = buildTraceIdQuery(traceFieldName, traceIds);
     String queryString = queryJson.toString();
-    System.out.println("queryString: " + queryString);
+    LOG.info("queryString: " + queryString);
     long startTime =
         startTimeEpochMs.orElseGet(
             () -> Instant.now().minus(this.defaultLookbackMins, ChronoUnit.MINUTES).toEpochMilli());
