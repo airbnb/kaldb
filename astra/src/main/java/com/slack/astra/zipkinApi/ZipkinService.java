@@ -228,7 +228,7 @@ public class ZipkinService {
     if (traceId.matches("^[0-9a-fA-F]+$") && traceId.length() % 2 == 0) {
       try {
         byte[] bytes = Hex.decodeHex(traceId.toCharArray());
-        return Base64.getEncoder().encodeToString(bytes);
+        return Base64.getUrlEncoder().encodeToString(bytes);
       } catch (Exception ignored) {
         return null;
       }
@@ -236,7 +236,7 @@ public class ZipkinService {
 
     // Try base64 → hex
     try {
-      byte[] bytes = Base64.getDecoder().decode(traceId);
+      byte[] bytes = Base64.getUrlDecoder().decode(traceId);
       return Hex.encodeHexString(bytes);
     } catch (Exception ignored) {
       return null;

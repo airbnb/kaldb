@@ -245,8 +245,8 @@ public class ZipkinServiceTest {
       mockedTracing.when(Tracing::currentTracer).thenReturn(mockTracer);
       when(mockTracer.currentSpan()).thenReturn(mockSpan);
 
-      String traceId = "cd16d07cb8c5d49227860550ca01b61d";
-      String convertedTraceId = "zRbQfLjF1JInhgVQygG2HQ==";
+      String traceId = "de21aa6013083a3adfd66f985ddfc26c";
+      String convertedTraceId = "3iGqYBMIOjrf1m-YXd_CbA==";
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
       String searchByHexAndBase64 = "value_does_not_matter";
 
