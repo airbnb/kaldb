@@ -221,23 +221,32 @@ public class ZipkinService {
     return s != null && DIGITS.matcher(s).matches();
   }
 
-  private static String convertTraceId(String traceId) {
+  private record TraceIds(String hex, String base64) {}
+
+  private static TraceIds convertTraceId(String traceId) {
     if (traceId == null || traceId.isEmpty()) return null;
 
-    // Try hex → base64
+    String hex = null;
+    String base64Url = null;
+
+    // If input is hex → convert to Base64 URL-safe
     if (traceId.matches("^[0-9a-fA-F]+$") && traceId.length() % 2 == 0) {
       try {
         byte[] bytes = Hex.decodeHex(traceId.toCharArray());
-        return Base64.getUrlEncoder().encodeToString(bytes);
+        hex = traceId.toLowerCase();
+        base64Url = Base64.getUrlEncoder().encodeToString(bytes);
+        return new TraceIds(hex, base64Url);
       } catch (Exception ignored) {
         return null;
       }
     }
 
-    // Try base64 → hex
+    // Otherwise, assume Base64-URL → convert to hex
     try {
       byte[] bytes = Base64.getUrlDecoder().decode(traceId);
-      return Hex.encodeHexString(bytes);
+      hex = Hex.encodeHexString(bytes);
+      base64Url = traceId;
+      return new TraceIds(hex, base64Url);
     } catch (Exception ignored) {
       return null;
     }
@@ -294,7 +303,10 @@ public class ZipkinService {
     if (ddTraceId.isPresent() && isDDTraceId(traceId)) {
       traceFieldName = "dd_trace_id";
     } else if (searchByHexAndBase64.isPresent()) {
-      convertedId = convertTraceId(traceId);
+      TraceIds traceIds = convertTraceId(traceId);
+      // to ensure we only cache the same trace once, we use the base64 version as the traceId
+      traceId = traceIds.base64;
+      convertedId = traceIds.hex;
     }
 
     // Log the custom header userRequest value if present
