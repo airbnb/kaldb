@@ -243,21 +243,27 @@ public class ZipkinService {
     }
   }
 
-  private static JSONObject buildTraceIdQuery(String traceFieldName, List<String> traceIds) {
-    JSONArray shouldArray = new JSONArray();
+  private static JSONObject singleTermQuery(String traceFieldName, String traceId) {
+    JSONObject traceObject = new JSONObject();
+    traceObject.put(traceFieldName, traceId);
+    JSONObject queryJson = new JSONObject();
+    queryJson.put("term", traceObject);
+    return queryJson;
+  }
 
-    for (String traceId : traceIds) {
-      if (traceId == null || traceId.isEmpty()) continue;
-
-      JSONObject term = new JSONObject();
-      term.put(traceFieldName, traceId);
-
-      JSONObject termQuery = new JSONObject();
-      termQuery.put("term", term);
-
-      shouldArray.put(termQuery);
+  private static JSONObject buildTraceIdQuery(
+      String traceFieldName, String traceId, String convertedId) {
+    // When there is no converted ID, return the original simple term query
+    if (convertedId == null) {
+      return singleTermQuery(traceFieldName, traceId);
     }
 
+    // When we have a convertedId, do traceId OR convertedId
+    JSONArray shouldArray = new JSONArray();
+    // term for original traceId
+    shouldArray.put(singleTermQuery(traceFieldName, traceId));
+    // term for convertedId
+    shouldArray.put(singleTermQuery(traceFieldName, convertedId));
     JSONObject boolQuery = new JSONObject();
     boolQuery.put("should", shouldArray);
     boolQuery.put("minimum_should_match", 1);
@@ -282,15 +288,13 @@ public class ZipkinService {
       throws IOException {
 
     String traceFieldName = "trace_id";
-    List<String> traceIds = new ArrayList<>(List.of(traceId));
+    String convertedId = null;
     // if trace id looks like dd_trace_id, then use dd_trace_id field to search. If true, ignores
     // the hex/base64 flag
     if (ddTraceId.isPresent() && isDDTraceId(traceId)) {
       traceFieldName = "dd_trace_id";
     } else if (searchByHexAndBase64.isPresent()) {
-      String convertedId = convertTraceId(traceId);
-      traceIds.add(convertedId);
-      LOG.info("CONVERSION: \ntraceId: " + traceId + "\nconvertedId: " + convertedId);
+      convertedId = convertTraceId(traceId);
     }
 
     // Log the custom header userRequest value if present
@@ -306,9 +310,9 @@ public class ZipkinService {
         return HttpResponse.of(HttpStatus.OK, MediaType.ANY_APPLICATION_TYPE, traceData);
       }
     }
-    JSONObject queryJson = buildTraceIdQuery(traceFieldName, traceIds);
+    JSONObject queryJson = buildTraceIdQuery(traceFieldName, traceId, convertedId);
     String queryString = queryJson.toString();
-    LOG.info("queryString: " + queryString);
+    LOG.debug("Querying with queryString={}", queryString);
     long startTime =
         startTimeEpochMs.orElseGet(
             () -> Instant.now().minus(this.defaultLookbackMins, ChronoUnit.MINUTES).toEpochMilli());
