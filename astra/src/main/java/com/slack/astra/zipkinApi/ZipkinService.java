@@ -30,6 +30,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -38,6 +39,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
+import org.apache.commons.codec.binary.Hex;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -218,6 +221,68 @@ public class ZipkinService {
     return s != null && DIGITS.matcher(s).matches();
   }
 
+  private record TraceIds(String hex, String base64) {}
+
+  private static TraceIds convertTraceId(String traceId) {
+    if (traceId == null || traceId.isEmpty()) return null;
+
+    String hex = null;
+    String base64Url = null;
+
+    // If input is hex → convert to Base64 URL-safe
+    if (traceId.matches("^[0-9a-fA-F]+$") && traceId.length() % 2 == 0) {
+      try {
+        byte[] bytes = Hex.decodeHex(traceId.toCharArray());
+        hex = traceId.toLowerCase();
+        base64Url = Base64.getUrlEncoder().encodeToString(bytes);
+        return new TraceIds(hex, base64Url);
+      } catch (Exception ignored) {
+        return null;
+      }
+    }
+
+    // Otherwise, assume Base64-URL → convert to hex
+    try {
+      byte[] bytes = Base64.getUrlDecoder().decode(traceId);
+      hex = Hex.encodeHexString(bytes);
+      base64Url = traceId;
+      return new TraceIds(hex, base64Url);
+    } catch (Exception ignored) {
+      return null;
+    }
+  }
+
+  private static JSONObject singleTermQuery(String traceFieldName, String traceId) {
+    JSONObject traceObject = new JSONObject();
+    traceObject.put(traceFieldName, traceId);
+    JSONObject queryJson = new JSONObject();
+    queryJson.put("term", traceObject);
+    return queryJson;
+  }
+
+  private static JSONObject buildTraceIdQuery(
+      String traceFieldName, String traceId, String convertedId) {
+    // When there is no converted ID, return the original simple term query
+    if (convertedId == null) {
+      return singleTermQuery(traceFieldName, traceId);
+    }
+
+    // When we have a convertedId, do traceId OR convertedId
+    JSONArray shouldArray = new JSONArray();
+    // term for original traceId
+    shouldArray.put(singleTermQuery(traceFieldName, traceId));
+    // term for convertedId
+    shouldArray.put(singleTermQuery(traceFieldName, convertedId));
+    JSONObject boolQuery = new JSONObject();
+    boolQuery.put("should", shouldArray);
+    boolQuery.put("minimum_should_match", 1);
+
+    JSONObject queryJson = new JSONObject();
+    queryJson.put("bool", boolQuery);
+
+    return queryJson;
+  }
+
   @Blocking
   @Get("/api/v2/trace/{traceId}")
   public HttpResponse getTraceByTraceId(
@@ -226,14 +291,26 @@ public class ZipkinService {
       @Param("endTimeEpochMs") Optional<Long> endTimeEpochMs,
       @Param("maxSpans") Optional<Integer> maxSpans,
       @Header("X-User-Request") Optional<Boolean> userRequest,
-      @Header("X-DD-TRACE-ID") Optional<String> ddTraceId,
+      @Header("X-DD-TRACE-ID") Optional<Boolean> ddTraceId,
+      @Header("X-E2E-hex-base64") Optional<Boolean> searchByHexAndBase64,
       @Header("X-Data-Freshness-In-Seconds") Optional<Long> dataFreshnessInSeconds)
       throws IOException {
 
     String traceFieldName = "trace_id";
-    // if trace id looks like dd_trace_id, then use dd_trace_id field to search
-    if (ddTraceId.isPresent() && isDDTraceId(traceId)) {
+    String convertedId = null;
+    // if trace id looks like dd_trace_id, then use dd_trace_id field to search. If true, ignores
+    // the hex/base64 flag
+    if (ddTraceId.isPresent() && ddTraceId.get() && isDDTraceId(traceId)) {
       traceFieldName = "dd_trace_id";
+    } else if (searchByHexAndBase64.isPresent() && searchByHexAndBase64.get()) {
+      TraceIds traceIds = convertTraceId(traceId);
+      // to ensure we only cache the same trace once, we use the base64 version as the traceId.
+      // TraceIds are null
+      // in the case of being unable to convert, fallback to original traceId
+      if (traceIds != null) {
+        traceId = traceIds.base64;
+        convertedId = traceIds.hex;
+      }
     }
 
     // Log the custom header userRequest value if present
@@ -249,11 +326,9 @@ public class ZipkinService {
         return HttpResponse.of(HttpStatus.OK, MediaType.ANY_APPLICATION_TYPE, traceData);
       }
     }
-    JSONObject traceObject = new JSONObject();
-    traceObject.put(traceFieldName, traceId);
-    JSONObject queryJson = new JSONObject();
-    queryJson.put("term", traceObject);
+    JSONObject queryJson = buildTraceIdQuery(traceFieldName, traceId, convertedId);
     String queryString = queryJson.toString();
+    LOG.debug("Querying with queryString={}", queryString);
     long startTime =
         startTimeEpochMs.orElseGet(
             () -> Instant.now().minus(this.defaultLookbackMins, ChronoUnit.MINUTES).toEpochMilli());
