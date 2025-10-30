@@ -291,8 +291,8 @@ public class ZipkinService {
       @Param("endTimeEpochMs") Optional<Long> endTimeEpochMs,
       @Param("maxSpans") Optional<Integer> maxSpans,
       @Header("X-User-Request") Optional<Boolean> userRequest,
-      @Header("X-DD-TRACE-ID") Optional<String> ddTraceId,
-      @Header("X-E2E-hex-base64") Optional<String> searchByHexAndBase64,
+      @Header("X-DD-TRACE-ID") Optional<Boolean> ddTraceId,
+      @Header("X-E2E-hex-base64") Optional<Boolean> searchByHexAndBase64,
       @Header("X-Data-Freshness-In-Seconds") Optional<Long> dataFreshnessInSeconds)
       throws IOException {
 
@@ -300,9 +300,9 @@ public class ZipkinService {
     String convertedId = null;
     // if trace id looks like dd_trace_id, then use dd_trace_id field to search. If true, ignores
     // the hex/base64 flag
-    if (ddTraceId.isPresent() && isDDTraceId(traceId)) {
+    if (ddTraceId.isPresent() && ddTraceId.get() && isDDTraceId(traceId)) {
       traceFieldName = "dd_trace_id";
-    } else if (searchByHexAndBase64.isPresent()) {
+    } else if (searchByHexAndBase64.isPresent() && searchByHexAndBase64.get()) {
       TraceIds traceIds = convertTraceId(traceId);
       // to ensure we only cache the same trace once, we use the base64 version as the traceId
       traceId = traceIds.base64;

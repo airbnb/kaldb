@@ -177,7 +177,6 @@ public class ZipkinServiceTest {
 
       String traceId = "4541183944276361430";
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
-      String ddTraceIdHeaderVal = "value_does_not_matter";
 
       zipkinService.getTraceByTraceId(
           traceId,
@@ -185,7 +184,7 @@ public class ZipkinServiceTest {
           Optional.empty(),
           Optional.empty(),
           Optional.empty(),
-          Optional.of(ddTraceIdHeaderVal),
+          Optional.of(Boolean.TRUE),
           Optional.empty(),
           Optional.empty());
 
@@ -211,7 +210,6 @@ public class ZipkinServiceTest {
       String traceId = "zRbQfLjF1JInhgVQygG2HQ==";
       String convertedTraceId = "cd16d07cb8c5d49227860550ca01b61d";
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
-      String searchByHexAndBase64 = "value_does_not_matter";
 
       zipkinService.getTraceByTraceId(
           traceId,
@@ -220,7 +218,7 @@ public class ZipkinServiceTest {
           Optional.empty(),
           Optional.empty(),
           Optional.empty(),
-          Optional.of(searchByHexAndBase64),
+          Optional.of(Boolean.TRUE),
           Optional.empty());
 
       verify(searcher)
@@ -248,7 +246,6 @@ public class ZipkinServiceTest {
       String traceId = "de21aa6013083a3adfd66f985ddfc26c";
       String convertedTraceId = "3iGqYBMIOjrf1m-YXd_CbA==";
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
-      String searchByHexAndBase64 = "value_does_not_matter";
 
       zipkinService.getTraceByTraceId(
           traceId,
@@ -257,7 +254,7 @@ public class ZipkinServiceTest {
           Optional.empty(),
           Optional.empty(),
           Optional.empty(),
-          Optional.of(searchByHexAndBase64),
+          Optional.of(Boolean.TRUE),
           Optional.empty());
 
       verify(searcher)
@@ -284,7 +281,6 @@ public class ZipkinServiceTest {
 
       String traceId = "invalid_id";
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
-      String searchByHexAndBase64 = "value_does_not_matter";
 
       zipkinService.getTraceByTraceId(
           traceId,
@@ -293,7 +289,7 @@ public class ZipkinServiceTest {
           Optional.empty(),
           Optional.empty(),
           Optional.empty(),
-          Optional.of(searchByHexAndBase64),
+          Optional.of(Boolean.TRUE),
           Optional.empty());
 
       verify(searcher)
