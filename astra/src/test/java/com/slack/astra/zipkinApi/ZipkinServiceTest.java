@@ -302,6 +302,38 @@ public class ZipkinServiceTest {
   }
 
   @Test
+  public void testGetTraceByTraceIdHexBase64_partially_invalid_base64() throws Exception {
+    try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
+      Tracer mockTracer = mock(Tracer.class);
+      Span mockSpan = mock(Span.class);
+
+      mockedTracing.when(Tracing::currentTracer).thenReturn(mockTracer);
+      when(mockTracer.currentSpan()).thenReturn(mockSpan);
+
+      String traceId = "invalid_id="; // Base64-like but invalid
+      when(searcher.doSearch(any())).thenReturn(mockSearchResult);
+
+      zipkinService.getTraceByTraceId(
+          traceId,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of(Boolean.TRUE),
+          Optional.empty());
+
+      // Assert that the fallback trace_id was used in the query
+      verify(searcher)
+          .doSearch(
+              Mockito.argThat(
+                  request ->
+                      request.getHowMany() == defaultMaxSpans
+                          && request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
+    }
+  }
+
+  @Test
   public void testGetTraceByTraceIdHexBase64_disabled() throws Exception {
     try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
       // Mocking Tracing and Span

@@ -304,9 +304,13 @@ public class ZipkinService {
       traceFieldName = "dd_trace_id";
     } else if (searchByHexAndBase64.isPresent() && searchByHexAndBase64.get()) {
       TraceIds traceIds = convertTraceId(traceId);
-      // to ensure we only cache the same trace once, we use the base64 version as the traceId
-      traceId = traceIds.base64;
-      convertedId = traceIds.hex;
+      // to ensure we only cache the same trace once, we use the base64 version as the traceId.
+      // TraceIds are null
+      // in the case of being unable to convert, fallback to original traceId
+      if (traceIds != null) {
+        traceId = traceIds.base64;
+        convertedId = traceIds.hex;
+      }
     }
 
     // Log the custom header userRequest value if present
