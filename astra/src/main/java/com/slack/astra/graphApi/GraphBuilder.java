@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -113,10 +115,10 @@ public class GraphBuilder {
     }
 
     Set<Edge> edges = new HashSet<>();
-    Map<String, Node> nodeIdToNodes = new HashMap<>();
+    Set<Node> nodes = new HashSet<>();
+    buildFilteredGraph(filter, edges, nodes, parentSpanIdToChildSpans, spanIdToSpans);
 
-    buildFilteredGraph(filter, edges, nodeIdToNodes, parentSpanIdToChildSpans, spanIdToSpans);
-    return new Graph(new ArrayList<>(nodeIdToNodes.values()), new ArrayList<>(edges));
+    return new Graph(new ArrayList<>(nodes), new ArrayList<>(edges));
   }
 
   /**
@@ -127,91 +129,115 @@ public class GraphBuilder {
    * creates edges between them. This approach minimizes duplicate traversal work compared to
    * starting a DFS from each filtered span independently.
    *
-   * @param filter Map from span ID to spans that match the filter criteria
-   * @param edges Output set to collect edges between matching spans
-   * @param nodeIdToNodes Output map to collect matching nodes
+   * @param filter Optional filter to apply when building the graph. If empty or null, returns every
+   *     connection.
+   * @param edges Output set to collect distinct edges between matching spans
+   * @param nodes Output set to collect distinct nodes
    * @param parentSpanIdToChildSpans Map from parent span ID to list of child spans
+   * @param spanIdToSpans Map from span ID to its full span
    */
   private void buildFilteredGraph(
       Optional<Filter> filter,
       Set<Edge> edges,
-      Map<String, Node> nodeIdToNodes,
+      Set<Node> nodes,
       Map<String, List<ZipkinSpanResponse>> parentSpanIdToChildSpans,
       Map<String, ZipkinSpanResponse> spanIdToSpans) {
-    Map<String, ZipkinSpanResponse> filteredSpanIdToSpans = new HashMap<>();
+    Map<String, ZipkinSpanResponse> spansToProcess = new HashMap<>();
     if (filter.isPresent()) {
       // Collect all spans matching the filter
-      for (ZipkinSpanResponse span : spanIdToSpans.values()) {
-        if (filter.get().matches(span)) filteredSpanIdToSpans.put(span.getId(), span);
-      }
+      spansToProcess =
+          spanIdToSpans.values().stream()
+              .filter(filter.get()::matches)
+              .collect(Collectors.toMap(ZipkinSpanResponse::getId, Function.identity()));
     } else {
-      // No filter, build graph with all edges
-      // filteredSpanIdToSpans is read only after this point which is why a copy is not needed here.
-      filteredSpanIdToSpans = spanIdToSpans;
+      // No filter, build graph with all edges.
+      // After this point, spansToProcess is read only, which is why a copy of spanIdToSpans is
+      // unnecessary
+      spansToProcess = spanIdToSpans;
     }
 
-    Map<String, List<String>> nodeIdToSpanIds = new HashMap<>();
-    for (ZipkinSpanResponse span : spanIdToSpans.values()) {
-      nodeIdToSpanIds.computeIfAbsent(getNodeId(span), k -> new ArrayList<>()).add(span.getId());
-    }
+    // Build mapping of logical nodes to all its representing span IDs
+    Map<String, List<String>> spansByNodeId =
+        spanIdToSpans.values().stream()
+            .collect(
+                Collectors.groupingBy(
+                    this::getNodeId,
+                    Collectors.mapping(ZipkinSpanResponse::getId, Collectors.toList())));
 
-    for (ZipkinSpanResponse parentSpan : filteredSpanIdToSpans.values()) {
+    for (ZipkinSpanResponse parentSpan : spansToProcess.values()) {
+      // Find all descendant spans (may skip through non-matching intermediate spans if a filter
+      // exists)
       List<String> childSpanIds =
           collectTransitiveChildren(
               parentSpan,
-              filteredSpanIdToSpans.keySet(),
+              spansToProcess.keySet(),
               parentSpanIdToChildSpans,
-              nodeIdToSpanIds,
+              spansByNodeId,
               spanIdToSpans);
+
+      // Create an edge from parent to each transitive child
       for (String childSpanId : childSpanIds) {
-        addEdge(nodeIdToNodes, edges, parentSpan, filteredSpanIdToSpans.get(childSpanId));
+        createDependency(nodes, edges, parentSpan, spansToProcess.get(childSpanId));
       }
     }
   }
 
   /**
-   * Collects all filtered spans that are transitive children of a given span.
+   * Collects all filtered spans that are transitive children of a given starting span.
    *
-   * <p>A transitive child is a filtered span that can be reached from the start span by traversing
-   * through any number of non-filtered intermediate spans. This method uses an iterative approach
-   * with a work queue to find all such children.
+   * <p>A transitive child is defined as a filtered span that can be reached from the start span by
+   * traversing through any number of non-filtered intermediate spans.
+   *
+   * <p>This method treats all spans representing the same logical node as equivalent. When one span
+   * for a node is processed, all of its sibling spans (those sharing the same node ID) and their
+   * child relationships are processed together. This ensures complete coverage of that node’s
+   * downstream relationships without redundant traversal.
+   *
+   * <p>The traversal is iterative (using a stack) and guards against cycles via visited sets.
    *
    * @param startSpan The span to start traversal from
-   * @param filteredSpanIds Set of span IDs that match the filter
+   * @param spanIdsToProcess Set of span IDs that match an optional filter
    * @param parentSpanIdToChildSpans Map from parent span ID to list of child spans
+   * @param spansByNodeId Map of a logical node to all its representative spans
+   * @param spanIdToSpans Map from span ID to its full span
    * @return List of span IDs for all transitive matching children
    */
   private List<String> collectTransitiveChildren(
       ZipkinSpanResponse startSpan,
-      Set<String> filteredSpanIds,
+      Set<String> spanIdsToProcess,
       Map<String, List<ZipkinSpanResponse>> parentSpanIdToChildSpans,
-      Map<String, List<String>> nodeIdToSpanIds,
+      Map<String, List<String>> spansByNodeId,
       Map<String, ZipkinSpanResponse> spanIdToSpans) {
     List<String> results = new ArrayList<>();
-    Deque<String> stack = new ArrayDeque<>();
-    Set<String> visitedSpans = new HashSet<>();
-    Set<String> visitedNodes = new HashSet<>();
+    Deque<String> work = new ArrayDeque<>();
+    Set<String> visitedSpans = new HashSet<>(); // Tracks individual spans to prevent cycles
+    Set<String> visitedNodes = new HashSet<>(); // Tracks logical nodes to avoid redundant traversal
 
-    stack.push(startSpan.getId());
+    work.push(startSpan.getId());
     visitedSpans.add(startSpan.getId());
 
-    while (!stack.isEmpty()) {
-      String spanId = stack.pop();
+    while (!work.isEmpty()) {
+      String spanId = work.pop();
       ZipkinSpanResponse span = spanIdToSpans.get(spanId);
-      if (span == null) continue;
 
+      if (span == null) continue;
       String nodeId = getNodeId(span);
+
       if (!visitedNodes.add(nodeId)) continue;
 
-      for (String siblingSpanId : nodeIdToSpanIds.getOrDefault(nodeId, List.of(spanId))) {
+      for (String siblingSpanId : spansByNodeId.getOrDefault(nodeId, List.of(spanId))) {
         for (ZipkinSpanResponse child :
             parentSpanIdToChildSpans.getOrDefault(siblingSpanId, List.of())) {
+
           if (!visitedSpans.add(child.getId())) continue;
 
-          if (filteredSpanIds.contains(child.getId())) {
+          if (spanIdsToProcess.contains(child.getId())) {
+            // Found a filtered child - add to results and stop traversing this branch
+            // because the child will be handled in its own iteration
             results.add(child.getId());
           } else {
-            stack.push(child.getId());
+            // Non-filtered intermediate span - continue traversing through it
+            work.push(child.getId());
           }
         }
       }
@@ -220,15 +246,14 @@ public class GraphBuilder {
     return results;
   }
 
-  private void addEdge(
-      Map<String, Node> nodeIdToNodes,
-      Set<Edge> edges,
-      ZipkinSpanResponse parent,
-      ZipkinSpanResponse child) {
+  private void createDependency(
+      Set<Node> nodes, Set<Edge> edges, ZipkinSpanResponse parent, ZipkinSpanResponse child) {
     Node source = new Node(config.createMetadataFromSpan(parent, GraphConfig.EntityType.NODE));
     Node target = new Node(config.createMetadataFromSpan(child, GraphConfig.EntityType.NODE));
-    nodeIdToNodes.putIfAbsent(source.getId(), source);
-    nodeIdToNodes.putIfAbsent(target.getId(), target);
+
+    nodes.add(source);
+    nodes.add(target);
+
     edges.add(
         new Edge(
             source.getId(),
