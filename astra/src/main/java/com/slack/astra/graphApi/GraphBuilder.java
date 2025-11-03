@@ -62,26 +62,14 @@ public class GraphBuilder {
         return true;
       }
 
-      for (Map.Entry<String, List<String>> entry : this.options().entrySet()) {
-        String fieldName = entry.getKey();
-        List<String> allowedValues = entry.getValue();
-
-        if (allowedValues == null || allowedValues.isEmpty()) {
-          continue;
-        }
-
-        String actualValue = span.getTags().get(fieldName);
-        if (actualValue == null) {
-          continue;
-        }
-
-        // Return true if ANY filter matches
-        if (allowedValues.contains(actualValue)) {
-          return true;
-        }
-      }
-
-      return false;
+      // Returns true if ANY filter matches
+      return options.entrySet().stream()
+          .filter(entry -> entry.getValue() != null && !entry.getValue().isEmpty())
+          .anyMatch(
+              entry -> {
+                String actualValue = span.getTags().get(entry.getKey());
+                return actualValue != null && entry.getValue().contains(actualValue);
+              });
     }
   }
 
@@ -142,19 +130,15 @@ public class GraphBuilder {
       Set<Node> nodes,
       Map<String, List<ZipkinSpanResponse>> parentSpanIdToChildSpans,
       Map<String, ZipkinSpanResponse> spanIdToSpans) {
-    Map<String, ZipkinSpanResponse> spansToProcess = new HashMap<>();
-    if (filter.isPresent()) {
-      // Collect all spans matching the filter
-      spansToProcess =
-          spanIdToSpans.values().stream()
-              .filter(filter.get()::matches)
-              .collect(Collectors.toMap(ZipkinSpanResponse::getId, Function.identity()));
-    } else {
-      // No filter, build graph with all edges.
-      // After this point, spansToProcess is read only, which is why a copy of spanIdToSpans is
-      // unnecessary
-      spansToProcess = spanIdToSpans;
-    }
+    Map<String, ZipkinSpanResponse> spansToProcess =
+        // Collect all spans matching the filter if it exists
+        filter
+            .map(
+                f ->
+                    spanIdToSpans.values().stream()
+                        .filter(f::matches)
+                        .collect(Collectors.toMap(ZipkinSpanResponse::getId, Function.identity())))
+            .orElse(spanIdToSpans); // No filter, build graph with all edges.
 
     // Build mapping of logical nodes to all its representing span IDs
     Map<String, List<String>> spansByNodeId =
@@ -164,22 +148,23 @@ public class GraphBuilder {
                     this::getNodeId,
                     Collectors.mapping(ZipkinSpanResponse::getId, Collectors.toList())));
 
-    for (ZipkinSpanResponse parentSpan : spansToProcess.values()) {
-      // Find all descendant spans (may skip through non-matching intermediate spans if a filter
-      // exists)
-      List<String> childSpanIds =
-          collectTransitiveChildren(
-              parentSpan,
-              spansToProcess.keySet(),
-              parentSpanIdToChildSpans,
-              spansByNodeId,
-              spanIdToSpans);
-
-      // Create an edge from parent to each transitive child
-      for (String childSpanId : childSpanIds) {
-        createDependency(nodes, edges, parentSpan, spansToProcess.get(childSpanId));
-      }
-    }
+    spansToProcess
+        .values()
+        .forEach(
+            span -> {
+              // Find all descendant spans, may skip through non-matching
+              // intermediate spans if a filter exists
+              collectTransitiveChildren(
+                      span,
+                      spansToProcess.keySet(),
+                      parentSpanIdToChildSpans,
+                      spansByNodeId,
+                      spanIdToSpans)
+                  // Create an edge from parent to each transitive child
+                  .forEach(
+                      childSpanId ->
+                          createDependency(nodes, edges, span, spansToProcess.get(childSpanId)));
+            });
   }
 
   /**
@@ -191,9 +176,9 @@ public class GraphBuilder {
    * <p>This method treats all spans representing the same logical node as equivalent. When one span
    * for a node is processed, all of its sibling spans (those sharing the same node ID) and their
    * child relationships are processed together. This ensures complete coverage of that node’s
-   * downstream relationships without redundant traversal.
+   * downstream relationships, including any cycles.
    *
-   * <p>The traversal is iterative (using a stack) and guards against cycles via visited sets.
+   * <p>The traversal is iterative (using a stack) and guards against infinite loops via visited sets.
    *
    * @param startSpan The span to start traversal from
    * @param spanIdsToProcess Set of span IDs that match an optional filter
@@ -219,8 +204,6 @@ public class GraphBuilder {
     while (!work.isEmpty()) {
       String spanId = work.pop();
       ZipkinSpanResponse span = spanIdToSpans.get(spanId);
-
-      if (span == null) continue;
       String nodeId = getNodeId(span);
 
       if (!visitedNodes.add(nodeId)) continue;
