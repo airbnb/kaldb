@@ -178,7 +178,8 @@ public class GraphBuilder {
    * child relationships are processed together. This ensures complete coverage of that node’s
    * downstream relationships, including any cycles.
    *
-   * <p>The traversal is iterative (using a stack) and guards against infinite loops via visited sets.
+   * <p>The traversal is iterative (using a stack) and guards against infinite loops via visited
+   * sets.
    *
    * @param startSpan The span to start traversal from
    * @param spanIdsToProcess Set of span IDs that match an optional filter
