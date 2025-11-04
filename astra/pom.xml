@@ -152,6 +152,12 @@
             <version>${curator.version}</version>
         </dependency>
 
+      <dependency>
+        <groupId>commons-codec</groupId>
+        <artifactId>commons-codec</artifactId>
+        <version>1.17.0</version>
+      </dependency>
+
         <!-- Lucene dependencies -->
         <dependency>
             <groupId>org.apache.lucene</groupId>
