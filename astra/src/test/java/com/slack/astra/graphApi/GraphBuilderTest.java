@@ -1375,4 +1375,83 @@ public class GraphBuilderTest {
                 edge.sourceNodeId().equals(expectedNodeFId)
                     && edge.targetNodeId().equals(expectedNodeGId));
   }
+
+  @Test
+  void buildFromSpans_selfLoopSameLogicalNode_buildsCorrectGraph() {
+    List<ZipkinSpanResponse> spans =
+        new ArrayList<>(
+            List.of(
+                TestUtils.createSpanWithTags(
+                    "spanA",
+                    "trace1",
+                    null,
+                    Map.of(
+                        "kube.app",
+                        "app1",
+                        "kube.namespace",
+                        "ns1",
+                        "operation_name",
+                        "dropwizard.request",
+                        "resource",
+                        "res1")),
+                TestUtils.createSpanWithTags(
+                    "spanB",
+                    "trace1",
+                    "spanA",
+                    Map.of(
+                        "tag.http.target.host",
+                        "app2.ns2",
+                        "tag.http.target.canonical_path",
+                        "/v1/targetB",
+                        "operation_name",
+                        "http.request")),
+                // spanB and spanC point to the same logical node, but have different operations
+                TestUtils.createSpanWithTags(
+                    "spanC",
+                    "trace1",
+                    "spanB",
+                    Map.of(
+                        "kube.app",
+                        "app2",
+                        "kube.namespace",
+                        "ns2",
+                        "operation_name",
+                        "dropwizard.request",
+                        "resource",
+                        "/v1/targetB"))));
+
+    GraphBuilder.Filter filter =
+        new GraphBuilder.Filter(Map.of("operation_name", List.of("dropwizard.request")));
+    Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.of(filter));
+
+    // Should include A, B (all match filter)
+    assertThat(graph.nodes()).hasSize(2);
+
+    // Expect 1 edge A -> B (dropwizard.request)
+    assertThat(graph.edges()).hasSize(1);
+
+    SortedMap<String, String> nodeAMetadata =
+        new TreeMap<>(
+            Map.of(
+                "service", "app1.ns1",
+                "resource", "res1"));
+    String expectedNodeAId = Node.generateIdFromMetadata(nodeAMetadata);
+
+    SortedMap<String, String> nodeBMetadata =
+        new TreeMap<>(
+            Map.of(
+                "service", "app2.ns2",
+                "resource", "/v1/targetB"));
+    String expectedNodeBId = Node.generateIdFromMetadata(nodeBMetadata);
+
+    // A -> B
+    assertThat(graph.edges())
+        .anyMatch(
+            edge ->
+                edge.sourceNodeId().equals(expectedNodeAId)
+                    && edge.targetNodeId().equals(expectedNodeBId));
+
+    Edge edge = graph.edges().get(0);
+    assertThat(edge.metadata()).isEqualTo(new TreeMap<>(Map.of("operation", "dropwizard.request")));
+  }
 }

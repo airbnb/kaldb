@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.SortedMap;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -107,7 +106,8 @@ public class GraphBuilder {
             });
 
     // Build parent-child relationships at the node level
-    Map<String, List<Map.Entry<String, SortedMap<String, String>>>> parentNodeIdToChildNodeIds =
+    // TODO: introduce a record Metadata class to abstract away SortedMap<String, String> references
+    Map<String, List<Map.Entry<String, ZipkinSpanResponse>>> parentNodeIdToChildNodeIds =
         buildParentChildConnections(spans, spanIdToNode);
 
     // Determine which nodes to include based on the filter if provided, otherwise include all nodes
@@ -121,7 +121,7 @@ public class GraphBuilder {
                         .collect(Collectors.toSet()))
             .orElseGet(() -> new HashSet<>(nodeIdToNode.keySet()));
 
-    return traverseAndBuildGraph(nodesToProcess, nodeIdToNode, parentNodeIdToChildNodeIds);
+    return traverseAndBuildGraph(filter, nodesToProcess, nodeIdToNode, parentNodeIdToChildNodeIds);
   }
 
   /**
@@ -139,10 +139,10 @@ public class GraphBuilder {
    * @param spanIdToNode Map from span ID to its logical node representation
    * @return Map from parent node ID to list of (child node ID, edge metadata) pairs
    */
-  private Map<String, List<Map.Entry<String, SortedMap<String, String>>>>
-      buildParentChildConnections(List<ZipkinSpanResponse> spans, Map<String, Node> spanIdToNode) {
+  private Map<String, List<Map.Entry<String, ZipkinSpanResponse>>> buildParentChildConnections(
+      List<ZipkinSpanResponse> spans, Map<String, Node> spanIdToNode) {
 
-    Map<String, List<Map.Entry<String, SortedMap<String, String>>>> parentNodeIdToChildNodeIds =
+    Map<String, List<Map.Entry<String, ZipkinSpanResponse>>> parentNodeIdToChildNodeIds =
         new HashMap<>();
 
     for (ZipkinSpanResponse span : spans) {
@@ -152,13 +152,9 @@ public class GraphBuilder {
       Node child = spanIdToNode.get(span.getId());
       if (parent == null || child == null) continue;
 
-      // Extract edge metadata from the span that created this connection
-      SortedMap<String, String> edgeMetadata =
-          config.createMetadataFromSpan(span, GraphConfig.EntityType.EDGE);
-
       parentNodeIdToChildNodeIds
           .computeIfAbsent(parent.getId(), k -> new ArrayList<>())
-          .add(Map.entry(child.getId(), edgeMetadata));
+          .add(Map.entry(child.getId(), span));
     }
     return parentNodeIdToChildNodeIds;
   }
@@ -180,9 +176,10 @@ public class GraphBuilder {
    * @return Graph containing only filtered nodes and their transitive connections
    */
   private Graph traverseAndBuildGraph(
+      Optional<Filter> filter,
       Set<String> nodesToProcess,
       Map<String, Node> nodeIdToNode,
-      Map<String, List<Map.Entry<String, SortedMap<String, String>>>> parentNodeIdToChildNodeIds) {
+      Map<String, List<Map.Entry<String, ZipkinSpanResponse>>> parentNodeIdToChildNodeIds) {
 
     Set<Node> nodes = new HashSet<>();
     Set<Edge> edges = new HashSet<>();
@@ -198,22 +195,30 @@ public class GraphBuilder {
         String currentNodeId = work.pop();
         if (!visitedNodes.add(currentNodeId)) continue;
 
-        List<Map.Entry<String, SortedMap<String, String>>> children =
+        List<Map.Entry<String, ZipkinSpanResponse>> children =
             parentNodeIdToChildNodeIds.getOrDefault(currentNodeId, List.of());
 
-        for (Map.Entry<String, SortedMap<String, String>> child : children) {
+        for (Map.Entry<String, ZipkinSpanResponse> child : children) {
           String childNodeId = child.getKey();
+          ZipkinSpanResponse refSpan = child.getValue();
+          if (!filter.isPresent() || filter.get().matches(refSpan)) {
+            // Skip the case where the ancestor is a direct parent of the same logical node ID
+            if (parentNodeId.equals(childNodeId)) continue;
 
-          if (nodesToProcess.contains(childNodeId)) {
-            // Found a filtered child - create edge from starting parent to this child.
-            // This creates the "transitive" edge, skipping any intermediate nodes when filtering.
+            // Found a child that matches the filter when present, create edge from starting parent
+            // to this child.
+            // This creates the transitive edge, skipping any intermediate nodes when filtering.
             // Don't traverse past this child - it will be processed in its own iteration.
             nodes.add(nodeIdToNode.get(parentNodeId));
             nodes.add(nodeIdToNode.get(childNodeId));
-            edges.add(new Edge(parentNodeId, childNodeId, child.getValue()));
+            edges.add(
+                new Edge(
+                    parentNodeId,
+                    childNodeId,
+                    config.createMetadataFromSpan(refSpan, GraphConfig.EntityType.EDGE)));
           } else {
             // Non-filtered intermediate node - continue traversing through it
-            work.push(child.getKey());
+            work.push(childNodeId);
           }
         }
       }
