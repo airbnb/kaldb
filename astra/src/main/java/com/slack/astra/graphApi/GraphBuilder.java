@@ -106,7 +106,6 @@ public class GraphBuilder {
             });
 
     // Build parent-child relationships at the node level
-    // TODO: introduce a record Metadata class to abstract away SortedMap<String, String> references
     Map<String, List<Map.Entry<String, ZipkinSpanResponse>>> parentNodeIdToChildNodeIds =
         buildParentChildConnections(spans, spanIdToNode);
 
@@ -137,7 +136,7 @@ public class GraphBuilder {
    *
    * @param spans List of all spans to process
    * @param spanIdToNode Map from span ID to its logical node representation
-   * @return Map from parent node ID to list of (child node ID, edge metadata) pairs
+   * @return Map from parent node ID to list of (child node ID, reference span) pairs
    */
   private Map<String, List<Map.Entry<String, ZipkinSpanResponse>>> buildParentChildConnections(
       List<ZipkinSpanResponse> spans, Map<String, Node> spanIdToNode) {
@@ -152,6 +151,10 @@ public class GraphBuilder {
       Node child = spanIdToNode.get(span.getId());
       if (parent == null || child == null) continue;
 
+      // Keep a reference to the span that produced this edge. This is used later during traversal
+      // to decide which edges to retain when a filter is applied. Without it, if the filter depends
+      // on span tags that also define edge metadata, we could end up creating incorrect or
+      // missing relationships.
       parentNodeIdToChildNodeIds
           .computeIfAbsent(parent.getId(), k -> new ArrayList<>())
           .add(Map.entry(child.getId(), span));
@@ -170,9 +173,10 @@ public class GraphBuilder {
    * <p>Example: If we have Root (filtered) -> Intermediate (not filtered) -> Leaf (filtered), this
    * will create a direct edge: Root -> Leaf, skipping the intermediate node.
    *
+   * @param filter Optional filter to apply when creating edges
    * @param nodesToProcess Set of node IDs that match the filter (or all nodes if no filter)
    * @param nodeIdToNode Map from node ID to Node object
-   * @param parentNodeIdToChildNodeIds Map of parent-child relationships with edge metadata
+   * @param parentNodeIdToChildNodeIds Map of parent-child relationships with their reference span
    * @return Graph containing only filtered nodes and their transitive connections
    */
   private Graph traverseAndBuildGraph(
@@ -205,9 +209,9 @@ public class GraphBuilder {
             // Skip the case where the ancestor is a direct parent of the same logical node ID
             if (parentNodeId.equals(childNodeId)) continue;
 
-            // Found a child that matches the filter when present, create edge from starting parent
-            // to this child.
-            // This creates the transitive edge, skipping any intermediate nodes when filtering.
+            // Found a child that matches the filter when present, create edge
+            // from starting parent to this child.
+            // This creates the transitive edge, skipping any intermediate nodes.
             // Don't traverse past this child - it will be processed in its own iteration.
             nodes.add(nodeIdToNode.get(parentNodeId));
             nodes.add(nodeIdToNode.get(childNodeId));

@@ -1377,7 +1377,7 @@ public class GraphBuilderTest {
   }
 
   @Test
-  void buildFromSpans_selfLoopSameLogicalNode_buildsCorrectGraph() {
+  void buildFromSpans_withFilterSelfLoopSameLogicalNode_buildsCorrectGraph() {
     List<ZipkinSpanResponse> spans =
         new ArrayList<>(
             List.of(
