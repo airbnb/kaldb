@@ -655,7 +655,7 @@ public class TraceFetcherTest {
           Optional.empty(),
           Optional.empty(),
           Optional.empty(),
-          Optional.of(Boolean.TRUE));
+          Optional.of(Boolean.FALSE));
 
       verify(searcher)
           .doSearch(
