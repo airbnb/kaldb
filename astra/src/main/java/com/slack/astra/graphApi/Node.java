@@ -42,4 +42,9 @@ public class Node {
 
     return h;
   }
+
+  @Override
+  public String toString() {
+    return "Node{metadata=" + metadata + '}';
+  }
 }

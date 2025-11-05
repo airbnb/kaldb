@@ -15,6 +15,8 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.FieldSource;
 
 public class GraphBuilderTest {
   private GraphBuilder defaultGraphBuilder;
@@ -35,6 +37,131 @@ public class GraphBuilderTest {
             .toPath();
     GraphConfig customConfig = GraphConfig.load(configPath);
     configuredGraphBuilder = new GraphBuilder(customConfig);
+  }
+
+  @FieldSource
+  @ParameterizedTest
+  void variousGraphs(TestGraph input) {
+    // Example parameterized test - currently no parameters provided
+    assertThat(input).isNotNull();
+    Graph graph = defaultGraphBuilder.buildFromSpans(input.inputSpans(), input.filter);
+    assertThat(graph).isEqualTo(input.expectedGraph());
+  }
+
+  static GraphBuilder.Filter shouldInc =
+      new GraphBuilder.Filter(Map.of("should_include", List.of("yes")));
+  static GraphBuilder.Filter httpRequestFilter =
+      new GraphBuilder.Filter(Map.of("operation_name", List.of("http.request")));
+
+  static int spanIds = 0;
+
+  // t.spanWithChildren("A", t.span("b"), t.spanWithChildren("C",t.span("d"))))
+  static class TraceBuilder {
+    List<ZipkinSpanResponse> spans = new ArrayList<>();
+
+    SpanBuilder span(String id) {
+      ZipkinSpanResponse span = spanMe(id);
+      //      span.setParentId(parentId);
+      spans.add(span);
+      return new SpanBuilder(span);
+    }
+
+    SpanBuilder spanWithChildren(String id, List<SpanBuilder> children) {
+      SpanBuilder span = span(id);
+      children.forEach(childSpan -> childSpan.span.setParentId(span.span.getId()));
+      return span;
+    }
+
+    SpanBuilder spanWithChildren(String id, SpanBuilder... children) {
+      SpanBuilder span = span(id);
+      for (SpanBuilder childSpan : children) {
+        childSpan.span.setParentId(span.span.getId());
+      }
+      return span;
+    }
+
+    class SpanBuilder {
+      private final ZipkinSpanResponse span;
+
+      SpanBuilder(ZipkinSpanResponse span) {
+        this.span = span;
+      }
+
+      List<ZipkinSpanResponse> build() {
+        return spans;
+      }
+    }
+
+    List<ZipkinSpanResponse> build() {
+      return spans;
+    }
+  }
+
+  static ZipkinSpanResponse spanMe(String id) {
+    ZipkinSpanResponse spanWithTags =
+        TestUtils.createSpanWithTags(
+            spanIds++ + "",
+            "trace1",
+            "-1",
+            Map.of(
+                "operation_name",
+                id,
+                "should_include",
+                id.toUpperCase().equals(id) ? "yes" : "no"));
+    return spanWithTags;
+  }
+
+  record TestGraph(
+      List<ZipkinSpanResponse> inputSpans,
+      Graph expectedGraph,
+      Optional<GraphBuilder.Filter> filter) {
+    @Override
+    public String toString() {
+      return "{"
+          + "inputSpans("
+          + inputSpans.size()
+          + ")="
+          + inputSpans.stream()
+              .map(
+                  s ->
+                      "id:"
+                          + s.getId()
+                          + ", parent:"
+                          + s.getParentId()
+                          + ", op:"
+                          + s.getTags().get("operation_name"))
+              .toList()
+          + ", expectedGraph="
+          + expectedGraph
+          + ", filter="
+          + filter
+          + '}';
+    }
+  }
+
+  static TestGraph[] variousGraphs;
+
+  static {
+    TraceBuilder t = new TraceBuilder();
+    variousGraphs =
+        new TestGraph[] {
+          new TestGraph(List.of(), new Graph(List.of(), List.of()), Optional.empty()),
+          new TestGraph(List.of(), new Graph(List.of(), List.of()), Optional.of(httpRequestFilter)),
+          new TestGraph(
+              List.of(spanMe("A")), new Graph(List.of(nodeMe("A")), List.of()), Optional.empty()),
+          new TestGraph(
+              t.spanWithChildren("A", t.spanWithChildren("b", t.span("C"))).build(),
+              new Graph(List.of(nodeMe("A")), List.of()),
+              Optional.empty()),
+          new TestGraph(
+              t.spanWithChildren("A", t.spanWithChildren("b", t.span("C"))).build(),
+              new Graph(List.of(nodeMe("A")), List.of()),
+              Optional.of(shouldInc))
+        };
+  }
+
+  private static Node nodeMe(String a) {
+    return new Node(new TreeMap<>(Map.of("operation_name", a)));
   }
 
   @Test

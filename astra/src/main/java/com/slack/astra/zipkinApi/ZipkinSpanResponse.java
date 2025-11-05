@@ -107,4 +107,35 @@ public class ZipkinSpanResponse {
   public Map<String, String> getTags() {
     return tags;
   }
+
+  @Override
+  public String toString() {
+    return "ZipkinSpanResponse{"
+        + "id='"
+        + id
+        + '\''
+        + ", traceId='"
+        + traceId
+        + '\''
+        + ", parentId='"
+        + parentId
+        + '\''
+        + ", name='"
+        + name
+        + '\''
+        + ", timestampMicros="
+        + timestampMicros
+        + ", localEndpoint="
+        + localEndpoint
+        + ", remoteEndpoint="
+        + remoteEndpoint
+        + ", durationMicros="
+        + durationMicros
+        + ", kind='"
+        + kind
+        + '\''
+        + ", tags="
+        + tags
+        + '}';
+  }
 }

@@ -119,7 +119,7 @@ public class GraphBuilder {
                         .map(spanId -> spanIdToNode.get(spanId).getId())
                         .collect(Collectors.toSet()))
             .orElseGet(() -> new HashSet<>(nodeIdToNode.keySet()));
-
+    System.out.println("Nodes to process: " + nodesToProcess.size());
     return traverseAndBuildGraph(filter, nodesToProcess, nodeIdToNode, parentNodeIdToChildNodeIds);
   }
 
