@@ -13,6 +13,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.function.Function;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -53,7 +54,30 @@ public class GraphBuilderTest {
   static GraphBuilder.Filter httpRequestFilter =
       new GraphBuilder.Filter(Map.of("operation_name", List.of("http.request")));
 
+  static TestGraph[] variousGraphs =
+      new TestGraph[] {
+        new TestGraph(List.of(), new Graph(List.of(), List.of()), Optional.empty()),
+        new TestGraph(List.of(), new Graph(List.of(), List.of()), Optional.of(httpRequestFilter)),
+        new TestGraph(
+            withT((t) -> t.span("A").build()),
+            new Graph(List.of(nodeMe("A")), List.of()),
+            Optional.empty()),
+        new TestGraph(
+            withT((t) -> t.spanWithChildren("A", t.spanWithChildren("b", t.span("C"))).build()),
+            new Graph(List.of(nodeMe("A")), List.of()),
+            Optional.empty()),
+        new TestGraph(
+            withT((t) -> t.spanWithChildren("A", t.spanWithChildren("b", t.span("C"))).build()),
+            new Graph(List.of(nodeMe("A")), List.of()),
+            Optional.of(shouldInc))
+      };
+
   static int spanIds = 0;
+
+  static List<ZipkinSpanResponse> withT(Function<TraceBuilder, List<ZipkinSpanResponse>> f) {
+    TraceBuilder t = new TraceBuilder();
+    return f.apply(t);
+  }
 
   // t.spanWithChildren("A", t.span("b"), t.spanWithChildren("C",t.span("d"))))
   static class TraceBuilder {
@@ -137,27 +161,6 @@ public class GraphBuilderTest {
           + filter
           + '}';
     }
-  }
-
-  static TestGraph[] variousGraphs;
-
-  static {
-    TraceBuilder t = new TraceBuilder();
-    variousGraphs =
-        new TestGraph[] {
-          new TestGraph(List.of(), new Graph(List.of(), List.of()), Optional.empty()),
-          new TestGraph(List.of(), new Graph(List.of(), List.of()), Optional.of(httpRequestFilter)),
-          new TestGraph(
-              List.of(spanMe("A")), new Graph(List.of(nodeMe("A")), List.of()), Optional.empty()),
-          new TestGraph(
-              t.spanWithChildren("A", t.spanWithChildren("b", t.span("C"))).build(),
-              new Graph(List.of(nodeMe("A")), List.of()),
-              Optional.empty()),
-          new TestGraph(
-              t.spanWithChildren("A", t.spanWithChildren("b", t.span("C"))).build(),
-              new Graph(List.of(nodeMe("A")), List.of()),
-              Optional.of(shouldInc))
-        };
   }
 
   private static Node nodeMe(String a) {
