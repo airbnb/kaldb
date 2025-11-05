@@ -45,7 +45,8 @@ public class GraphBuilderTest {
   void variousGraphs(TestGraph input) {
     // Example parameterized test - currently no parameters provided
     assertThat(input).isNotNull();
-    Graph graph = defaultGraphBuilder.buildFromSpans(input.inputSpans(), input.filter);
+    //    Graph graph = defaultGraphBuilder.buildFromSpans(input.inputSpans(), input.filter);
+    Graph graph = configuredGraphBuilder.buildFromSpans(input.inputSpans(), input.filter);
     assertThat(graph).isEqualTo(input.expectedGraph());
   }
 
@@ -54,23 +55,45 @@ public class GraphBuilderTest {
   static GraphBuilder.Filter httpRequestFilter =
       new GraphBuilder.Filter(Map.of("operation_name", List.of("http.request")));
 
+  static Graph EMPTY_GRAPH = new Graph(List.of(), List.of());
   static TestGraph[] variousGraphs =
       new TestGraph[] {
-        new TestGraph(List.of(), new Graph(List.of(), List.of()), Optional.empty()),
-        new TestGraph(List.of(), new Graph(List.of(), List.of()), Optional.of(httpRequestFilter)),
+        new TestGraph(List.of(), EMPTY_GRAPH, Optional.empty()),
+        new TestGraph(List.of(), EMPTY_GRAPH, Optional.of(httpRequestFilter)),
         new TestGraph(
             withT((t) -> t.span("A").build()),
-            new Graph(List.of(nodeMe("A")), List.of()),
+            EMPTY_GRAPH, // single span -> no edges -> no graph
             Optional.empty()),
         new TestGraph(
             withT((t) -> t.spanWithChildren("A", t.spanWithChildren("b", t.span("C"))).build()),
-            new Graph(List.of(nodeMe("A")), List.of()),
+            new Graph(
+                List.of(gNode("A"), gNode("b"), gNode("C")),
+                List.of(gEdge("A", "b"), gEdge("b", "C"))),
             Optional.empty()),
         new TestGraph(
             withT((t) -> t.spanWithChildren("A", t.spanWithChildren("b", t.span("C"))).build()),
-            new Graph(List.of(nodeMe("A")), List.of()),
-            Optional.of(shouldInc))
+            new Graph(List.of(gNode("A"), gNode("C")), List.of(gEdge("A", "C"))),
+            Optional.of(shouldInc)),
+        new TestGraph(
+            withT((t) -> t.spanWithChildren("A", t.spanWithChildren("b", t.span("A"))).build()),
+            EMPTY_GRAPH,
+            Optional.of(shouldInc)),
+        new TestGraph(
+            withT(
+                (t) ->
+                    t.spanWithChildren(
+                            "A", t.spanWithChildren("b", t.spanWithChildren("C", t.span("A"))))
+                        .build()),
+            new Graph(List.of(gNode("A"), gNode("C")), List.of(gEdge("A", "C"), gEdge("C", "A"))),
+            Optional.of(shouldInc)),
       };
+
+  private static Edge gEdge(String a, String b) {
+    return new Edge(
+        gNode(a).getId(),
+        gNode(b).getId(),
+        new TreeMap<>(Map.of("operation", "unknown_operation")));
+  }
 
   static int spanIds = 0;
 
@@ -128,7 +151,11 @@ public class GraphBuilderTest {
             "trace1",
             "-1",
             Map.of(
-                "operation_name",
+                "kube.app",
+                id,
+                "kube.namespace",
+                id,
+                "resource",
                 id,
                 "should_include",
                 id.toUpperCase().equals(id) ? "yes" : "no"));
@@ -150,11 +177,12 @@ public class GraphBuilderTest {
                   s ->
                       "id:"
                           + s.getId()
-                          + ", parent:"
+                          + "parent:"
                           + s.getParentId()
-                          + ", op:"
-                          + s.getTags().get("operation_name"))
+                          + "service:"
+                          + s.getTags().get("service"))
               .toList()
+              .reversed()
           + ", expectedGraph="
           + expectedGraph
           + ", filter="
@@ -163,8 +191,8 @@ public class GraphBuilderTest {
     }
   }
 
-  private static Node nodeMe(String a) {
-    return new Node(new TreeMap<>(Map.of("operation_name", a)));
+  private static Node gNode(String a) {
+    return new Node(new TreeMap<>(Map.of("service", a + "." + a, "resource", a)));
   }
 
   @Test

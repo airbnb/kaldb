@@ -205,7 +205,7 @@ public class GraphBuilder {
         for (Map.Entry<String, ZipkinSpanResponse> child : children) {
           String childNodeId = child.getKey();
           ZipkinSpanResponse refSpan = child.getValue();
-          if (!filter.isPresent() || filter.get().matches(refSpan)) {
+          if (filter.isEmpty() || filter.get().matches(refSpan)) {
             // Skip the case where the ancestor is a direct parent of the same logical node ID
             if (parentNodeId.equals(childNodeId)) continue;
 
