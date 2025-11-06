@@ -1,14 +1,21 @@
 package com.slack.astra.chunk;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import org.rocksdb.Options;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 
 public class RocksDbSample {
-  public static final String DB_FILE_PATH = "/Users/suman_karumuri/temp/rocksdb";
+  public static final String DB_FILE_PATH;
 
   static {
     RocksDB.loadLibrary();
+    try {
+      DB_FILE_PATH = Files.createTempDirectory("rocksdb-sample").toString();
+    } catch (IOException e) {
+      throw new RuntimeException("Unable to create temp RocksDB directory", e);
+    }
   }
 
   public static void main(final String[] args) throws RocksDBException {
