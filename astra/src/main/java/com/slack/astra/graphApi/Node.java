@@ -16,7 +16,11 @@ public class Node {
   }
 
   public static String generateIdFromMetadata(SortedMap<String, String> map) {
-    return Hashing.sha256().hashString(map.toString(), StandardCharsets.UTF_8).toString();
+    String mapToString = map.toString();
+    if (mapToString.length() < 32) {
+      return mapToString;
+    }
+    return Hashing.sha256().hashString(mapToString, StandardCharsets.UTF_8).toString();
   }
 
   public String getId() {

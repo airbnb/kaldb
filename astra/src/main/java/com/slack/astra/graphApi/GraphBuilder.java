@@ -119,7 +119,7 @@ public class GraphBuilder {
                         .map(spanId -> spanIdToNode.get(spanId).getId())
                         .collect(Collectors.toSet()))
             .orElseGet(() -> new HashSet<>(nodeIdToNode.keySet()));
-    System.out.println("Nodes to process: " + nodesToProcess.size());
+    LOG.debug("Nodes to process: {}", nodesToProcess.size());
     return traverseAndBuildGraph(filter, nodesToProcess, nodeIdToNode, parentNodeIdToChildNodeIds);
   }
 
@@ -197,6 +197,10 @@ public class GraphBuilder {
 
       while (!work.isEmpty()) {
         String currentNodeId = work.pop();
+        LOG.debug(
+            "Visiting node {} from parent {}",
+            nodeIdToNode.get(currentNodeId),
+            nodeIdToNode.get(parentNodeId));
         if (!visitedNodes.add(currentNodeId)) continue;
 
         List<Map.Entry<String, ZipkinSpanResponse>> children =

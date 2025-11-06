@@ -1,12 +1,15 @@
 package com.slack.astra.graphApi;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Named.named;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import com.slack.astra.zipkinApi.ZipkinSpanResponse;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -14,9 +17,12 @@ import java.util.Optional;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.FieldSource;
 
 public class GraphBuilderTest {
@@ -43,10 +49,14 @@ public class GraphBuilderTest {
   @FieldSource
   @ParameterizedTest
   void variousGraphs(TestGraph input) {
-    // Example parameterized test - currently no parameters provided
-    assertThat(input).isNotNull();
-    //    Graph graph = defaultGraphBuilder.buildFromSpans(input.inputSpans(), input.filter);
     Graph graph = configuredGraphBuilder.buildFromSpans(input.inputSpans(), input.filter);
+    // sort nodes and edges for comparison
+    graph =
+        new Graph(
+            graph.nodes().stream().sorted(Comparator.comparing(Node::getId)).toList(),
+            graph.edges().stream()
+                .sorted(Comparator.comparing(e -> e.sourceNodeId() + e.targetNodeId()))
+                .toList());
     assertThat(graph).isEqualTo(input.expectedGraph());
   }
 
@@ -55,11 +65,12 @@ public class GraphBuilderTest {
   static GraphBuilder.Filter httpRequestFilter =
       new GraphBuilder.Filter(Map.of("operation_name", List.of("http.request")));
 
-  static Graph EMPTY_GRAPH = new Graph(List.of(), List.of());
+  static final Graph EMPTY_GRAPH = new Graph(List.of(), List.of());
+  static final List<ZipkinSpanResponse> EMPTY_SPANS = List.of();
   static TestGraph[] variousGraphs =
       new TestGraph[] {
-        new TestGraph(List.of(), EMPTY_GRAPH, Optional.empty()),
-        new TestGraph(List.of(), EMPTY_GRAPH, Optional.of(httpRequestFilter)),
+        new TestGraph(EMPTY_SPANS, EMPTY_GRAPH, Optional.empty()),
+        new TestGraph(EMPTY_SPANS, EMPTY_GRAPH, Optional.of(httpRequestFilter)),
         new TestGraph(
             withT((t) -> t.span("A").build()),
             EMPTY_GRAPH, // single span -> no edges -> no graph
@@ -67,7 +78,7 @@ public class GraphBuilderTest {
         new TestGraph(
             withT((t) -> t.spanWithChildren("A", t.spanWithChildren("b", t.span("C"))).build()),
             new Graph(
-                List.of(gNode("A"), gNode("b"), gNode("C")),
+                List.of(gNode("A"), gNode("C"), gNode("b")),
                 List.of(gEdge("A", "b"), gEdge("b", "C"))),
             Optional.empty()),
         new TestGraph(
@@ -85,6 +96,31 @@ public class GraphBuilderTest {
                             "A", t.spanWithChildren("b", t.spanWithChildren("C", t.span("A"))))
                         .build()),
             new Graph(List.of(gNode("A"), gNode("C")), List.of(gEdge("A", "C"), gEdge("C", "A"))),
+            Optional.of(shouldInc)),
+        new TestGraph(
+            withT(
+                (t) ->
+                    t.spanWithChildren(
+                            "A",
+                            t.spanWithChildren(
+                                "b",
+                                t.spanWithChildren(
+                                    "C",
+                                    t.span("d"),
+                                    t.spanWithChildren("E", t.spanWithChildren("b", t.span("G"))),
+                                    t.spanWithChildren("F", t.span("b")))))
+                        .build()),
+            new Graph(
+                List.of(gNode("A"), gNode("C"), gNode("E"), gNode("F"), gNode("G")),
+                List.of(
+                    gEdge("A", "C"),
+                    gEdge("A", "G"),
+                    gEdge("C", "E"),
+                    gEdge("C", "F"),
+                    gEdge("E", "C"),
+                    gEdge("E", "G"),
+                    gEdge("F", "C"),
+                    gEdge("F", "G"))),
             Optional.of(shouldInc)),
       };
 
@@ -107,7 +143,7 @@ public class GraphBuilderTest {
     List<ZipkinSpanResponse> spans = new ArrayList<>();
 
     SpanBuilder span(String id) {
-      ZipkinSpanResponse span = spanMe(id);
+      ZipkinSpanResponse span = zSpan(id);
       //      span.setParentId(parentId);
       spans.add(span);
       return new SpanBuilder(span);
@@ -135,16 +171,14 @@ public class GraphBuilderTest {
       }
 
       List<ZipkinSpanResponse> build() {
-        return spans;
+        return spans.stream()
+            .sorted(Comparator.comparing(s -> s.getTags().get("resource")))
+            .toList();
       }
-    }
-
-    List<ZipkinSpanResponse> build() {
-      return spans;
     }
   }
 
-  static ZipkinSpanResponse spanMe(String id) {
+  static ZipkinSpanResponse zSpan(String id) {
     ZipkinSpanResponse spanWithTags =
         TestUtils.createSpanWithTags(
             spanIds++ + "",
