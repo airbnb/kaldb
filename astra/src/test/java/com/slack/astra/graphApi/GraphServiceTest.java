@@ -63,6 +63,8 @@ public class GraphServiceTest {
             any(Optional.class),
             any(Optional.class),
             any(Optional.class),
+            any(Optional.class),
+            any(Optional.class),
             any(Optional.class)))
         .thenReturn(Collections.emptyList());
 
@@ -196,6 +198,8 @@ public class GraphServiceTest {
             any(Optional.class),
             any(Optional.class),
             any(Optional.class),
+            any(Optional.class),
+            any(Optional.class),
             any(Optional.class)))
         .thenReturn(testSpans);
 
@@ -279,6 +283,8 @@ public class GraphServiceTest {
             any(Optional.class),
             any(Optional.class),
             any(Optional.class),
+            any(Optional.class),
+            any(Optional.class),
             any(Optional.class)))
         .thenReturn(testSpans);
 
@@ -314,6 +320,8 @@ public class GraphServiceTest {
             any(Optional.class),
             any(Optional.class),
             any(Optional.class),
+            any(Optional.class),
+            any(Optional.class),
             any(Optional.class)))
         .thenReturn(List.of());
 
@@ -336,6 +344,8 @@ public class GraphServiceTest {
 
     when(traceFetcher.getSpansByTraceId(
             anyString(),
+            any(Optional.class),
+            any(Optional.class),
             any(Optional.class),
             any(Optional.class),
             any(Optional.class),
@@ -422,6 +432,8 @@ public class GraphServiceTest {
 
     when(traceFetcher.getSpansByTraceId(
             anyString(),
+            any(Optional.class),
+            any(Optional.class),
             any(Optional.class),
             any(Optional.class),
             any(Optional.class),

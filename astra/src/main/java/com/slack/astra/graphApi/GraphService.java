@@ -85,7 +85,14 @@ public class GraphService {
     Timer.Sample traceFetchSample = Timer.start(meterRegistry);
     List<ZipkinSpanResponse> trace =
         this.traceFetcher.getSpansByTraceId(
-            traceId, Optional.empty(), Optional.empty(), maxSpans, userRequest, Optional.empty());
+            traceId,
+            Optional.empty(),
+            Optional.empty(),
+            maxSpans,
+            userRequest,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty());
     long traceFetchTimeMilli = traceFetchSample.stop(traceFetchTimer) / 1_000_000;
 
     Timer.Sample graphBuildSample = Timer.start(meterRegistry);

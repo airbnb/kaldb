@@ -90,6 +90,7 @@ public class GraphBuilder {
     Map<String, ZipkinSpanResponse> spanIdToSpan = new HashMap<>(); // Lookup a span by span ID
     Map<String, Node> spanIdToNode = new HashMap<>(); // Lookup a span's logical node by span ID
     Map<String, Node> nodeIdToNode = new HashMap<>(); // Lookup a node by node ID
+    Set<String> matchingSpanIds = new HashSet<>(); // Spans that match the given filter
 
     // Convert spans to nodes, creating logical groupings.
     // Multiple spans may map to the same logical node if their metadata is identical.
@@ -103,6 +104,11 @@ public class GraphBuilder {
                   new Node(config.createMetadataFromSpan(span, GraphConfig.EntityType.NODE));
               spanIdToNode.put(span.getId(), node);
               nodeIdToNode.putIfAbsent(node.getId(), node);
+
+              // Add span to matching set if no filter exists or if filter matches
+              if (!filter.isPresent() || filter.get().matches(span)) {
+                matchingSpanIds.add(span.getId());
+              }
             });
 
     // Build parent-child relationships at the node level
@@ -111,16 +117,12 @@ public class GraphBuilder {
 
     // Determine which nodes to include based on the filter if provided, otherwise include all nodes
     Set<String> nodesToProcess =
-        filter
-            .map(
-                f ->
-                    spanIdToNode.keySet().stream()
-                        .filter(spanId -> f.matches(spanIdToSpan.get(spanId)))
-                        .map(spanId -> spanIdToNode.get(spanId).getId())
-                        .collect(Collectors.toSet()))
-            .orElseGet(() -> new HashSet<>(nodeIdToNode.keySet()));
+        matchingSpanIds.stream()
+            .map(spanId -> spanIdToNode.get(spanId).getId())
+            .collect(Collectors.toSet());
 
-    return traverseAndBuildGraph(filter, nodesToProcess, nodeIdToNode, parentNodeIdToChildNodeIds);
+    return traverseAndBuildGraph(
+        matchingSpanIds, nodesToProcess, nodeIdToNode, parentNodeIdToChildNodeIds);
   }
 
   /**
@@ -176,14 +178,15 @@ public class GraphBuilder {
    * <p>Example: If we have Root (filtered) -> Intermediate (not filtered) -> Leaf (filtered), this
    * will create a direct edge: Root -> Leaf, skipping the intermediate node.
    *
-   * @param filter Optional filter to apply when creating edges
+   * @param matchingSpanIds Pre-computed set of span IDs that match the filter (or all span IDs if
+   *     no filter)
    * @param nodesToProcess Set of node IDs that match the filter (or all nodes if no filter)
    * @param nodeIdToNode Map from node ID to Node object
    * @param parentNodeIdToChildNodeIds Map of parent-child relationships with their reference span
    * @return Graph containing only filtered nodes and their transitive connections
    */
   private Graph traverseAndBuildGraph(
-      Optional<Filter> filter,
+      Set<String> matchingSpanIds,
       Set<String> nodesToProcess,
       Map<String, Node> nodeIdToNode,
       Map<String, List<Map.Entry<String, ZipkinSpanResponse>>> parentNodeIdToChildNodeIds) {
@@ -208,11 +211,11 @@ public class GraphBuilder {
         for (Map.Entry<String, ZipkinSpanResponse> child : children) {
           String childNodeId = child.getKey();
           ZipkinSpanResponse refSpan = child.getValue();
-          if (!filter.isPresent() || filter.get().matches(refSpan)) {
+          if (matchingSpanIds.contains(refSpan.getId())) {
             // Skip the case where the ancestor is a direct parent of the same logical node ID
             if (parentNodeId.equals(childNodeId)) continue;
 
-            // Found a child that matches the filter when present, create edge
+            // Found a child that matches the filter, create edge
             // from starting parent to this child.
             // This creates the transitive edge, skipping any intermediate nodes.
             // Don't traverse past this child - it will be processed in its own iteration.
