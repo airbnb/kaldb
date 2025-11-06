@@ -120,6 +120,8 @@ public class TraceFetcherTest {
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
               Optional.empty());
 
       // Assert
@@ -145,6 +147,8 @@ public class TraceFetcherTest {
 
       traceFetcher.getByTraceId(
           traceId,
+          Optional.empty(),
+          Optional.empty(),
           Optional.empty(),
           Optional.empty(),
           Optional.empty(),
@@ -180,6 +184,8 @@ public class TraceFetcherTest {
           Optional.empty(),
           Optional.of(maxSpansParam),
           Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
           Optional.empty());
 
       verify(searcher)
@@ -214,6 +220,8 @@ public class TraceFetcherTest {
               Optional.empty(),
               Optional.empty(),
               Optional.of(userRequest),
+              Optional.empty(),
+              Optional.empty(),
               Optional.empty());
 
       verify(searcher)
@@ -259,6 +267,8 @@ public class TraceFetcherTest {
               Optional.empty(),
               Optional.empty(),
               Optional.of(userRequest),
+              Optional.empty(),
+              Optional.empty(),
               Optional.empty());
 
       verify(searcher)
@@ -272,6 +282,72 @@ public class TraceFetcherTest {
 
       assertNotNull(response, "Response should not be null");
       assertTrue(response.contains("[]"), "Response should be empty array for empty search result");
+    }
+  }
+
+  @Test
+  public void testGetTraceByTraceId_dd_trace_id() throws Exception {
+    try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
+      // Mocking Tracing and Span
+      Tracer mockTracer = mock(Tracer.class);
+      Span mockSpan = mock(Span.class);
+
+      mockedTracing.when(Tracing::currentTracer).thenReturn(mockTracer);
+      when(mockTracer.currentSpan()).thenReturn(mockSpan);
+
+      String traceId = "4541183944276361430";
+      when(searcher.doSearch(any())).thenReturn(mockSearchResult);
+      boolean ddTraceIdHeaderVal = true;
+
+      traceFetcher.getByTraceId(
+          traceId,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of(ddTraceIdHeaderVal),
+          Optional.empty());
+
+      verify(searcher)
+          .doSearch(
+              Mockito.argThat(
+                  request ->
+                      request.getHowMany() == defaultMaxSpans
+                          && request.getQuery().contains("\"dd_trace_id\":\"" + traceId + "\"")));
+    }
+  }
+
+  @Test
+  public void testGetTraceByTraceId_dd_trace_id_Disabled() throws Exception {
+    try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
+      // Mocking Tracing and Span
+      Tracer mockTracer = mock(Tracer.class);
+      Span mockSpan = mock(Span.class);
+
+      mockedTracing.when(Tracing::currentTracer).thenReturn(mockTracer);
+      when(mockTracer.currentSpan()).thenReturn(mockSpan);
+
+      String traceId = "4541183944276361430";
+      when(searcher.doSearch(any())).thenReturn(mockSearchResult);
+      boolean ddTraceIdHeaderVal = false;
+
+      traceFetcher.getByTraceId(
+          traceId,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of(ddTraceIdHeaderVal),
+          Optional.empty());
+
+      verify(searcher)
+          .doSearch(
+              Mockito.argThat(
+                  request ->
+                      request.getHowMany() == defaultMaxSpans
+                          && request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
     }
   }
 
@@ -301,6 +377,8 @@ public class TraceFetcherTest {
               Optional.empty(),
               Optional.empty(),
               Optional.of(userRequest),
+              Optional.empty(),
+              Optional.empty(),
               Optional.empty());
 
       verify(mockBlobStore).readFileData(eq(traceFilePath), eq(true));
@@ -343,7 +421,9 @@ public class TraceFetcherTest {
               Optional.empty(),
               Optional.empty(),
               Optional.of(userRequest),
-              Optional.of(dataFreshnessInSeconds));
+              Optional.of(dataFreshnessInSeconds),
+              Optional.empty(),
+              Optional.empty());
 
       verify(mockBlobStore).readFileData(traceFilePath, true);
       verify(mockBlobStore, never()).uploadData(anyString(), anyString(), eq(true));
@@ -393,7 +473,9 @@ public class TraceFetcherTest {
               Optional.empty(),
               Optional.empty(),
               Optional.of(userRequest),
-              Optional.of(dataFreshnessInSeconds));
+              Optional.of(dataFreshnessInSeconds),
+              Optional.empty(),
+              Optional.empty());
 
       verify(mockBlobStore).readFileData(traceFilePath, true);
       verify(searcher)
@@ -412,6 +494,178 @@ public class TraceFetcherTest {
       String returnData = mockBlobStore.readFileData(traceFilePath, true);
 
       assertNotNull(returnData, "Decompressed data should not be null");
+    }
+  }
+
+  @Test
+  public void testGetTraceByTraceIdHexBase64_base_64() throws Exception {
+    try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
+      // Mocking Tracing and Span
+      Tracer mockTracer = mock(Tracer.class);
+      Span mockSpan = mock(Span.class);
+
+      mockedTracing.when(Tracing::currentTracer).thenReturn(mockTracer);
+      when(mockTracer.currentSpan()).thenReturn(mockSpan);
+
+      String traceId = "zRbQfLjF1JInhgVQygG2HQ==";
+      String convertedTraceId = "cd16d07cb8c5d49227860550ca01b61d";
+      when(searcher.doSearch(any())).thenReturn(mockSearchResult);
+
+      traceFetcher.getByTraceId(
+          traceId,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of(Boolean.TRUE));
+
+      verify(searcher)
+          .doSearch(
+              Mockito.argThat(
+                  request ->
+                      request.getHowMany() == defaultMaxSpans
+                          && request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")
+                          && request
+                              .getQuery()
+                              .contains("\"trace_id\":\"" + convertedTraceId + "\"")));
+    }
+  }
+
+  @Test
+  public void testGetTraceByTraceIdHexBase64_hex() throws Exception {
+    try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
+      // Mocking Tracing and Span
+      Tracer mockTracer = mock(Tracer.class);
+      Span mockSpan = mock(Span.class);
+
+      mockedTracing.when(Tracing::currentTracer).thenReturn(mockTracer);
+      when(mockTracer.currentSpan()).thenReturn(mockSpan);
+
+      String traceId = "de21aa6013083a3adfd66f985ddfc26c";
+      String convertedTraceId = "3iGqYBMIOjrf1m-YXd_CbA==";
+      when(searcher.doSearch(any())).thenReturn(mockSearchResult);
+
+      traceFetcher.getByTraceId(
+          traceId,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of(Boolean.TRUE));
+
+      verify(searcher)
+          .doSearch(
+              Mockito.argThat(
+                  request ->
+                      request.getHowMany() == defaultMaxSpans
+                          && request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")
+                          && request
+                              .getQuery()
+                              .contains("\"trace_id\":\"" + convertedTraceId + "\"")));
+    }
+  }
+
+  @Test
+  public void testGetTraceByTraceIdHexBase64_invalid_to_convert() throws Exception {
+    try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
+      // Mocking Tracing and Span
+      Tracer mockTracer = mock(Tracer.class);
+      Span mockSpan = mock(Span.class);
+
+      mockedTracing.when(Tracing::currentTracer).thenReturn(mockTracer);
+      when(mockTracer.currentSpan()).thenReturn(mockSpan);
+
+      String traceId = "invalid_id";
+      when(searcher.doSearch(any())).thenReturn(mockSearchResult);
+
+      traceFetcher.getByTraceId(
+          traceId,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of(Boolean.TRUE));
+
+      verify(searcher)
+          .doSearch(
+              Mockito.argThat(
+                  request ->
+                      request.getHowMany() == defaultMaxSpans
+                          && request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
+    }
+  }
+
+  @Test
+  public void testGetTraceByTraceIdHexBase64_partially_invalid_base64() throws Exception {
+    try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
+      Tracer mockTracer = mock(Tracer.class);
+      Span mockSpan = mock(Span.class);
+
+      mockedTracing.when(Tracing::currentTracer).thenReturn(mockTracer);
+      when(mockTracer.currentSpan()).thenReturn(mockSpan);
+
+      String traceId = "invalid_id="; // Base64-like but invalid
+      when(searcher.doSearch(any())).thenReturn(mockSearchResult);
+
+      traceFetcher.getByTraceId(
+          traceId,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of(Boolean.TRUE));
+
+      // Assert that the fallback trace_id was used in the query
+      verify(searcher)
+          .doSearch(
+              Mockito.argThat(
+                  request ->
+                      request.getHowMany() == defaultMaxSpans
+                          && request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")));
+    }
+  }
+
+  @Test
+  public void testGetTraceByTraceIdHexBase64_disabled() throws Exception {
+    try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
+      // Mocking Tracing and Span
+      Tracer mockTracer = mock(Tracer.class);
+      Span mockSpan = mock(Span.class);
+
+      mockedTracing.when(Tracing::currentTracer).thenReturn(mockTracer);
+      when(mockTracer.currentSpan()).thenReturn(mockSpan);
+
+      String traceId = "cd16d07cb8c5d49227860550ca01b61d";
+      String convertedTraceId = "zRbQfLjF1JInhgVQygG2HQ==";
+      when(searcher.doSearch(any())).thenReturn(mockSearchResult);
+
+      traceFetcher.getByTraceId(
+          traceId,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of(Boolean.FALSE));
+
+      verify(searcher)
+          .doSearch(
+              Mockito.argThat(
+                  request ->
+                      request.getHowMany() == defaultMaxSpans
+                          && request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")
+                          && !request
+                              .getQuery()
+                              .contains("\"trace_id\":\"" + convertedTraceId + "\"")));
     }
   }
 

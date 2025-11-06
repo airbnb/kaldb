@@ -70,7 +70,9 @@ public class ZipkinService {
       @Param("endTimeEpochMs") Optional<Long> endTimeEpochMs,
       @Param("maxSpans") Optional<Integer> maxSpans,
       @Header("X-User-Request") Optional<Boolean> userRequest,
-      @Header("X-Data-Freshness-In-Seconds") Optional<Long> dataFreshnessInSeconds)
+      @Header("X-Data-Freshness-In-Seconds") Optional<Long> dataFreshnessInSeconds,
+      @Header("X-DD-TRACE-ID") Optional<Boolean> ddTraceIdEnabled,
+      @Header("X-E2E-hex-base64") Optional<Boolean> searchByHexAndBase64)
       throws IOException {
     String output =
         this.traceFetcher.getByTraceId(
@@ -79,7 +81,9 @@ public class ZipkinService {
             endTimeEpochMs,
             maxSpans,
             userRequest,
-            dataFreshnessInSeconds);
+            dataFreshnessInSeconds,
+            ddTraceIdEnabled,
+            searchByHexAndBase64);
     return HttpResponse.of(HttpStatus.OK, MediaType.JSON_UTF_8, output);
   }
 }
