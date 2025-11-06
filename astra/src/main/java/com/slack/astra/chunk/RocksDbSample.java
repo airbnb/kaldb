@@ -28,7 +28,8 @@ import org.rocksdb.SstFileWriter;
 public class RocksDbSample {
   private static final Duration BACKUP_INTERVAL = Duration.ofSeconds(30);
   private static final Duration WRITE_INTERVAL = Duration.ofSeconds(1);
-  private static final List<Path> BACKUP_DIRECTORIES = new java.util.concurrent.CopyOnWriteArrayList<>();
+  private static final List<Path> BACKUP_DIRECTORIES =
+      new java.util.concurrent.CopyOnWriteArrayList<>();
   public static final String DB_FILE_PATH;
   private static final Path DB_PATH;
 
@@ -43,7 +44,8 @@ public class RocksDbSample {
   }
 
   public static void main(final String[] args) throws RocksDBException {
-    final ExecutorService writerExecutor = Executors.newSingleThreadExecutor(r -> new Thread(r, "rocksdb-writer"));
+    final ExecutorService writerExecutor =
+        Executors.newSingleThreadExecutor(r -> new Thread(r, "rocksdb-writer"));
     final ScheduledExecutorService backupScheduler =
         Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, "rocksdb-backup"));
     final AtomicBoolean running = new AtomicBoolean(true);
@@ -73,7 +75,9 @@ public class RocksDbSample {
           TimeUnit.MILLISECONDS);
 
       System.out.println(
-          "Background writer started; backups run every " + BACKUP_INTERVAL.toSeconds() + " seconds.");
+          "Background writer started; backups run every "
+              + BACKUP_INTERVAL.toSeconds()
+              + " seconds.");
       System.out.println("Press Ctrl+C to stop the sample.");
 
       try {
@@ -134,8 +138,8 @@ public class RocksDbSample {
         final byte[] value = ("writer_value_" + counter).getBytes(StandardCharsets.UTF_8);
         db.put(key, value);
         counter++;
-        if (counter%100 == 0){
-            System.out.println("counter: " + counter);
+        if (counter % 100 == 0) {
+          System.out.println("counter: " + counter);
         }
         Thread.sleep(WRITE_INTERVAL.toMillis());
       } catch (RocksDBException e) {
