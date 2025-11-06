@@ -94,7 +94,7 @@ public class GraphBuilder {
     // Convert spans to nodes, creating logical groupings.
     // Multiple spans may map to the same logical node if their metadata is identical.
     spans.stream()
-        .filter(span -> span.getId() != null)
+        .filter(span -> span.getId() != null && !span.getId().equals("-1"))
         .forEach(
             span -> {
               spanIdToSpan.put(span.getId(), span);
@@ -145,7 +145,10 @@ public class GraphBuilder {
         new HashMap<>();
 
     for (ZipkinSpanResponse span : spans) {
-      if (span.getId() == null || span.getParentId() == null) continue;
+      if (span.getId() == null
+          || span.getId().equals("-1")
+          || span.getParentId() == null
+          || span.getParentId().equals("-1")) continue;
 
       Node parent = spanIdToNode.get(span.getParentId());
       Node child = spanIdToNode.get(span.getId());

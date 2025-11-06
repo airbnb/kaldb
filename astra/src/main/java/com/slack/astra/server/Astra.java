@@ -266,7 +266,7 @@ public class Astra {
               .withTracing(astraConfig.getTracingConfig())
               .withAnnotatedService(new ElasticsearchApiService(astraDistributedQueryService))
               .withAnnotatedService(new ZipkinService(tf))
-              .withAnnotatedService(new GraphService(tf, graphConfig))
+              .withAnnotatedService(new GraphService(tf, graphConfig, meterRegistry))
               .withGrpcService(astraDistributedQueryService)
               .build();
       services.add(armeriaService);

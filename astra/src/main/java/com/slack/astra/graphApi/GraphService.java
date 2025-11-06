@@ -14,6 +14,8 @@ import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Path;
 import com.slack.astra.zipkinApi.TraceFetcher;
 import com.slack.astra.zipkinApi.ZipkinSpanResponse;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +30,9 @@ public class GraphService {
   private static final Logger LOG = LoggerFactory.getLogger(GraphService.class);
   private final TraceFetcher traceFetcher;
   private final GraphBuilder graphBuilder;
+  private final MeterRegistry meterRegistry;
+  private final Timer traceFetchTimer;
+  private final Timer graphBuildTimer;
 
   private static final ObjectMapper objectMapper =
       JsonMapper.builder()
@@ -37,9 +42,13 @@ public class GraphService {
           .serializationInclusion(JsonInclude.Include.NON_EMPTY)
           .build();
 
-  public GraphService(TraceFetcher traceFetcher, GraphConfig graphConfig) {
+  public GraphService(
+      TraceFetcher traceFetcher, GraphConfig graphConfig, MeterRegistry meterRegistry) {
     this.traceFetcher = traceFetcher;
     this.graphBuilder = new GraphBuilder(graphConfig);
+    this.meterRegistry = meterRegistry;
+    this.traceFetchTimer = meterRegistry.timer("astra_graph_service_trace_fetch");
+    this.graphBuildTimer = meterRegistry.timer("astra_graph_service_graph_build");
 
     LOG.info("Started GraphService with GraphBuilder config: {}", graphConfig);
   }
@@ -73,19 +82,18 @@ public class GraphService {
       }
     }
 
-    long start = System.currentTimeMillis();
+    Timer.Sample traceFetchSample = Timer.start(meterRegistry);
     List<ZipkinSpanResponse> trace =
         this.traceFetcher.getSpansByTraceId(
             traceId, Optional.empty(), Optional.empty(), maxSpans, userRequest, Optional.empty());
-    long end = System.currentTimeMillis();
-    long traceFetchTime = end - start;
+    long traceFetchTimeMilli = traceFetchSample.stop(traceFetchTimer) / 1_000_000;
 
-    start = System.currentTimeMillis();
+    Timer.Sample graphBuildSample = Timer.start(meterRegistry);
     Graph subgraph = this.graphBuilder.buildFromSpans(trace, buildFilter);
-    end = System.currentTimeMillis();
-    long subgraphBuildTime = end - start;
+    long subgraphBuildTimeMilli = graphBuildSample.stop(graphBuildTimer) / 1_000_000;
 
-    SubgraphResponse response = new SubgraphResponse(subgraph, traceFetchTime, subgraphBuildTime);
+    SubgraphResponse response =
+        new SubgraphResponse(subgraph, traceFetchTimeMilli, subgraphBuildTimeMilli);
     String output = objectMapper.writeValueAsString(response);
     return HttpResponse.of(HttpStatus.OK, MediaType.JSON_UTF_8, output);
   }

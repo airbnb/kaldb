@@ -12,7 +12,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
+import com.slack.astra.testlib.MetricsUtil;
 import com.slack.astra.zipkinApi.TraceFetcher;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -30,6 +33,7 @@ public class GraphServiceTest {
   @Mock private TraceFetcher traceFetcher;
   private GraphService graphService;
   private ObjectMapper objectMapper;
+  private MeterRegistry meterRegistry;
 
   @BeforeEach
   public void setup() throws IOException {
@@ -44,7 +48,8 @@ public class GraphServiceTest {
                             .getResource("test-dependency-graph-config.yaml"))
                     .getFile())
             .toPath();
-    graphService = spy(new GraphService(traceFetcher, GraphConfig.load(configPath)));
+    meterRegistry = new SimpleMeterRegistry();
+    graphService = spy(new GraphService(traceFetcher, GraphConfig.load(configPath), meterRegistry));
     objectMapper = new ObjectMapper();
   }
 
@@ -61,6 +66,10 @@ public class GraphServiceTest {
             any(Optional.class)))
         .thenReturn(Collections.emptyList());
 
+    // Verify timers start at 0
+    assertEquals(0.0, MetricsUtil.getTimerCount("astra_graph_service_trace_fetch", meterRegistry));
+    assertEquals(0.0, MetricsUtil.getTimerCount("astra_graph_service_graph_build", meterRegistry));
+
     HttpResponse response =
         graphService.getSubgraph(traceId, Optional.empty(), Optional.empty(), Optional.empty());
     AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
@@ -76,6 +85,10 @@ public class GraphServiceTest {
     assertTrue(jsonNode.has("subgraphBuildTimeMs"));
 
     assertTrue(jsonNode.get("subgraph").isEmpty());
+
+    // Verify both timers have been recorded once
+    assertEquals(1.0, MetricsUtil.getTimerCount("astra_graph_service_trace_fetch", meterRegistry));
+    assertEquals(1.0, MetricsUtil.getTimerCount("astra_graph_service_graph_build", meterRegistry));
   }
 
   @Test
