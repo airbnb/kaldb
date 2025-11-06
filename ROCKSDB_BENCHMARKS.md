@@ -25,3 +25,40 @@ Query throughput: 0.01 Mops/s (7864320 ops in 696.58 s)
 
 Process finished with exit code 0
 
+
+ROCKSDB file structure
+
+☁ ls -lh /var/folders/j_/jhqlsqn93gsdvg22yfqzlyyc0000gn/T/rocksdb-benchmark6656839021107673938 
+total 215800
+-rw-r--r--@ 1 suman  staff   5.6M Nov  5 19:45 000009.sst
+-rw-r--r--@ 1 suman  staff   5.6M Nov  5 19:45 000011.sst
+-rw-r--r--@ 1 suman  staff   5.6M Nov  5 19:45 000013.sst
+-rw-r--r--@ 1 suman  staff   5.6M Nov  5 19:45 000015.sst
+-rw-r--r--@ 1 suman  staff   5.6M Nov  5 19:45 000017.sst
+-rw-r--r--@ 1 suman  staff   5.6M Nov  5 19:45 000019.sst
+-rw-r--r--@ 1 suman  staff   5.6M Nov  5 19:45 000021.sst
+-rw-r--r--@ 1 suman  staff   5.6M Nov  5 19:45 000023.sst
+-rw-r--r--@ 1 suman  staff   5.6M Nov  5 19:45 000025.sst
+-rw-r--r--@ 1 suman  staff   5.6M Nov  5 19:45 000027.sst
+-rw-r--r--@ 1 suman  staff   5.6M Nov  5 19:45 000029.sst
+-rw-r--r--@ 1 suman  staff   5.6M Nov  5 19:45 000031.sst
+-rw-r--r--@ 1 suman  staff   5.6M Nov  5 19:45 000033.sst
+-rw-r--r--@ 1 suman  staff   5.6M Nov  5 19:45 000035.sst
+-rw-r--r--@ 1 suman  staff   5.6M Nov  5 19:45 000037.sst
+-rw-r--r--@ 1 suman  staff    16M Nov  5 19:45 000038.log
+-rw-r--r--@ 1 suman  staff   5.6M Nov  5 19:45 000039.sst
+-rw-r--r--@ 1 suman  staff    16B Nov  5 19:45 CURRENT
+-rw-r--r--@ 1 suman  staff    36B Nov  5 19:45 IDENTITY
+-rw-r--r--@ 1 suman  staff     0B Nov  5 19:45 LOCK
+-rw-r--r--@ 1 suman  staff    92K Nov  5 19:45 LOG
+-rw-r--r--@ 1 suman  staff   3.5K Nov  5 19:45 MANIFEST-000005
+-rw-r--r--@ 1 suman  staff   7.1K Nov  5 19:45 OPTIONS-000007
+
+SST files are all of equal size.
+CURRENT points to current MANIFEST file
+MANIFEST-000005 points to current manifest file. 
+LOG is operations LOG file.
+*.log points is the WAL and contains the data and changes.
+LOCK is the process lock file.
+MANIFEST-000005 is manifest file version possibly updated after every sst file change.
+OPTIONS-* file contains the DB options used for each store.
