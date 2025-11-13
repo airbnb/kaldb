@@ -8,10 +8,10 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
+import com.linecorp.armeria.server.annotation.Blocking;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Header;
 import com.linecorp.armeria.server.annotation.Param;
-import com.linecorp.armeria.server.annotation.Path;
 import com.slack.astra.zipkinApi.TraceFetcher;
 import com.slack.astra.zipkinApi.ZipkinSpanResponse;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -56,8 +56,8 @@ public class GraphService {
   private record SubgraphResponse(
       Graph subgraph, long traceFetchTimeMs, long subgraphBuildTimeMs) {}
 
-  @Get
-  @Path("/api/v1/trace/{traceId}/subgraph")
+  @Blocking
+  @Get("/api/v1/trace/{traceId}/subgraph")
   public HttpResponse getSubgraph(
       @Param("traceId") String traceId,
       @Param("buildFilter") Optional<String> buildFilterJson,
