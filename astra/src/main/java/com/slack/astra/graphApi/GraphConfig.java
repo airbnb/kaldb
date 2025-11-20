@@ -33,25 +33,29 @@ public final class GraphConfig {
    *
    * <p>Each field has: - default key (can be a list) to look up in tags (combined with delimiter if
    * multiple) - a default fallback value if the keys aren't found - an optional delimiter for
-   * combining multiple key values - an optional list of rules that can override the default key
+   * combining multiple key values - an optional list of rules that can override the default key -
+   * an optional data frame field name for Grafana node graph visualization
    */
   public static final class TagConfig {
     private final List<String> defaultKey;
     private final String defaultValue;
     private final String keyDelimiter;
     private final List<RuleConfig> rules;
+    private final String dataFrameField;
 
     @JsonCreator
     public TagConfig(
         @JsonProperty("default_key") List<String> defaultKey,
         @JsonProperty("default_value") String defaultValue,
         @JsonProperty("key_delimiter") String keyDelimiter,
-        @JsonProperty("rules") List<RuleConfig> rules) {
+        @JsonProperty("rules") List<RuleConfig> rules,
+        @JsonProperty("data_frame_field") String dataFrameField) {
       this.defaultKey = (defaultKey == null) ? Collections.emptyList() : List.copyOf(defaultKey);
       this.defaultValue = defaultValue;
       // Set default keyDelimiter to "." if null or empty
       this.keyDelimiter = (keyDelimiter == null || keyDelimiter.isEmpty()) ? "." : keyDelimiter;
       this.rules = (rules == null) ? Collections.emptyList() : List.copyOf(rules);
+      this.dataFrameField = dataFrameField;
     }
 
     public List<String> getDefaultKey() {
@@ -68,6 +72,10 @@ public final class GraphConfig {
 
     public List<RuleConfig> getRules() {
       return rules;
+    }
+
+    public String getDataFrameField() {
+      return dataFrameField;
     }
   }
 

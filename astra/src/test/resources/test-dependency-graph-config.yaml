@@ -10,6 +10,7 @@ node_metadata_tag_mapping:
         value: http.request
         override_key:
           - tag.http.target.host
+    data_frame_field: title
   resource:
     default_key:
       - resource
@@ -19,9 +20,11 @@ node_metadata_tag_mapping:
         value: http.request
         override_key:
           - tag.http.target.canonical_path
+    data_frame_field: subtitle
 edge_metadata_tag_mapping:
   operation:
     default_key:
       - operation_name
     default_value: unknown_operation
     rules: []
+    data_frame_field: mainstat

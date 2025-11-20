@@ -1,6 +1,7 @@
 package com.slack.astra.graphApi;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -73,7 +74,8 @@ public class GraphServiceTest {
     assertEquals(0.0, MetricsUtil.getTimerCount("astra_graph_service_graph_build", meterRegistry));
 
     HttpResponse response =
-        graphService.getSubgraph(traceId, Optional.empty(), Optional.empty(), Optional.empty());
+        graphService.getSubgraph(
+            traceId, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
     AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
 
     assertEquals(HttpStatus.OK, aggregatedResponse.status());
@@ -204,7 +206,8 @@ public class GraphServiceTest {
         .thenReturn(testSpans);
 
     HttpResponse response =
-        graphService.getSubgraph(traceId, Optional.empty(), Optional.empty(), Optional.empty());
+        graphService.getSubgraph(
+            traceId, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
     AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
 
     assertEquals(HttpStatus.OK, aggregatedResponse.status());
@@ -293,7 +296,11 @@ public class GraphServiceTest {
 
     HttpResponse response =
         graphService.getSubgraph(
-            traceId, Optional.of(emptyFilterJson), Optional.empty(), Optional.empty());
+            traceId,
+            Optional.of(emptyFilterJson),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty());
     AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
 
     assertEquals(HttpStatus.OK, aggregatedResponse.status());
@@ -330,7 +337,11 @@ public class GraphServiceTest {
 
     HttpResponse response =
         graphService.getSubgraph(
-            traceId, Optional.of(invalidFilterJson), Optional.empty(), Optional.empty());
+            traceId,
+            Optional.of(invalidFilterJson),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty());
     AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
 
     assertEquals(HttpStatus.BAD_REQUEST, aggregatedResponse.status());
@@ -358,7 +369,11 @@ public class GraphServiceTest {
 
     HttpResponse response =
         graphService.getSubgraph(
-            traceId, Optional.of(malformedFilterJson), Optional.empty(), Optional.empty());
+            traceId,
+            Optional.of(malformedFilterJson),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty());
     AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
 
     assertEquals(HttpStatus.BAD_REQUEST, aggregatedResponse.status());
@@ -446,7 +461,7 @@ public class GraphServiceTest {
 
     HttpResponse response =
         graphService.getSubgraph(
-            traceId, Optional.of(filterJson), Optional.empty(), Optional.empty());
+            traceId, Optional.of(filterJson), Optional.empty(), Optional.empty(), Optional.empty());
     AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
 
     assertEquals(HttpStatus.OK, aggregatedResponse.status());
@@ -462,5 +477,117 @@ public class GraphServiceTest {
     assertEquals(3, nodes.size(), "Should have 3 nodes after filtering");
     // Should have 2 edges (root->child1, root->child2)
     assertEquals(2, edges.size(), "Should have 2 edges after filtering");
+  }
+
+  @Test
+  public void testGetSubgraphByTraceId_withDataFrameFormat() throws Exception {
+    String traceId = "test_trace_dataframe";
+
+    List<com.slack.astra.zipkinApi.ZipkinSpanResponse> testSpans =
+        List.of(
+            TestUtils.createSpanWithTags(
+                "root",
+                traceId,
+                null,
+                Map.of(
+                    "kube.app",
+                    "api-gateway",
+                    "kube.namespace",
+                    "prod",
+                    "operation_name",
+                    "http.request",
+                    "resource",
+                    "some_resource",
+                    "tag.http.target.canonical_path",
+                    "/api/endpoint",
+                    "tag.http.target.host",
+                    "gateway.prod")),
+            TestUtils.createSpanWithTags(
+                "child1",
+                traceId,
+                "root",
+                Map.of(
+                    "kube.app",
+                    "service1",
+                    "kube.namespace",
+                    "prod",
+                    "operation_name",
+                    "http.request",
+                    "resource",
+                    "some_resource2",
+                    "tag.http.target.canonical_path",
+                    "/api/service1",
+                    "tag.http.target.host",
+                    "service1.prod")));
+
+    when(traceFetcher.getSpansByTraceId(
+            anyString(),
+            any(Optional.class),
+            any(Optional.class),
+            any(Optional.class),
+            any(Optional.class),
+            any(Optional.class),
+            any(Optional.class),
+            any(Optional.class)))
+        .thenReturn(testSpans);
+
+    assertEquals(
+        0.0, MetricsUtil.getTimerCount("astra_graph_service_dataframe_conversion", meterRegistry));
+
+    HttpResponse response =
+        graphService.getSubgraph(
+            traceId,
+            Optional.empty(),
+            Optional.of("dataframe"),
+            Optional.empty(),
+            Optional.empty());
+    AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
+
+    assertEquals(HttpStatus.OK, aggregatedResponse.status());
+
+    String content = aggregatedResponse.contentUtf8();
+    JsonNode jsonNode = objectMapper.readTree(content);
+
+    assertTrue(jsonNode.has("data"));
+    assertTrue(jsonNode.has("traceFetchTimeMs"));
+    assertTrue(jsonNode.has("subgraphBuildTimeMs"));
+    assertTrue(jsonNode.has("dataFrameConversionTimeMs"));
+
+    JsonNode dataframe = jsonNode.get("data");
+    assertTrue(dataframe.has("nodes"));
+    assertTrue(dataframe.has("edges"));
+
+    JsonNode nodesDataFrame = dataframe.get("nodes");
+    assertTrue(nodesDataFrame.has("fields"));
+    JsonNode nodeFields = nodesDataFrame.get("fields");
+    assertTrue(nodeFields.isArray());
+    assertFalse(nodeFields.isEmpty());
+
+    for (JsonNode field : nodeFields) {
+      assertTrue(field.has("name"));
+      assertTrue(field.has("type"));
+      assertTrue(field.has("values"));
+      assertTrue(field.get("values").isArray());
+    }
+
+    JsonNode edgesDataFrame = dataframe.get("edges");
+    assertTrue(edgesDataFrame.has("fields"));
+    JsonNode edgeFields = edgesDataFrame.get("fields");
+    assertTrue(edgeFields.isArray());
+    assertFalse(edgeFields.isEmpty());
+
+    for (JsonNode field : edgeFields) {
+      assertTrue(field.has("name"));
+      assertTrue(field.has("type"));
+      assertTrue(field.has("values"));
+      assertTrue(field.get("values").isArray());
+    }
+
+    assertEquals(
+        1.0,
+        MetricsUtil.getTimerCount("astra_graph_service_dataframe_conversion", meterRegistry),
+        "Dataframe conversion timer should be recorded once");
+    assertEquals(1.0, MetricsUtil.getTimerCount("astra_graph_service_trace_fetch", meterRegistry));
+    assertEquals(1.0, MetricsUtil.getTimerCount("astra_graph_service_graph_build", meterRegistry));
   }
 }

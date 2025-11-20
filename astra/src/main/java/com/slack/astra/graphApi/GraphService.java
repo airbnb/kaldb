@@ -30,9 +30,11 @@ public class GraphService {
   private static final Logger LOG = LoggerFactory.getLogger(GraphService.class);
   private final TraceFetcher traceFetcher;
   private final GraphBuilder graphBuilder;
+  private final DataFrameConverter dataFrameConverter;
   private final MeterRegistry meterRegistry;
   private final Timer traceFetchTimer;
   private final Timer graphBuildTimer;
+  private final Timer dataFrameConversionTimer;
 
   private static final ObjectMapper objectMapper =
       JsonMapper.builder()
@@ -46,9 +48,11 @@ public class GraphService {
       TraceFetcher traceFetcher, GraphConfig graphConfig, MeterRegistry meterRegistry) {
     this.traceFetcher = traceFetcher;
     this.graphBuilder = new GraphBuilder(graphConfig);
+    this.dataFrameConverter = new DataFrameConverter(graphConfig);
     this.meterRegistry = meterRegistry;
     this.traceFetchTimer = meterRegistry.timer("astra_graph_service_trace_fetch");
     this.graphBuildTimer = meterRegistry.timer("astra_graph_service_graph_build");
+    this.dataFrameConversionTimer = meterRegistry.timer("astra_graph_service_dataframe_conversion");
 
     LOG.info("Started GraphService with GraphBuilder config: {}", graphConfig);
   }
@@ -56,11 +60,18 @@ public class GraphService {
   private record SubgraphResponse(
       Graph subgraph, long traceFetchTimeMs, long subgraphBuildTimeMs) {}
 
+  private record SubgraphDataFrameResponse(
+      DataFrameConverter.DataFrameResponse data,
+      long traceFetchTimeMs,
+      long subgraphBuildTimeMs,
+      long dataFrameConversionTimeMs) {}
+
   @Blocking
   @Get("/api/v1/trace/{traceId}/subgraph")
   public HttpResponse getSubgraph(
       @Param("traceId") String traceId,
       @Param("buildFilter") Optional<String> buildFilterJson,
+      @Param("format") Optional<String> format,
       @Param("maxSpans") Optional<Integer> maxSpans,
       @Header("X-User-Request") Optional<Boolean> userRequest)
       throws IOException {
@@ -99,9 +110,27 @@ public class GraphService {
     Graph subgraph = this.graphBuilder.buildFromSpans(trace, buildFilter);
     long subgraphBuildTimeMilli = graphBuildSample.stop(graphBuildTimer) / 1_000_000;
 
-    SubgraphResponse response =
-        new SubgraphResponse(subgraph, traceFetchTimeMilli, subgraphBuildTimeMilli);
-    String output = objectMapper.writeValueAsString(response);
+    String output;
+    if (format.isPresent() && format.get().equalsIgnoreCase("dataframe")) {
+      Timer.Sample dataFrameConversionSample = Timer.start(meterRegistry);
+      DataFrameConverter.DataFrameResponse dataFrameResponse =
+          this.dataFrameConverter.graphToDataFrame(subgraph);
+      long dataFrameConversionTimeMilli =
+          dataFrameConversionSample.stop(dataFrameConversionTimer) / 1_000_000;
+
+      SubgraphDataFrameResponse response =
+          new SubgraphDataFrameResponse(
+              dataFrameResponse,
+              traceFetchTimeMilli,
+              subgraphBuildTimeMilli,
+              dataFrameConversionTimeMilli);
+      output = objectMapper.writeValueAsString(response);
+    } else {
+      SubgraphResponse response =
+          new SubgraphResponse(subgraph, traceFetchTimeMilli, subgraphBuildTimeMilli);
+      output = objectMapper.writeValueAsString(response);
+    }
+
     return HttpResponse.of(HttpStatus.OK, MediaType.JSON_UTF_8, output);
   }
 }
