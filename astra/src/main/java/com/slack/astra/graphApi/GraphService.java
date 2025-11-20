@@ -110,7 +110,8 @@ public class GraphService {
       DataFrameConverter.DataFrameResponse dataFrameResponse =
           this.dataFrameConverter.graphToDataFrame(subgraph);
       dataFrameConversionSample.stop(dataFrameConversionTimer);
-      output = objectMapper.writeValueAsString(dataFrameResponse);
+      // Grafana expects an array of data frames, not wrapped in an object
+      output = objectMapper.writeValueAsString(dataFrameResponse.data());
     } else {
       SubgraphResponse response =
           new SubgraphResponse(subgraph, traceFetchTimeMilli, subgraphBuildTimeMilli);

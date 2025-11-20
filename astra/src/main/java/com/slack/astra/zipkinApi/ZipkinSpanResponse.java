@@ -1,5 +1,6 @@
 package com.slack.astra.zipkinApi;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Map;
 
@@ -30,7 +31,9 @@ public class ZipkinSpanResponse {
 
   private Map<String, String> tags;
 
-  public ZipkinSpanResponse(String id, String traceId) {
+  @JsonCreator
+  public ZipkinSpanResponse(
+      @JsonProperty("id") String id, @JsonProperty("traceId") String traceId) {
     // id and traceId are only required fields
     this.id = id;
     this.traceId = traceId;

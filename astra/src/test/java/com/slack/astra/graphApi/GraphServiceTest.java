@@ -548,12 +548,10 @@ public class GraphServiceTest {
     String content = aggregatedResponse.contentUtf8();
     JsonNode jsonNode = objectMapper.readTree(content);
 
-    assertTrue(jsonNode.has("data"));
-    JsonNode data = jsonNode.get("data");
-    assertTrue(data.isArray());
-    assertEquals(2, data.size());
+    assertTrue(jsonNode.isArray());
+    assertEquals(2, jsonNode.size());
 
-    JsonNode nodesDataFrame = data.get(0);
+    JsonNode nodesDataFrame = jsonNode.get(0);
     assertEquals("nodes", nodesDataFrame.get("name").asText());
     assertTrue(nodesDataFrame.has("fields"));
     assertTrue(nodesDataFrame.has("meta"));
@@ -571,7 +569,7 @@ public class GraphServiceTest {
       assertTrue(field.get("values").isArray());
     }
 
-    JsonNode edgesDataFrame = data.get(1);
+    JsonNode edgesDataFrame = jsonNode.get(1);
     assertEquals("edges", edgesDataFrame.get("name").asText());
     assertTrue(edgesDataFrame.has("fields"));
     assertTrue(edgesDataFrame.has("meta"));
