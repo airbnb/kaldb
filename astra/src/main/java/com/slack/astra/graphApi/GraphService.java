@@ -60,12 +60,6 @@ public class GraphService {
   private record SubgraphResponse(
       Graph subgraph, long traceFetchTimeMs, long subgraphBuildTimeMs) {}
 
-  private record SubgraphDataFrameResponse(
-      DataFrameConverter.DataFrameResponse data,
-      long traceFetchTimeMs,
-      long subgraphBuildTimeMs,
-      long dataFrameConversionTimeMs) {}
-
   @Blocking
   @Get("/api/v1/trace/{traceId}/subgraph")
   public HttpResponse getSubgraph(
@@ -115,16 +109,8 @@ public class GraphService {
       Timer.Sample dataFrameConversionSample = Timer.start(meterRegistry);
       DataFrameConverter.DataFrameResponse dataFrameResponse =
           this.dataFrameConverter.graphToDataFrame(subgraph);
-      long dataFrameConversionTimeMilli =
-          dataFrameConversionSample.stop(dataFrameConversionTimer) / 1_000_000;
-
-      SubgraphDataFrameResponse response =
-          new SubgraphDataFrameResponse(
-              dataFrameResponse,
-              traceFetchTimeMilli,
-              subgraphBuildTimeMilli,
-              dataFrameConversionTimeMilli);
-      output = objectMapper.writeValueAsString(response);
+      dataFrameConversionSample.stop(dataFrameConversionTimer);
+      output = objectMapper.writeValueAsString(dataFrameResponse);
     } else {
       SubgraphResponse response =
           new SubgraphResponse(subgraph, traceFetchTimeMilli, subgraphBuildTimeMilli);

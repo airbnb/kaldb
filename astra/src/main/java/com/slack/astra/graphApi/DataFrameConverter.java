@@ -27,22 +27,23 @@ public class DataFrameConverter {
   }
 
   public DataFrameResponse graphToDataFrame(Graph graph) {
-    return new DataFrameResponse(
-        convertNodesToDataFrame(graph.nodes()), convertEdgesToDataFrame(graph.edges()));
+    List<DataFrame> data = new ArrayList<>();
+    data.add(convertNodesToDataFrame(graph.nodes()));
+    data.add(convertEdgesToDataFrame(graph.edges()));
+    return new DataFrameResponse(data);
   }
 
-  public record DataFrameResponse(NodeDataFrame nodes, EdgeDataFrame edges) {}
+  public record DataFrameResponse(List<DataFrame> data) {}
 
-  public record NodeDataFrame(List<Map<String, Object>> fields) {}
-
-  public record EdgeDataFrame(List<Map<String, Object>> fields) {}
+  public record DataFrame(
+      String name, List<Map<String, Object>> fields, Map<String, String> meta) {}
 
   /**
    * Converts nodes to Grafana node data frame format.
    *
    * <p>Uses GraphConfig to determine which metadata fields map to which data frame fields.
    */
-  private NodeDataFrame convertNodesToDataFrame(List<Node> nodes) {
+  private DataFrame convertNodesToDataFrame(List<Node> nodes) {
     List<Map<String, Object>> fields = new ArrayList<>();
 
     // Required field: id
@@ -59,7 +60,10 @@ public class DataFrameConverter {
 
     processMetadataFieldValues(GraphConfig.EntityType.NODE, fields, fieldValues, nodes.size());
 
-    return new NodeDataFrame(fields);
+    Map<String, String> meta = new HashMap<>();
+    meta.put("preferredVisualisationType", "nodeGraph");
+
+    return new DataFrame("nodes", fields, meta);
   }
 
   /**
@@ -67,7 +71,7 @@ public class DataFrameConverter {
    *
    * <p>Uses GraphConfig to determine which metadata fields map to which data frame fields.
    */
-  private EdgeDataFrame convertEdgesToDataFrame(List<Edge> edges) {
+  private DataFrame convertEdgesToDataFrame(List<Edge> edges) {
     List<Map<String, Object>> fields = new ArrayList<>();
 
     // Required field: id
@@ -100,7 +104,10 @@ public class DataFrameConverter {
         edge -> processMetadata(config.getEdgeMetadataTagMapping(), fieldValues, edge.metadata()));
     processMetadataFieldValues(GraphConfig.EntityType.EDGE, fields, fieldValues, edges.size());
 
-    return new EdgeDataFrame(fields);
+    Map<String, String> meta = new HashMap<>();
+    meta.put("preferredVisualisationType", "nodeGraph");
+
+    return new DataFrame("edges", fields, meta);
   }
 
   private static void processMetadata(

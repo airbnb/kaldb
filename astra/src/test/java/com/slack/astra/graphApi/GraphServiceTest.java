@@ -549,16 +549,17 @@ public class GraphServiceTest {
     JsonNode jsonNode = objectMapper.readTree(content);
 
     assertTrue(jsonNode.has("data"));
-    assertTrue(jsonNode.has("traceFetchTimeMs"));
-    assertTrue(jsonNode.has("subgraphBuildTimeMs"));
-    assertTrue(jsonNode.has("dataFrameConversionTimeMs"));
+    JsonNode data = jsonNode.get("data");
+    assertTrue(data.isArray());
+    assertEquals(2, data.size());
 
-    JsonNode dataframe = jsonNode.get("data");
-    assertTrue(dataframe.has("nodes"));
-    assertTrue(dataframe.has("edges"));
-
-    JsonNode nodesDataFrame = dataframe.get("nodes");
+    JsonNode nodesDataFrame = data.get(0);
+    assertEquals("nodes", nodesDataFrame.get("name").asText());
     assertTrue(nodesDataFrame.has("fields"));
+    assertTrue(nodesDataFrame.has("meta"));
+    assertEquals(
+        "nodeGraph", nodesDataFrame.get("meta").get("preferredVisualisationType").asText());
+
     JsonNode nodeFields = nodesDataFrame.get("fields");
     assertTrue(nodeFields.isArray());
     assertFalse(nodeFields.isEmpty());
@@ -570,8 +571,13 @@ public class GraphServiceTest {
       assertTrue(field.get("values").isArray());
     }
 
-    JsonNode edgesDataFrame = dataframe.get("edges");
+    JsonNode edgesDataFrame = data.get(1);
+    assertEquals("edges", edgesDataFrame.get("name").asText());
     assertTrue(edgesDataFrame.has("fields"));
+    assertTrue(edgesDataFrame.has("meta"));
+    assertEquals(
+        "nodeGraph", edgesDataFrame.get("meta").get("preferredVisualisationType").asText());
+
     JsonNode edgeFields = edgesDataFrame.get("fields");
     assertTrue(edgeFields.isArray());
     assertFalse(edgeFields.isEmpty());
@@ -584,9 +590,7 @@ public class GraphServiceTest {
     }
 
     assertEquals(
-        1.0,
-        MetricsUtil.getTimerCount("astra_graph_service_dataframe_conversion", meterRegistry),
-        "Dataframe conversion timer should be recorded once");
+        1.0, MetricsUtil.getTimerCount("astra_graph_service_dataframe_conversion", meterRegistry));
     assertEquals(1.0, MetricsUtil.getTimerCount("astra_graph_service_trace_fetch", meterRegistry));
     assertEquals(1.0, MetricsUtil.getTimerCount("astra_graph_service_graph_build", meterRegistry));
   }

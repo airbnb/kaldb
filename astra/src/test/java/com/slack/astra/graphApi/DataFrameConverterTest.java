@@ -39,13 +39,24 @@ public class DataFrameConverterTest {
     DataFrameConverter.DataFrameResponse response = dataFrameConverter.graphToDataFrame(emptyGraph);
 
     assertNotNull(response);
-    assertNotNull(response.nodes());
-    assertNotNull(response.edges());
+    assertNotNull(response.data());
+    assertEquals(2, response.data().size());
+
+    DataFrameConverter.DataFrame nodesDataFrame = response.data().get(0);
+    DataFrameConverter.DataFrame edgesDataFrame = response.data().get(1);
+
+    assertEquals("nodes", nodesDataFrame.name());
+    assertEquals("edges", edgesDataFrame.name());
 
     // id field
-    assertEquals(1, response.nodes().fields().size());
+    assertEquals(1, nodesDataFrame.fields().size());
     // id, source, target fields
-    assertEquals(3, response.edges().fields().size());
+    assertEquals(3, edgesDataFrame.fields().size());
+
+    assertNotNull(nodesDataFrame.meta());
+    assertEquals("nodeGraph", nodesDataFrame.meta().get("preferredVisualisationType"));
+    assertNotNull(edgesDataFrame.meta());
+    assertEquals("nodeGraph", edgesDataFrame.meta().get("preferredVisualisationType"));
   }
 
   @Test
@@ -61,9 +72,9 @@ public class DataFrameConverterTest {
 
     DataFrameConverter.DataFrameResponse response = dataFrameConverter.graphToDataFrame(graph);
 
-    List<Map<String, Object>> nodeFields = response.nodes().fields();
+    DataFrameConverter.DataFrame nodesDataFrame = response.data().get(0);
+    List<Map<String, Object>> nodeFields = nodesDataFrame.fields();
 
-    // Verify title field has values for both nodes
     Map<String, Object> titleField = findField(nodeFields, "title");
     assertNotNull(titleField);
     List<?> titleValues = (List<?>) titleField.get("values");
@@ -71,7 +82,6 @@ public class DataFrameConverterTest {
     assertEquals("service-1", titleValues.get(0));
     assertEquals("service-2", titleValues.get(1));
 
-    // Verify subtitle field has values for both nodes
     Map<String, Object> subtitleField = findField(nodeFields, "subtitle");
     assertNotNull(subtitleField);
     List<?> subtitleValues = (List<?>) subtitleField.get("values");
@@ -103,9 +113,9 @@ public class DataFrameConverterTest {
 
     DataFrameConverter.DataFrameResponse response = dataFrameConverter.graphToDataFrame(graph);
 
-    List<Map<String, Object>> edgeFields = response.edges().fields();
+    DataFrameConverter.DataFrame edgesDataFrame = response.data().get(1);
+    List<Map<String, Object>> edgeFields = edgesDataFrame.fields();
 
-    // Verify edge IDs
     Map<String, Object> idField = findField(edgeFields, "id");
     assertNotNull(idField);
     List<?> idValues = (List<?>) idField.get("values");
@@ -113,7 +123,6 @@ public class DataFrameConverterTest {
     assertEquals("0", idValues.get(0));
     assertEquals("1", idValues.get(1));
 
-    // Verify source field
     Map<String, Object> sourceField = findField(edgeFields, "source");
     assertNotNull(sourceField);
     List<?> sourceValues = (List<?>) sourceField.get("values");
@@ -121,7 +130,6 @@ public class DataFrameConverterTest {
     assertEquals(node1.getId(), sourceValues.get(0));
     assertEquals(node2.getId(), sourceValues.get(1));
 
-    // Verify target field
     Map<String, Object> targetField = findField(edgeFields, "target");
     assertNotNull(targetField);
     List<?> targetValues = (List<?>) targetField.get("values");
@@ -129,7 +137,6 @@ public class DataFrameConverterTest {
     assertEquals(node2.getId(), targetValues.get(0));
     assertEquals(node3.getId(), targetValues.get(1));
 
-    // Verify mainstat field has values for both edges
     Map<String, Object> mainstatField = findField(edgeFields, "mainstat");
     assertNotNull(mainstatField);
     List<?> mainstatValues = (List<?>) mainstatField.get("values");
@@ -152,10 +159,9 @@ public class DataFrameConverterTest {
 
     DataFrameConverter.DataFrameResponse response = dataFrameConverter.graphToDataFrame(graph);
 
-    List<Map<String, Object>> nodeFields = response.nodes().fields();
+    DataFrameConverter.DataFrame nodesDataFrame = response.data().get(0);
+    List<Map<String, Object>> nodeFields = nodesDataFrame.fields();
 
-    // Verify subtitle field has values for both nodes, empty string for missing resource in second
-    // node
     Map<String, Object> subtitleField = findField(nodeFields, "subtitle");
     assertNotNull(subtitleField);
     List<?> subtitleValues = (List<?>) subtitleField.get("values");
@@ -187,7 +193,10 @@ public class DataFrameConverterTest {
 
     DataFrameConverter.DataFrameResponse response = dataFrameConverter.graphToDataFrame(graph);
 
-    List<Map<String, Object>> nodeFields = response.nodes().fields();
+    DataFrameConverter.DataFrame nodesDataFrame = response.data().get(0);
+    DataFrameConverter.DataFrame edgesDataFrame = response.data().get(1);
+
+    List<Map<String, Object>> nodeFields = nodesDataFrame.fields();
     assertTrue(nodeFields.size() >= 3);
 
     for (Map<String, Object> field : nodeFields) {
@@ -195,7 +204,7 @@ public class DataFrameConverterTest {
       assertEquals(3, values.size());
     }
 
-    List<Map<String, Object>> edgeFields = response.edges().fields();
+    List<Map<String, Object>> edgeFields = edgesDataFrame.fields();
     assertTrue(edgeFields.size() >= 4);
 
     for (Map<String, Object> field : edgeFields) {
