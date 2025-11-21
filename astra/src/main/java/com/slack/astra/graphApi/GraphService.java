@@ -109,14 +109,8 @@ public class GraphService {
       String formatValue = format.get().toLowerCase();
       if (formatValue.equals("dataframe")) {
         Timer.Sample dataFrameConversionSample = Timer.start(meterRegistry);
-        DataFrameConverter.DataFrameResponse dataFrameResponse =
+        DataFrameConverter.DataFrameResponse rowBasedResponse =
             this.dataFrameConverter.graphToDataFrame(subgraph);
-        dataFrameConversionSample.stop(dataFrameConversionTimer);
-        output = objectMapper.writeValueAsString(dataFrameResponse.data());
-      } else if (formatValue.equals("rows")) {
-        Timer.Sample dataFrameConversionSample = Timer.start(meterRegistry);
-        DataFrameConverter.RowBasedResponse rowBasedResponse =
-            this.dataFrameConverter.graphToRowBased(subgraph);
         dataFrameConversionSample.stop(dataFrameConversionTimer);
         output = objectMapper.writeValueAsString(rowBasedResponse);
       } else {

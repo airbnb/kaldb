@@ -1,7 +1,6 @@
 package com.slack.astra.graphApi;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -548,43 +547,29 @@ public class GraphServiceTest {
     String content = aggregatedResponse.contentUtf8();
     JsonNode jsonNode = objectMapper.readTree(content);
 
-    assertTrue(jsonNode.isArray());
-    assertEquals(2, jsonNode.size());
+    assertTrue(jsonNode.has("nodes"));
+    assertTrue(jsonNode.has("edges"));
 
-    JsonNode nodesDataFrame = jsonNode.get(0);
-    assertEquals("nodes", nodesDataFrame.get("name").asText());
-    assertTrue(nodesDataFrame.has("fields"));
-    assertTrue(nodesDataFrame.has("meta"));
-    assertEquals(
-        "nodeGraph", nodesDataFrame.get("meta").get("preferredVisualisationType").asText());
+    JsonNode nodes = jsonNode.get("nodes");
+    JsonNode edges = jsonNode.get("edges");
 
-    JsonNode nodeFields = nodesDataFrame.get("fields");
-    assertTrue(nodeFields.isArray());
-    assertFalse(nodeFields.isEmpty());
+    assertTrue(nodes.isArray());
+    assertTrue(edges.isArray());
 
-    for (JsonNode field : nodeFields) {
-      assertTrue(field.has("name"));
-      assertTrue(field.has("type"));
-      assertTrue(field.has("values"));
-      assertTrue(field.get("values").isArray());
+    assertEquals(2, nodes.size());
+    assertEquals(1, edges.size());
+
+    for (JsonNode node : nodes) {
+      assertTrue(node.has("id"));
+      assertTrue(node.has("title"));
+      assertTrue(node.has("subtitle"));
     }
 
-    JsonNode edgesDataFrame = jsonNode.get(1);
-    assertEquals("edges", edgesDataFrame.get("name").asText());
-    assertTrue(edgesDataFrame.has("fields"));
-    assertTrue(edgesDataFrame.has("meta"));
-    assertEquals(
-        "nodeGraph", edgesDataFrame.get("meta").get("preferredVisualisationType").asText());
-
-    JsonNode edgeFields = edgesDataFrame.get("fields");
-    assertTrue(edgeFields.isArray());
-    assertFalse(edgeFields.isEmpty());
-
-    for (JsonNode field : edgeFields) {
-      assertTrue(field.has("name"));
-      assertTrue(field.has("type"));
-      assertTrue(field.has("values"));
-      assertTrue(field.get("values").isArray());
+    for (JsonNode edge : edges) {
+      assertTrue(edge.has("id"));
+      assertTrue(edge.has("source"));
+      assertTrue(edge.has("target"));
+      assertTrue(edge.has("mainstat"));
     }
 
     assertEquals(
