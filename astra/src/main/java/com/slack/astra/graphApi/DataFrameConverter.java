@@ -36,7 +36,7 @@ public class DataFrameConverter {
   public record DataFrameResponse(List<DataFrame> data) {}
 
   public record DataFrame(
-      String name, List<Map<String, Object>> fields, Map<String, String> meta) {}
+      String name, List<Map<String, Object>> fields, Map<String, String> meta, Integer length) {}
 
   /**
    * Converts nodes to Grafana node data frame format.
@@ -63,7 +63,7 @@ public class DataFrameConverter {
     Map<String, String> meta = new HashMap<>();
     meta.put("preferredVisualisationType", "nodeGraph");
 
-    return new DataFrame("nodes", fields, meta);
+    return new DataFrame("nodes", fields, meta, nodes.size());
   }
 
   /**
@@ -107,7 +107,7 @@ public class DataFrameConverter {
     Map<String, String> meta = new HashMap<>();
     meta.put("preferredVisualisationType", "nodeGraph");
 
-    return new DataFrame("edges", fields, meta);
+    return new DataFrame("edges", fields, meta, edges.size());
   }
 
   private static void processMetadata(
