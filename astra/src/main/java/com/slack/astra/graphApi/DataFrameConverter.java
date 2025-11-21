@@ -33,7 +33,14 @@ public class DataFrameConverter {
     return new DataFrameResponse(data);
   }
 
+  public RowBasedResponse graphToRowBased(Graph graph) {
+    return new RowBasedResponse(
+        convertNodesToRows(graph.nodes()), convertEdgesToRows(graph.edges()));
+  }
+
   public record DataFrameResponse(List<DataFrame> data) {}
+
+  public record RowBasedResponse(List<Map<String, Object>> nodes, List<Map<String, Object>> edges) {}
 
   public record DataFrame(
       String name, List<Map<String, Object>> fields, Map<String, String> meta, Integer length) {}
@@ -154,5 +161,66 @@ public class DataFrameConverter {
             "Generated data frame has an invalid size for " + entityType);
       }
     }
+  }
+
+  /**
+   * Converts nodes to row-based format for Grafana JSON API / Infinity plugin.
+   *
+   * <p>Each node becomes a map with properties like id, title, subtitle, etc.
+   */
+  private List<Map<String, Object>> convertNodesToRows(List<Node> nodes) {
+    List<Map<String, Object>> rows = new ArrayList<>();
+    for (Node node : nodes) {
+      Map<String, Object> row = new HashMap<>();
+      row.put("id", node.getId());
+
+      // Process metadata using config
+      for (Map.Entry<String, GraphConfig.TagConfig> entry :
+          config.getNodeMetadataTagMapping().entrySet()) {
+        String metadataKey = entry.getKey();
+        String dataFrameField = entry.getValue().getDataFrameField();
+        String value = node.getMetadata().getOrDefault(metadataKey, "");
+
+        if (dataFrameField != null && !dataFrameField.isEmpty()) {
+          row.put(dataFrameField, value);
+        } else {
+          row.put("detail__" + metadataKey, value);
+        }
+      }
+      rows.add(row);
+    }
+    return rows;
+  }
+
+  /**
+   * Converts edges to row-based format for Grafana JSON API / Infinity plugin.
+   *
+   * <p>Each edge becomes a map with properties like id, source, target, mainstat, etc.
+   */
+  private List<Map<String, Object>> convertEdgesToRows(List<Edge> edges) {
+    List<Map<String, Object>> rows = new ArrayList<>();
+    for (int i = 0; i < edges.size(); i++) {
+      Edge edge = edges.get(i);
+      Map<String, Object> row = new HashMap<>();
+      row.put("id", String.valueOf(i));
+      row.put("source", edge.sourceNodeId());
+      row.put("target", edge.targetNodeId());
+
+      // Process metadata using config
+      for (Map.Entry<String, GraphConfig.TagConfig> entry :
+          config.getEdgeMetadataTagMapping().entrySet()) {
+        String metadataKey = entry.getKey();
+        String dataFrameField = entry.getValue().getDataFrameField();
+        String value = edge.metadata().getOrDefault(metadataKey, "");
+
+        if (dataFrameField != null && !dataFrameField.isEmpty()) {
+          row.put(dataFrameField, value);
+        } else {
+          row.put("detail__" + metadataKey, value);
+        }
+      }
+      rows.add(row);
+    }
+    return rows;
   }
 }

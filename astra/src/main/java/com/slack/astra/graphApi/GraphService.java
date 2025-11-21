@@ -105,13 +105,25 @@ public class GraphService {
     long subgraphBuildTimeMilli = graphBuildSample.stop(graphBuildTimer) / 1_000_000;
 
     String output;
-    if (format.isPresent() && format.get().equalsIgnoreCase("dataframe")) {
-      Timer.Sample dataFrameConversionSample = Timer.start(meterRegistry);
-      DataFrameConverter.DataFrameResponse dataFrameResponse =
-          this.dataFrameConverter.graphToDataFrame(subgraph);
-      dataFrameConversionSample.stop(dataFrameConversionTimer);
-      // Grafana expects an array of data frames, not wrapped in an object
-      output = objectMapper.writeValueAsString(dataFrameResponse.data());
+    if (format.isPresent()) {
+      String formatValue = format.get().toLowerCase();
+      if (formatValue.equals("dataframe")) {
+        Timer.Sample dataFrameConversionSample = Timer.start(meterRegistry);
+        DataFrameConverter.DataFrameResponse dataFrameResponse =
+            this.dataFrameConverter.graphToDataFrame(subgraph);
+        dataFrameConversionSample.stop(dataFrameConversionTimer);
+        output = objectMapper.writeValueAsString(dataFrameResponse.data());
+      } else if (formatValue.equals("rows")) {
+        Timer.Sample dataFrameConversionSample = Timer.start(meterRegistry);
+        DataFrameConverter.RowBasedResponse rowBasedResponse =
+            this.dataFrameConverter.graphToRowBased(subgraph);
+        dataFrameConversionSample.stop(dataFrameConversionTimer);
+        output = objectMapper.writeValueAsString(rowBasedResponse);
+      } else {
+        SubgraphResponse response =
+            new SubgraphResponse(subgraph, traceFetchTimeMilli, subgraphBuildTimeMilli);
+        output = objectMapper.writeValueAsString(response);
+      }
     } else {
       SubgraphResponse response =
           new SubgraphResponse(subgraph, traceFetchTimeMilli, subgraphBuildTimeMilli);
