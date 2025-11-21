@@ -60,6 +60,8 @@ public class GraphService {
   @Get("/api/v1/trace/{traceId}/subgraph")
   public HttpResponse getSubgraph(
       @Param("traceId") String traceId,
+      @Param("startTimeEpochMs") Optional<Long> startTimeEpochMs,
+      @Param("endTimeEpochMs") Optional<Long> endTimeEpochMs,
       @Param("buildFilter") Optional<String> buildFilterJson,
       @Param("maxSpans") Optional<Integer> maxSpans,
       @Header("X-User-Request") Optional<Boolean> userRequest)
@@ -86,8 +88,8 @@ public class GraphService {
     List<ZipkinSpanResponse> trace =
         this.traceFetcher.getSpansByTraceId(
             traceId,
-            Optional.empty(),
-            Optional.empty(),
+            startTimeEpochMs,
+            endTimeEpochMs,
             maxSpans,
             userRequest,
             Optional.empty(),
