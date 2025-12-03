@@ -85,6 +85,13 @@ public class GraphService {
     }
 
     Timer.Sample traceFetchSample = Timer.start(meterRegistry);
+    LOG.debug(
+        "Running get subgraph api with args: {}, {}, {}, {}",
+        traceId,
+        startTimeEpochMs,
+        endTimeEpochMs,
+        maxSpans,
+        userRequest);
     List<ZipkinSpanResponse> trace =
         this.traceFetcher.getSpansByTraceId(
             traceId,
