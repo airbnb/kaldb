@@ -23,6 +23,37 @@ set -euo pipefail
 # ------------------------------------------------------------------------------
 CLEAN_BUILD=false
 
+# ------------------------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------------------------
+wait_for_http() {
+  local name=$1 url=$2 max_attempts=${3:-60} sleep_secs=${4:-2}
+  echo "⏳ Waiting for $name at $url ..."
+  for i in $(seq 1 "$max_attempts"); do
+    if curl -sSf "$url" >/dev/null 2>&1; then
+      echo "✅ $name is up (attempt $i/$max_attempts)"
+      return 0
+    fi
+    sleep "$sleep_secs"
+  done
+  echo "❌ $name did not become ready in time." >&2
+  exit 1
+}
+
+wait_for_kafka() {
+  local max_attempts=${1:-60} sleep_secs=${2:-2}
+  echo "⏳ Waiting for Kafka broker ..."
+  for i in $(seq 1 "$max_attempts"); do
+    if docker exec dep_kafka kafka-topics.sh --list --bootstrap-server localhost:9092 >/dev/null 2>&1; then
+      echo "✅ Kafka is up (attempt $i/$max_attempts)"
+      return 0
+    fi
+    sleep "$sleep_secs"
+  done
+  echo "❌ Kafka did not become ready in time." >&2
+  exit 1
+}
+
 for arg in "$@"; do
   case $arg in
     --clean)
@@ -93,8 +124,9 @@ docker compose up -d
 # ------------------------------------------------------------------------------
 # Step 5. Wait for services to initialize
 # ------------------------------------------------------------------------------
-echo "⏳ Waiting for Astra services to initialize..."
-sleep 30
+wait_for_kafka 60 2
+wait_for_http "Manager API" "http://localhost:8083/health" 60 2
+wait_for_http "Preprocessor" "http://localhost:8086/health" 60 2
 
 # ------------------------------------------------------------------------------
 # Step 6. Configure Kafka topic and Astra dataset
@@ -140,4 +172,3 @@ echo ""
 echo "To ingest sample data, run: ./ingest-demo-data.sh"
 echo "To stop and remove everything, run: ./clean-astra.sh"
 echo ""
-
