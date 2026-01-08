@@ -18,6 +18,10 @@ node_metadata_tag_mapping:
       - field: operation_name
         value: http.request
         override_key:
+          - http.url
+      - field: operation_name
+        value: http.request
+        override_key:
           - tag.http.target.canonical_path
 edge_metadata_tag_mapping:
   operation:

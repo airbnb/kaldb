@@ -264,13 +264,13 @@ public class GraphConfigTest {
         Map.of(
             "app.name", "my-app", "namespace.name", "prod-ns", "operation_name", "some_operation");
 
-    // Node - rule matches but override key is missing, should return default value
+    // Node - rule matches but override key is missing, should return default key's value
     String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
-    assertThat(result).isEqualTo("unknown_app");
+    assertThat(result).isEqualTo("my-app");
 
-    // Edge - rule matches but override key is missing, should return default value
+    // Edge - rule matches but override key is missing, should return default key's value
     result = config.resolve(tags, "operation", GraphConfig.EntityType.EDGE);
-    assertThat(result).isEqualTo("unknown_operation");
+    assertThat(result).isEqualTo("some_operation");
   }
 
   @Test
@@ -569,8 +569,8 @@ public class GraphConfigTest {
             "api.example.com");
 
     String result = config.resolve(tags, "service", GraphConfig.EntityType.NODE);
-    // Should return default value since override key is missing tag.http.method
-    assertThat(result).isEqualTo("unknown_service");
+    // Should return default key's value since override key is missing tag.http.method
+    assertThat(result).isEqualTo("my-app.prod");
   }
 
   @Test
@@ -619,6 +619,109 @@ public class GraphConfigTest {
     assertThat(metadata.get("app")).isEqualTo("my-app");
     assertThat(metadata.get("namespace")).isEqualTo("my-namespace");
     assertThat(metadata.get("resource")).isEqualTo("my-resource");
+  }
+
+  @Test
+  public void testResolveWithMultipleMatchingRules_emptyValue_fallbackToNextRule()
+      throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+                node_metadata_tag_mapping:
+                  resource:
+                    default_key:
+                      - resource
+                    default_value: unknown_resource
+                    rules:
+                      - field: operation_name
+                        value: http.request
+                        override_key:
+                          - http.url
+                      - field: operation_name
+                        value: http.request
+                        override_key:
+                          - tag.http.target.canonical_path
+                """);
+
+    // Case 1: tag.http.target.canonical_path is empty, should fallback to http.url
+    Map<String, String> tags1 =
+        Map.of(
+            "operation_name",
+            "http.request",
+            "tag.http.target.canonical_path",
+            "",
+            "http.url",
+            "/api/v1/users",
+            "resource",
+            "default_resource");
+
+    String result1 = config.resolve(tags1, "resource", GraphConfig.EntityType.NODE);
+    assertThat(result1).isEqualTo("/api/v1/users");
+
+    // Case 2: Both are empty, should fallback to default key
+    Map<String, String> tags2 =
+        Map.of(
+            "operation_name",
+            "http.request",
+            "tag.http.target.canonical_path",
+            "",
+            "http.url",
+            "",
+            "resource",
+            "default_resource");
+
+    String result2 = config.resolve(tags2, "resource", GraphConfig.EntityType.NODE);
+    assertThat(result2).isEqualTo("default_resource");
+
+    // Case 3: All empty including default key, should use default value
+    Map<String, String> tags3 =
+        Map.of(
+            "operation_name",
+            "http.request",
+            "tag.http.target.canonical_path",
+            "",
+            "http.url",
+            "",
+            "resource",
+            "");
+
+    String result3 = config.resolve(tags3, "resource", GraphConfig.EntityType.NODE);
+    assertThat(result3).isEqualTo("unknown_resource");
+
+    // Case 4: tag.http.target.canonical_path has value, should use it
+    Map<String, String> tags4 =
+        Map.of(
+            "operation_name",
+            "http.request",
+            "tag.http.target.canonical_path",
+            "/api/canonical",
+            "http.url",
+            "/api/v1/users",
+            "resource",
+            "default_resource");
+
+    String result4 = config.resolve(tags4, "resource", GraphConfig.EntityType.NODE);
+    assertThat(result4).isEqualTo("/api/canonical");
+
+    // Case 5: tag.http.target.canonical_path is missing, should fallback to http.url
+    Map<String, String> tags5 =
+        Map.of(
+            "operation_name",
+            "http.request",
+            "http.url",
+            "/api/v1/users",
+            "resource",
+            "default_resource");
+
+    String result5 = config.resolve(tags5, "resource", GraphConfig.EntityType.NODE);
+    assertThat(result1).isEqualTo("/api/v1/users");
+
+    // Case 6: Both override keys are missing, should fallback to default key
+    Map<String, String> tags6 =
+        Map.of("operation_name", "http.request", "resource", "default_resource");
+
+    String result6 = config.resolve(tags6, "resource", GraphConfig.EntityType.NODE);
+    assertThat(result2).isEqualTo("default_resource");
   }
 
   @Test
