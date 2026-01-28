@@ -72,6 +72,13 @@ public class GraphBuilder {
     }
   }
 
+  /**
+   * EdgeAccumulator for tracking edge observations during graph construction.
+   *
+   * <p>Multiple spans may represent the same logical edge (same source and target node). This class
+   * aggregates these observations, counting how many times the edge is seen. The observation count
+   * can be used to compute edge weight or importance in the final graph.
+   */
   private static class EdgeAccumulator {
     final Edge edge;
     int observationCount = 0;
@@ -84,6 +91,13 @@ public class GraphBuilder {
       observationCount++;
     }
 
+    /**
+     * Returns the edge with observation count added to its metadata.
+     *
+     * <p>Note: This method mutates the edge's metadata map by adding the "observationCount" key.
+     *
+     * @return The edge with observation count in metadata
+     */
     Edge getEdgeWithObservationCount() {
       this.edge.metadata().put("observationCount", String.valueOf(observationCount));
       return this.edge;
