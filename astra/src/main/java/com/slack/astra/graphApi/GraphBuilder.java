@@ -98,7 +98,7 @@ public class GraphBuilder {
      *
      * @return The edge with observation count in metadata
      */
-    Edge getEdgeWithObservationCount() {
+    Edge toEdgeWithObservationCount() {
       this.edge.metadata().put("observationCount", String.valueOf(observationCount));
       return this.edge;
     }
@@ -276,7 +276,7 @@ public class GraphBuilder {
 
     List<Edge> edges =
         edgeAccumulators.values().stream()
-            .map(EdgeAccumulator::getEdgeWithObservationCount)
+            .map(EdgeAccumulator::toEdgeWithObservationCount)
             .toList();
 
     return new Graph(new ArrayList<>(nodes), edges);
