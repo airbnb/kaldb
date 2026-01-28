@@ -72,6 +72,24 @@ public class GraphBuilder {
     }
   }
 
+  private static class EdgeAccumulator {
+    final Edge edge;
+    int observationCount = 0;
+
+    EdgeAccumulator(Edge edge) {
+      this.edge = edge;
+    }
+
+    void increment() {
+      observationCount++;
+    }
+
+    Edge getEdgeWithObservationCount() {
+      this.edge.metadata().put("observationCount", String.valueOf(observationCount));
+      return this.edge;
+    }
+  }
+
   /**
    * Builds an (optionally filtered) dependency graph from a list of Zipkin spans.
    *
@@ -192,7 +210,7 @@ public class GraphBuilder {
       Map<String, List<Map.Entry<String, ZipkinSpanResponse>>> parentNodeIdToChildNodeIds) {
 
     Set<Node> nodes = new HashSet<>();
-    Set<Edge> edges = new HashSet<>();
+    Map<String, EdgeAccumulator> edgeAccumulators = new HashMap<>();
 
     // Process each filtered node as a potential parent
     for (String parentNodeId : nodesToProcess) {
@@ -221,11 +239,19 @@ public class GraphBuilder {
             // Don't traverse past this child - it will be processed in its own iteration.
             nodes.add(nodeIdToNode.get(parentNodeId));
             nodes.add(nodeIdToNode.get(childNodeId));
-            edges.add(
-                new Edge(
-                    parentNodeId,
-                    childNodeId,
-                    config.createMetadataFromSpan(refSpan, GraphConfig.EntityType.EDGE)));
+
+            String edgeKey = parentNodeId + "::" + childNodeId;
+            edgeAccumulators
+                .computeIfAbsent(
+                    edgeKey,
+                    k ->
+                        new EdgeAccumulator(
+                            new Edge(
+                                parentNodeId,
+                                childNodeId,
+                                config.createMetadataFromSpan(
+                                    refSpan, GraphConfig.EntityType.EDGE))))
+                .increment();
           } else {
             // Non-filtered intermediate node - continue traversing through it
             work.push(childNodeId);
@@ -234,6 +260,11 @@ public class GraphBuilder {
       }
     }
 
-    return new Graph(new ArrayList<>(nodes), new ArrayList<>(edges));
+    List<Edge> edges =
+        edgeAccumulators.values().stream()
+            .map(EdgeAccumulator::getEdgeWithObservationCount)
+            .toList();
+
+    return new Graph(new ArrayList<>(nodes), edges);
   }
 }

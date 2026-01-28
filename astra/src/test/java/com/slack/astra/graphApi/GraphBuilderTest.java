@@ -97,7 +97,8 @@ public class GraphBuilderTest {
                 "resource", "/v2/res2"));
 
     // uses canonical path as resource
-    SortedMap<String, String> edgeMetadata = new TreeMap<>(Map.of("operation", "http.request"));
+    SortedMap<String, String> edgeMetadata =
+        new TreeMap<>(Map.of("operation", "http.request", "observationCount", "1"));
     String expectedChildId = Node.generateIdFromMetadata(childMetadata);
     Edge edge = graph.edges().iterator().next();
     assertThat(edge.sourceNodeId()).isEqualTo(expectedParentId);
@@ -201,8 +202,10 @@ public class GraphBuilderTest {
         .isTrue();
 
     // metadata of the edges
-    assertThat(edges.get(0).metadata()).isEqualTo(new TreeMap<>(Map.of("operation", "op2")));
-    assertThat(edges.get(1).metadata()).isEqualTo(new TreeMap<>(Map.of("operation", "op3")));
+    assertThat(edges.get(0).metadata())
+        .isEqualTo(new TreeMap<>(Map.of("operation", "op2", "observationCount", "1")));
+    assertThat(edges.get(1).metadata())
+        .isEqualTo(new TreeMap<>(Map.of("operation", "op3", "observationCount", "1")));
 
     // verify different children
     List<String> childIds = List.of(edges.stream().map(Edge::targetNodeId).toArray(String[]::new));
@@ -252,7 +255,7 @@ public class GraphBuilderTest {
     // should have only 1 edge despite multiple spans creating the same parent-child relationship
     assertThat(graph.edges()).hasSize(1);
     assertThat(graph.edges().get(0).metadata())
-        .isEqualTo(new TreeMap<>(Map.of("operation", "op2")));
+        .isEqualTo(new TreeMap<>(Map.of("operation", "op2", "observationCount", "2")));
 
     SortedMap<String, String> parentMetadata =
         new TreeMap<>(
@@ -361,21 +364,29 @@ public class GraphBuilderTest {
             edge ->
                 edge.sourceNodeId().equals(expectedRootId)
                     && edge.targetNodeId().equals(expectedChild1Id)
-                    && edge.metadata().equals(new TreeMap<>(Map.of("operation", "child1_op"))));
+                    && edge.metadata()
+                        .equals(
+                            new TreeMap<>(
+                                Map.of("operation", "child1_op", "observationCount", "1"))));
 
     assertThat(edges)
         .anyMatch(
             edge ->
                 edge.sourceNodeId().equals(expectedRootId)
                     && edge.targetNodeId().equals(expectedChild2Id)
-                    && edge.metadata().equals(new TreeMap<>(Map.of("operation", "child2_op"))));
+                    && edge.metadata()
+                        .equals(
+                            new TreeMap<>(
+                                Map.of("operation", "child2_op", "observationCount", "1"))));
 
     assertThat(edges)
         .anyMatch(
             edge ->
                 edge.sourceNodeId().equals(expectedChild1Id)
                     && edge.targetNodeId().equals(expectedGrandchildId)
-                    && edge.metadata().equals(new TreeMap<>(Map.of("operation", "gc_op"))));
+                    && edge.metadata()
+                        .equals(
+                            new TreeMap<>(Map.of("operation", "gc_op", "observationCount", "1"))));
   }
 
   @Test
@@ -506,7 +517,9 @@ public class GraphBuilderTest {
             edge ->
                 edge.sourceNodeId().equals(expectedNodeAId)
                     && edge.targetNodeId().equals(expectedNodeBId)
-                    && edge.metadata().equals(new TreeMap<>(Map.of("operation", "opB"))));
+                    && edge.metadata()
+                        .equals(
+                            new TreeMap<>(Map.of("operation", "opB", "observationCount", "1"))));
 
     // B -> C
     assertThat(graph.edges())
@@ -514,7 +527,9 @@ public class GraphBuilderTest {
             edge ->
                 edge.sourceNodeId().equals(expectedNodeBId)
                     && edge.targetNodeId().equals(expectedNodeCId)
-                    && edge.metadata().equals(new TreeMap<>(Map.of("operation", "opC"))));
+                    && edge.metadata()
+                        .equals(
+                            new TreeMap<>(Map.of("operation", "opC", "observationCount", "1"))));
 
     // D -> B
     assertThat(graph.edges())
@@ -522,7 +537,9 @@ public class GraphBuilderTest {
             edge ->
                 edge.sourceNodeId().equals(expectedNodeDId)
                     && edge.targetNodeId().equals(expectedNodeBId)
-                    && edge.metadata().equals(new TreeMap<>(Map.of("operation", "opB"))));
+                    && edge.metadata()
+                        .equals(
+                            new TreeMap<>(Map.of("operation", "opB", "observationCount", "1"))));
 
     // B -> E
     assertThat(graph.edges())
@@ -530,7 +547,9 @@ public class GraphBuilderTest {
             edge ->
                 edge.sourceNodeId().equals(expectedNodeBId)
                     && edge.targetNodeId().equals(expectedNodeEId)
-                    && edge.metadata().equals(new TreeMap<>(Map.of("operation", "opE"))));
+                    && edge.metadata()
+                        .equals(
+                            new TreeMap<>(Map.of("operation", "opE", "observationCount", "1"))));
 
     // E -> B
     assertThat(graph.edges())
@@ -538,7 +557,9 @@ public class GraphBuilderTest {
             edge ->
                 edge.sourceNodeId().equals(expectedNodeEId)
                     && edge.targetNodeId().equals(expectedNodeBId)
-                    && edge.metadata().equals(new TreeMap<>(Map.of("operation", "opB"))));
+                    && edge.metadata()
+                        .equals(
+                            new TreeMap<>(Map.of("operation", "opB", "observationCount", "1"))));
   }
 
   @Test
@@ -615,7 +636,8 @@ public class GraphBuilderTest {
     Edge edge = graph.edges().get(0);
     assertThat(edge.sourceNodeId()).isEqualTo(expectedParentId);
     assertThat(edge.targetNodeId()).isEqualTo(expectedChild1Id);
-    assertThat(edge.metadata()).isEqualTo(new TreeMap<>(Map.of("operation", "http.request")));
+    assertThat(edge.metadata())
+        .isEqualTo(new TreeMap<>(Map.of("operation", "http.request", "observationCount", "1")));
   }
 
   @Test
@@ -696,7 +718,8 @@ public class GraphBuilderTest {
     Edge edge = graph.edges().get(0);
     assertThat(edge.sourceNodeId()).isEqualTo(expectedRootId);
     assertThat(edge.targetNodeId()).isEqualTo(expectedGrandchildId);
-    assertThat(edge.metadata()).isEqualTo(new TreeMap<>(Map.of("operation", "http.request")));
+    assertThat(edge.metadata())
+        .isEqualTo(new TreeMap<>(Map.of("operation", "http.request", "observationCount", "1")));
   }
 
   @Test
@@ -1076,7 +1099,8 @@ public class GraphBuilderTest {
     Edge edge = graph.edges().get(0);
     assertThat(edge.sourceNodeId()).isEqualTo(expectedParentId);
     assertThat(edge.targetNodeId()).isEqualTo(expectedChildId);
-    assertThat(edge.metadata()).isEqualTo(new TreeMap<>(Map.of("operation", "grpc.request")));
+    assertThat(edge.metadata())
+        .isEqualTo(new TreeMap<>(Map.of("operation", "grpc.request", "observationCount", "1")));
   }
 
   @Test
@@ -1452,6 +1476,65 @@ public class GraphBuilderTest {
                     && edge.targetNodeId().equals(expectedNodeBId));
 
     Edge edge = graph.edges().get(0);
-    assertThat(edge.metadata()).isEqualTo(new TreeMap<>(Map.of("operation", "dropwizard.request")));
+    assertThat(edge.metadata())
+        .isEqualTo(
+            new TreeMap<>(Map.of("operation", "dropwizard.request", "observationCount", "1")));
+  }
+
+  @Test
+  void buildFromSpans_multipleSpansSameEdge_incrementsObservationCount() {
+    // Create 3 spans that all create the same logical edge (same parent node -> same child node)
+    List<ZipkinSpanResponse> spans =
+        List.of(
+            TestUtils.createSpanWithTags(
+                "parent1",
+                "trace1",
+                null,
+                Map.of(
+                    "kube.app", "app1",
+                    "kube.namespace", "ns1",
+                    "operation_name", "op1",
+                    "resource", "res1")),
+            // First child span - creates edge from parent to child node
+            TestUtils.createSpanWithTags(
+                "child1",
+                "trace1",
+                "parent1",
+                Map.of(
+                    "kube.app", "app2",
+                    "kube.namespace", "ns2",
+                    "operation_name", "op2",
+                    "resource", "res2")),
+            // Second child span - same node metadata, different span ID
+            TestUtils.createSpanWithTags(
+                "child2",
+                "trace1",
+                "parent1",
+                Map.of(
+                    "kube.app", "app2",
+                    "kube.namespace", "ns2",
+                    "operation_name", "op2",
+                    "resource", "res2")),
+            // Third child span - same node metadata, different span ID
+            TestUtils.createSpanWithTags(
+                "child3",
+                "trace1",
+                "parent1",
+                Map.of(
+                    "kube.app", "app2",
+                    "kube.namespace", "ns2",
+                    "operation_name", "op2",
+                    "resource", "res2")));
+
+    Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.empty());
+
+    // Should have 2 nodes (parent and child - all child spans map to same logical node)
+    assertThat(graph.nodes()).hasSize(2);
+
+    // Should have 1 edge with observation count of 3
+    assertThat(graph.edges()).hasSize(1);
+    Edge edge = graph.edges().get(0);
+    assertThat(edge.metadata())
+        .isEqualTo(new TreeMap<>(Map.of("operation", "op2", "observationCount", "3")));
   }
 }
