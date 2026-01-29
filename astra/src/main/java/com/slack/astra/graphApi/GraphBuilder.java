@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.SortedMap;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,38 +70,6 @@ public class GraphBuilder {
                 String actualValue = span.getTags().get(entry.getKey());
                 return actualValue != null && entry.getValue().contains(actualValue);
               });
-    }
-  }
-
-  /**
-   * EdgeAccumulator for tracking edge observations during graph construction.
-   *
-   * <p>Multiple spans may represent the same logical edge (same source and target node). This class
-   * aggregates these observations, counting how many times the edge is seen. The observation count
-   * can be used to compute edge weight or importance in the final graph.
-   */
-  private static class EdgeAccumulator {
-    final Edge edge;
-    int observationCount = 0;
-
-    EdgeAccumulator(Edge edge) {
-      this.edge = edge;
-    }
-
-    void increment() {
-      observationCount++;
-    }
-
-    /**
-     * Returns the edge with observation count added to its metadata.
-     *
-     * <p>Note: This method mutates the edge's metadata map by adding the "observationCount" key.
-     *
-     * @return The edge with observation count in metadata
-     */
-    Edge toEdgeWithObservationCount() {
-      this.edge.metadata().put("observationCount", String.valueOf(observationCount));
-      return this.edge;
     }
   }
 
@@ -224,7 +193,7 @@ public class GraphBuilder {
       Map<String, List<Map.Entry<String, ZipkinSpanResponse>>> parentNodeIdToChildNodeIds) {
 
     Set<Node> nodes = new HashSet<>();
-    Map<String, EdgeAccumulator> edgeAccumulators = new HashMap<>();
+    Map<String, Edge> edges = new HashMap<>();
 
     // Process each filtered node as a potential parent
     for (String parentNodeId : nodesToProcess) {
@@ -254,18 +223,13 @@ public class GraphBuilder {
             nodes.add(nodeIdToNode.get(parentNodeId));
             nodes.add(nodeIdToNode.get(childNodeId));
 
-            String edgeKey = parentNodeId + "::" + childNodeId;
-            edgeAccumulators
-                .computeIfAbsent(
-                    edgeKey,
-                    k ->
-                        new EdgeAccumulator(
-                            new Edge(
-                                parentNodeId,
-                                childNodeId,
-                                config.createMetadataFromSpan(
-                                    refSpan, GraphConfig.EntityType.EDGE))))
-                .increment();
+            SortedMap<String, String> edgeMetadata =
+                config.createMetadataFromSpan(refSpan, GraphConfig.EntityType.EDGE);
+            String edgeKey = Edge.generateKey(parentNodeId, childNodeId, edgeMetadata);
+
+            edges
+                .computeIfAbsent(edgeKey, k -> new Edge(parentNodeId, childNodeId, edgeMetadata))
+                .incrementObservedCount();
           } else {
             // Non-filtered intermediate node - continue traversing through it
             work.push(childNodeId);
@@ -274,11 +238,6 @@ public class GraphBuilder {
       }
     }
 
-    List<Edge> edges =
-        edgeAccumulators.values().stream()
-            .map(EdgeAccumulator::toEdgeWithObservationCount)
-            .toList();
-
-    return new Graph(new ArrayList<>(nodes), edges);
+    return new Graph(new ArrayList<>(nodes), new ArrayList<>(edges.values()));
   }
 }
