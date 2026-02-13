@@ -243,7 +243,16 @@ public class OpenSearchRequest {
   }
 
   private static String getDataset(JsonNode header) {
-    return header.get("index").asText();
+    if (header == null) {
+      return "*";
+    }
+
+    JsonNode indexNode = header.get("index");
+    if (indexNode == null || indexNode.isNull() || indexNode.asText().isBlank()) {
+      return "*";
+    }
+
+    return indexNode.asText();
   }
 
   private static int getHowMany(JsonNode body) {
