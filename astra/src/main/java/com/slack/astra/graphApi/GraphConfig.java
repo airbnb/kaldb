@@ -211,9 +211,11 @@ public final class GraphConfig {
    *
    * <p>Steps: 1. Look up the TagConfig for this logical field (e.g. "resource"). 2. Check if any
    * rules match: - Iterate through each rule in reverse order. - If a rule's field/value condition
-   * matches, use the overrideKey to look up the value. 3. If no rule matches, use the defaultKey: -
-   * Look up each keyPart from defaultKey list in the tags map. - Combine the values with the
-   * delimiter if multiple parts are present. - If any part is missing, fall back to defaultValue.
+   * matches, try to resolve using the overrideKey. - If the resolved value is non-empty, use it. -
+   * Otherwise, continue to the next matching rule. 3. If no rule produces a non-empty value, use
+   * the defaultKey: - Look up each keyPart from defaultKey list in the tags map. - Combine the
+   * values with the delimiter if multiple parts are present. - If any part is missing or empty,
+   * fall back to defaultValue.
    *
    * <p>Note: This logic does not currently support multiple field matches for a single rule.
    *
@@ -233,39 +235,56 @@ public final class GraphConfig {
       return tags.getOrDefault(logicalField, "unknown_" + logicalField);
     }
 
-    // Later rules override earlier ones, so start from the back of the list and use the first one
-    // that matches.
-    RuleConfig matchingRule =
-        baseCfg.getRules().reversed().stream()
-            .filter(
-                rule ->
-                    rule.getValue()
-                        .equals(tags.getOrDefault(rule.getField(), "unknown_" + rule.getField())))
-            .findFirst()
-            .orElse(null);
+    // Later rules override earlier ones, so start from the back of the list.
+    // Try each matching rule until one produces a non-empty value.
+    for (RuleConfig rule : baseCfg.getRules().reversed()) {
+      if (rule.getValue()
+          .equals(tags.getOrDefault(rule.getField(), "unknown_" + rule.getField()))) {
+        String resolved = resolveKeys(tags, rule.getOverrideKey(), baseCfg.getKeyDelimiter());
+        if (resolved != null && !resolved.isEmpty()) {
+          return resolved;
+        }
+        // Continue to next matching rule if value is empty
+      }
+    }
 
-    // Determine which key to use (override or default)
-    List<String> keyToUse =
-        matchingRule != null ? matchingRule.getOverrideKey() : baseCfg.getDefaultKey();
+    // No rules or rules produced a non-empty value, try the default key
+    String defaultResolved = resolveKeys(tags, baseCfg.getDefaultKey(), baseCfg.getKeyDelimiter());
+    if (defaultResolved != null && !defaultResolved.isEmpty()) {
+      return defaultResolved;
+    }
 
-    if (keyToUse == null || keyToUse.isEmpty()) {
-      return baseCfg.getDefaultValue();
+    // No rules produced a non-empty value, Fall back to default value
+    return baseCfg.getDefaultValue();
+  }
+
+  /**
+   * Helper method to resolve a list of keys from the tags map.
+   *
+   * @param tags Map of tags from the span.
+   * @param keys List of keys to look up.
+   * @param delimiter Delimiter to use when combining multiple key values.
+   * @return The resolved value, or null if any key is missing.
+   */
+  private String resolveKeys(Map<String, String> tags, List<String> keys, String delimiter) {
+    if (keys == null || keys.isEmpty()) {
+      return null;
     }
 
     // Collect values for all parts in a key
     List<String> values = new java.util.ArrayList<>();
-    for (String keyPart : keyToUse) {
+    for (String keyPart : keys) {
       String value = tags.get(keyPart);
       if (value == null) {
-        // If any key is missing, return the default value
-        return baseCfg.getDefaultValue();
+        // If any key is missing, return null
+        return null;
       }
       values.add(value);
     }
 
     // Combine values with delimiter if present and multiple keys exist
-    if (values.size() > 1 && baseCfg.getKeyDelimiter() != null) {
-      return String.join(baseCfg.getKeyDelimiter(), values);
+    if (values.size() > 1 && delimiter != null) {
+      return String.join(delimiter, values);
     }
     return values.get(0);
   }

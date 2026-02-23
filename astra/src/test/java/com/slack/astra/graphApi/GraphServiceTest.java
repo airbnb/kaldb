@@ -73,7 +73,13 @@ public class GraphServiceTest {
     assertEquals(0.0, MetricsUtil.getTimerCount("astra_graph_service_graph_build", meterRegistry));
 
     HttpResponse response =
-        graphService.getSubgraph(traceId, Optional.empty(), Optional.empty(), Optional.empty());
+        graphService.getSubgraph(
+            traceId,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty());
     AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
 
     assertEquals(HttpStatus.OK, aggregatedResponse.status());
@@ -204,7 +210,13 @@ public class GraphServiceTest {
         .thenReturn(testSpans);
 
     HttpResponse response =
-        graphService.getSubgraph(traceId, Optional.empty(), Optional.empty(), Optional.empty());
+        graphService.getSubgraph(
+            traceId,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty());
     AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
 
     assertEquals(HttpStatus.OK, aggregatedResponse.status());
@@ -293,7 +305,12 @@ public class GraphServiceTest {
 
     HttpResponse response =
         graphService.getSubgraph(
-            traceId, Optional.of(emptyFilterJson), Optional.empty(), Optional.empty());
+            traceId,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(emptyFilterJson),
+            Optional.empty(),
+            Optional.empty());
     AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
 
     assertEquals(HttpStatus.OK, aggregatedResponse.status());
@@ -330,7 +347,12 @@ public class GraphServiceTest {
 
     HttpResponse response =
         graphService.getSubgraph(
-            traceId, Optional.of(invalidFilterJson), Optional.empty(), Optional.empty());
+            traceId,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(invalidFilterJson),
+            Optional.empty(),
+            Optional.empty());
     AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
 
     assertEquals(HttpStatus.BAD_REQUEST, aggregatedResponse.status());
@@ -358,7 +380,12 @@ public class GraphServiceTest {
 
     HttpResponse response =
         graphService.getSubgraph(
-            traceId, Optional.of(malformedFilterJson), Optional.empty(), Optional.empty());
+            traceId,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(malformedFilterJson),
+            Optional.empty(),
+            Optional.empty());
     AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
 
     assertEquals(HttpStatus.BAD_REQUEST, aggregatedResponse.status());
@@ -446,7 +473,12 @@ public class GraphServiceTest {
 
     HttpResponse response =
         graphService.getSubgraph(
-            traceId, Optional.of(filterJson), Optional.empty(), Optional.empty());
+            traceId,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(filterJson),
+            Optional.empty(),
+            Optional.empty());
     AggregatedHttpResponse aggregatedResponse = response.aggregate().join();
 
     assertEquals(HttpStatus.OK, aggregatedResponse.status());

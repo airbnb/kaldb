@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.SortedMap;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -192,7 +193,7 @@ public class GraphBuilder {
       Map<String, List<Map.Entry<String, ZipkinSpanResponse>>> parentNodeIdToChildNodeIds) {
 
     Set<Node> nodes = new HashSet<>();
-    Set<Edge> edges = new HashSet<>();
+    Map<String, Edge> edges = new HashMap<>();
 
     // Process each filtered node as a potential parent
     for (String parentNodeId : nodesToProcess) {
@@ -221,11 +222,14 @@ public class GraphBuilder {
             // Don't traverse past this child - it will be processed in its own iteration.
             nodes.add(nodeIdToNode.get(parentNodeId));
             nodes.add(nodeIdToNode.get(childNodeId));
-            edges.add(
-                new Edge(
-                    parentNodeId,
-                    childNodeId,
-                    config.createMetadataFromSpan(refSpan, GraphConfig.EntityType.EDGE)));
+
+            SortedMap<String, String> edgeMetadata =
+                config.createMetadataFromSpan(refSpan, GraphConfig.EntityType.EDGE);
+            String edgeKey = Edge.generateKey(parentNodeId, childNodeId, edgeMetadata);
+
+            edges
+                .computeIfAbsent(edgeKey, k -> new Edge(parentNodeId, childNodeId, edgeMetadata))
+                .incrementObservedCount();
           } else {
             // Non-filtered intermediate node - continue traversing through it
             work.push(childNodeId);
@@ -234,6 +238,6 @@ public class GraphBuilder {
       }
     }
 
-    return new Graph(new ArrayList<>(nodes), new ArrayList<>(edges));
+    return new Graph(new ArrayList<>(nodes), new ArrayList<>(edges.values()));
   }
 }

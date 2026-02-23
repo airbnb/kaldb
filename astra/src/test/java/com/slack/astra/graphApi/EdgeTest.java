@@ -27,16 +27,16 @@ public class EdgeTest {
   void build_withValidSourceAndTarget_succeeds() {
     Edge e = new Edge("source", "target", null);
 
-    assertThat(e.sourceNodeId()).isEqualTo("source");
-    assertThat(e.targetNodeId()).isEqualTo("target");
+    assertThat(e.getSourceNodeId()).isEqualTo("source");
+    assertThat(e.getTargetNodeId()).isEqualTo("target");
   }
 
   @Test
   void build_withValidSourceTargetAndMetadata_succeeds() {
     Edge e = new Edge("source", "target", new TreeMap<>(Map.of("operation", "default")));
 
-    assertThat(e.sourceNodeId()).isEqualTo("source");
-    assertThat(e.targetNodeId()).isEqualTo("target");
-    assertThat(e.metadata()).isNotEmpty();
+    assertThat(e.getSourceNodeId()).isEqualTo("source");
+    assertThat(e.getTargetNodeId()).isEqualTo("target");
+    assertThat(e.getMetadata()).isNotEmpty();
   }
 }
