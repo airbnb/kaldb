@@ -767,4 +767,27 @@ public class TraceFetcherTest {
       // Expected - assertion should fail for null data
     }
   }
+
+  @Test
+  public void testMaybeMapLongStringToHexString() {
+    String[][] cases =
+        new String[][] {
+          {null, null},
+          {"", ""},
+          {"1234567890", "1234567890"},
+          {"1234567890123456", "1234567890123456"},
+          {"9223372036854775807", "7fffffffffffffff"},
+          {"12345678901234567890", "12345678901234567890"},
+          {"18446744073709551615", "18446744073709551615"}, // largest unsigned 64-bit integer - the code we're working around uses abs of signed longs
+          {"not-a-number-but-long", "not-a-number-but-long"},
+        };
+
+    for (String[] aCase : cases) {
+      String input = aCase[0];
+      String expected = aCase[1];
+
+      String actual = TraceFetcher.maybeMapLongStringToHexString(input);
+      assertEquals(expected, actual);
+    }
+  }
 }

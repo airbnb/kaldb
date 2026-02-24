@@ -302,6 +302,22 @@ public class TraceFetcher {
     return objectMapper.writeValueAsString(result.spans);
   }
 
+  static String maybeMapLongStringToHexString(String value) {
+    if (value == null) {
+      return null;
+    }
+    // assume if it's 16 or less chars, it'll be fine. [0-9]{16} or less will decode properly
+    if (value.length() <= 16) {
+      return value;
+    }
+    try {
+      long longValue = Long.parseLong(value);
+      return Long.toHexString(longValue);
+    } catch (NumberFormatException e) {
+      return value;
+    }
+  }
+
   protected static List<ZipkinSpanResponse> convertLogWireMessageToZipkinSpan(
       List<LogWireMessage> messages) throws JsonProcessingException {
     List<ZipkinSpanResponse> traces = new ArrayList<>(messages.size());
@@ -361,8 +377,9 @@ public class TraceFetcher {
         continue;
       }
 
-      final ZipkinSpanResponse span = new ZipkinSpanResponse(id, messageTraceId);
-      span.setParentId(parentId);
+      final ZipkinSpanResponse span =
+          new ZipkinSpanResponse(maybeMapLongStringToHexString(id), messageTraceId);
+      span.setParentId(maybeMapLongStringToHexString(parentId));
       span.setName(name);
       if (serviceName != null) {
         ZipkinEndpointResponse remoteEndpoint = new ZipkinEndpointResponse();
