@@ -31,9 +31,11 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
+import org.apache.commons.codec.DecoderException;
 import org.apache.commons.codec.binary.Hex;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -102,9 +104,8 @@ public class TraceFetcher {
     // If input is hex → convert to Base64 URL-safe
     if (traceId.matches("^[0-9a-fA-F]+$") && traceId.length() % 2 == 0) {
       try {
-        byte[] bytes = Hex.decodeHex(traceId.toCharArray());
+        base64Url = base64EncodeHexEncodedId(traceId);
         hex = traceId.toLowerCase();
-        base64Url = Base64.getUrlEncoder().encodeToString(bytes);
         return new TraceIds(hex, base64Url);
       } catch (Exception ignored) {
         return null;
@@ -113,13 +114,22 @@ public class TraceFetcher {
 
     // Otherwise, assume Base64-URL → convert to hex
     try {
-      byte[] bytes = Base64.getUrlDecoder().decode(traceId);
-      hex = Hex.encodeHexString(bytes);
+      hex = hexEncodeBase64EncodedId(traceId);
       base64Url = traceId;
       return new TraceIds(hex, base64Url);
     } catch (Exception ignored) {
       return null;
     }
+  }
+
+  static String base64EncodeHexEncodedId(String traceId) throws DecoderException {
+    byte[] bytes = Hex.decodeHex(traceId.toCharArray());
+    return Base64.getUrlEncoder().encodeToString(bytes);
+  }
+
+  private static @NonNull String hexEncodeBase64EncodedId(String traceId) {
+    byte[] bytes = Base64.getUrlDecoder().decode(traceId);
+    return Hex.encodeHexString(bytes);
   }
 
   private static JSONObject singleTermQuery(String traceFieldName, String traceId) {
@@ -378,7 +388,8 @@ public class TraceFetcher {
       }
 
       final ZipkinSpanResponse span =
-          new ZipkinSpanResponse(maybeMapLongStringToHexString(id), messageTraceId);
+          new ZipkinSpanResponse(
+              maybeMapLongStringToHexString(id), maybeMapBase64ToHexString(messageTraceId));
       span.setParentId(maybeMapLongStringToHexString(parentId));
       span.setName(name);
       if (serviceName != null) {
@@ -393,6 +404,19 @@ public class TraceFetcher {
     }
 
     return traces;
+  }
+
+  private static final Pattern BASE64_PATTERN = Pattern.compile("^[A-Za-z0-9_-]+==$");
+
+  static String maybeMapBase64ToHexString(String messageTraceId) {
+    if (messageTraceId == null) {
+      return null;
+    }
+
+    if (!BASE64_PATTERN.matcher(messageTraceId).matches()) {
+      return messageTraceId;
+    }
+    return hexEncodeBase64EncodedId(messageTraceId);
   }
 
   // returning LogWireMessage instead of LogMessage

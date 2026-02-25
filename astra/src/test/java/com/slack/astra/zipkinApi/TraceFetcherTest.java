@@ -793,4 +793,33 @@ public class TraceFetcherTest {
       assertEquals(expected, actual);
     }
   }
+
+  @Test
+  public void testMybeMapBase64ToHexString() {
+    String[][] cases =
+        new String[][] {
+          {null, null},
+          {"", ""},
+          {"1234567890==", "d76df8e7aefcf7"},
+          {"1234567890", "1234567890"},
+          {"1234567890123456", "1234567890123456"},
+          {"f____________________w==", "7fffffffffffffffffffffffffffffff"},
+          {"12345678901234567890", "12345678901234567890"},
+          {"AAAAAAAAAAAAAAAAAAAAAA==", "00000000000000000000000000000000"},
+          {"not-a-number-but-long", "not-a-number-but-long"},
+          {"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+        };
+
+    for (String[] aCase : cases) {
+      String input = aCase[0];
+      String expected = aCase[1];
+      String actual;
+      try {
+        actual = TraceFetcher.maybeMapBase64ToHexString(input);
+      } catch (Exception e) {
+        throw new RuntimeException("Error processing input: " + input, e);
+      }
+      assertEquals(expected, actual, "Failed for input: " + input);
+    }
+  }
 }
