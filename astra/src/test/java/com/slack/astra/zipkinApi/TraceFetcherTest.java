@@ -781,7 +781,7 @@ public class TraceFetcherTest {
           {
             "18446744073709551615", "18446744073709551615"
           }, // largest unsigned 64-bit integer - the code we're working around uses abs of signed
-             // longs
+          // longs
           {"not-a-number-but-long", "not-a-number-but-long"},
         };
 
