@@ -570,6 +570,42 @@ public class TraceFetcherTest {
   }
 
   @Test
+  public void testGetTraceByTraceIdHexBase64_hex32bit() throws Exception {
+    try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
+      // Mocking Tracing and Span
+      Tracer mockTracer = mock(Tracer.class);
+      Span mockSpan = mock(Span.class);
+
+      mockedTracing.when(Tracing::currentTracer).thenReturn(mockTracer);
+      when(mockTracer.currentSpan()).thenReturn(mockSpan);
+
+      String traceId = "dfd66f985ddfc26c";
+      String convertedTraceId = "AAAAAAAAAADf1m-YXd_CbA==";
+      when(searcher.doSearch(any())).thenReturn(mockSearchResult);
+
+      traceFetcher.getByTraceId(
+          traceId,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of(Boolean.TRUE));
+
+      verify(searcher)
+          .doSearch(
+              Mockito.argThat(
+                  request ->
+                      request.getHowMany() == defaultMaxSpans
+                          && request.getQuery().contains("\"trace_id\":\"" + traceId + "\"")
+                          && request
+                              .getQuery()
+                              .contains("\"trace_id\":\"" + convertedTraceId + "\"")));
+    }
+  }
+
+  @Test
   public void testGetTraceByTraceIdHexBase64_invalid_to_convert() throws Exception {
     try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
       // Mocking Tracing and Span
@@ -769,7 +805,7 @@ public class TraceFetcherTest {
   }
 
   @Test
-  public void testMaybeMapLongStringToHexString() {
+  public void testMaybeMapLongSpanIdToHex() {
     String[][] cases =
         new String[][] {
           {null, null},
@@ -789,23 +825,25 @@ public class TraceFetcherTest {
       String input = aCase[0];
       String expected = aCase[1];
 
-      String actual = TraceFetcher.maybeMapLongStringToHexString(input);
+      String actual = TraceFetcher.maybeMapLongSpanIdToHex(input);
       assertEquals(expected, actual);
     }
   }
 
   @Test
-  public void testMybeMapBase64ToHexString() {
+  public void testMaybeMapBase64TraceIdToHex() {
     String[][] cases =
         new String[][] {
           {null, null},
           {"", ""},
-          {"1234567890==", "d76df8e7aefcf7"},
+          {"1234567890==", "000000000000000000d76df8e7aefcf7"},
+          {"1234567890==", "000000000000000000d76df8e7aefcf7"},
           {"1234567890", "1234567890"},
           {"1234567890123456", "1234567890123456"},
           {"f____________________w==", "7fffffffffffffffffffffffffffffff"},
           {"12345678901234567890", "12345678901234567890"},
-          {"AAAAAAAAAAAAAAAAAAAAAA==", "00000000000000000000000000000000"},
+          {"AAAAAAAAAACZmZmZmZmZmQ==", "00000000000000009999999999999999"},
+          {"00000000000000000000000000000000", "00000000000000000000000000000000"},
           {"not-a-number-but-long", "not-a-number-but-long"},
           {"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
         };
@@ -815,7 +853,7 @@ public class TraceFetcherTest {
       String expected = aCase[1];
       String actual;
       try {
-        actual = TraceFetcher.maybeMapBase64ToHexString(input);
+        actual = TraceFetcher.maybeMapBase64TraceIdToHex(input);
       } catch (Exception e) {
         throw new RuntimeException("Error processing input: " + input, e);
       }

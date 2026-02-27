@@ -33,9 +33,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import org.apache.commons.codec.DecoderException;
 import org.apache.commons.codec.binary.Hex;
+import org.apache.commons.lang3.StringUtils;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -104,7 +106,7 @@ public class TraceFetcher {
     // If input is hex → convert to Base64 URL-safe
     if (traceId.matches("^[0-9a-fA-F]+$") && traceId.length() % 2 == 0) {
       try {
-        base64Url = base64EncodeHexEncodedId(traceId);
+        base64Url = base64EncodeHexEncodedId(normalizeHexTraceId(traceId));
         hex = traceId.toLowerCase();
         return new TraceIds(hex, base64Url);
       } catch (Exception ignored) {
@@ -312,22 +314,6 @@ public class TraceFetcher {
     return objectMapper.writeValueAsString(result.spans);
   }
 
-  static String maybeMapLongStringToHexString(String value) {
-    if (value == null) {
-      return null;
-    }
-    // assume if it's 16 or less chars, it'll be fine. [0-9]{16} or less will decode properly
-    if (value.length() <= 16) {
-      return value;
-    }
-    try {
-      long longValue = Long.parseLong(value);
-      return Long.toHexString(longValue);
-    } catch (NumberFormatException e) {
-      return value;
-    }
-  }
-
   protected static List<ZipkinSpanResponse> convertLogWireMessageToZipkinSpan(
       List<LogWireMessage> messages) throws JsonProcessingException {
     List<ZipkinSpanResponse> traces = new ArrayList<>(messages.size());
@@ -389,8 +375,8 @@ public class TraceFetcher {
 
       final ZipkinSpanResponse span =
           new ZipkinSpanResponse(
-              maybeMapLongStringToHexString(id), maybeMapBase64ToHexString(messageTraceId));
-      span.setParentId(maybeMapLongStringToHexString(parentId));
+              maybeMapLongSpanIdToHex(id), maybeMapBase64TraceIdToHex(messageTraceId));
+      span.setParentId(maybeMapLongSpanIdToHex(parentId));
       span.setName(name);
       if (serviceName != null) {
         ZipkinEndpointResponse remoteEndpoint = new ZipkinEndpointResponse();
@@ -406,18 +392,37 @@ public class TraceFetcher {
     return traces;
   }
 
-  private static final Pattern BASE64_PATTERN = Pattern.compile("^[A-Za-z0-9_-]+==$");
-
-  static String maybeMapBase64ToHexString(String messageTraceId) {
+  static @Nullable String maybeMapBase64TraceIdToHex(String messageTraceId) {
     if (messageTraceId == null) {
       return null;
-    }
-
-    if (!BASE64_PATTERN.matcher(messageTraceId).matches()) {
+    } else if (!BASE64_PATTERN.matcher(messageTraceId).matches()) {
       return messageTraceId;
+    } else {
+      return normalizeHexTraceId(hexEncodeBase64EncodedId(messageTraceId));
     }
-    return hexEncodeBase64EncodedId(messageTraceId);
   }
+
+  private static String normalizeHexTraceId(@NonNull String hexTraceId) {
+    return StringUtils.leftPad(hexTraceId, 32, '0');
+  }
+
+  static @Nullable String maybeMapLongSpanIdToHex(String id) {
+    // assume if it's 16 or less chars, it'll be fine. [0-9]{16} or less will decode properly
+    if (id == null) {
+      return null;
+    } else if (id.length() <= 16) {
+      return id;
+    } else {
+      try {
+        long longValue = Long.parseLong(id);
+        return StringUtils.leftPad(Long.toHexString(longValue), 16, '0');
+      } catch (NumberFormatException e) {
+        return id;
+      }
+    }
+  }
+
+  private static final Pattern BASE64_PATTERN = Pattern.compile("^[A-Za-z0-9_-]+==$");
 
   // returning LogWireMessage instead of LogMessage
   // If we return LogMessage the caller then needs to call getSource which is a deep copy of the
