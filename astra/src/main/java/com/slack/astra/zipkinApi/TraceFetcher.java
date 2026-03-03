@@ -146,10 +146,8 @@ public class TraceFetcher {
     }
 
     public String cacheKey() {
-      // to ensure we only cache the same trace once, we use the base64 version as the cache key.
-      return base64 != null ? base64 : original;
-      // TODO we will change to the below in the next commit
-      //      return hex != null ? hex : original;
+      // to ensure we only cache the same trace once, we use the hex version as the cache key.
+      return hex != null ? hex : original;
     }
   }
 
