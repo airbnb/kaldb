@@ -88,19 +88,16 @@ public class TraceFetcher {
           .serializationInclusion(JsonInclude.Include.NON_EMPTY)
           .build();
 
-  // DD trace id is a long encoded as a string.
-  private static final Pattern DIGITS = Pattern.compile("^\\d+$");
-
-  private static boolean isDDTraceId(String s) {
-    return s != null && DIGITS.matcher(s).matches();
-  }
-
-  private record TraceIds(
+  record TraceIds(
       String traceIdField,
       boolean onlyOneRepresentationForQueries,
       String original,
       String hex,
       String base64) {
+    // DD trace id is a long encoded as a string.
+    private static final Pattern DIGITS = Pattern.compile("^\\d+$");
+    private static final Pattern BASE64_PATTERN = Pattern.compile("^[A-Za-z0-9_-]+==$");
+
     static TraceIds base64AndHex(String traceId) {
       // If input is hex → convert to Base64 URL-safe
       return base64AndHex(traceId, false);
@@ -142,6 +139,81 @@ public class TraceFetcher {
       return new TraceIds("trace_id", true, traceId, null, null);
     }
 
+    private static boolean isDDTraceId(String s) {
+      return s != null && DIGITS.matcher(s).matches();
+    }
+
+    static @Nullable String maybeMapBase64TraceIdToHex(String messageTraceId) {
+      if (messageTraceId == null) {
+        return null;
+      } else if (!BASE64_PATTERN.matcher(messageTraceId).matches()) {
+        return messageTraceId;
+      } else {
+        return normalizeHexTraceId(hexEncodeBase64EncodedId(messageTraceId));
+      }
+    }
+
+    static String base64EncodeHexEncodedId(String traceId) throws DecoderException {
+      byte[] bytes = Hex.decodeHex(traceId.toCharArray());
+      return Base64.getUrlEncoder().encodeToString(bytes);
+    }
+
+    private static @NonNull String hexEncodeBase64EncodedId(String traceId) {
+      byte[] bytes = Base64.getUrlDecoder().decode(traceId);
+      return Hex.encodeHexString(bytes);
+    }
+
+    private static JSONObject singleTermQuery(String traceFieldName, String traceId) {
+      JSONObject traceObject = new JSONObject();
+      traceObject.put(traceFieldName, traceId);
+      JSONObject queryJson = new JSONObject();
+      queryJson.put("term", traceObject);
+      return queryJson;
+    }
+
+    private static JSONObject buildTraceIdQuery(
+        String traceFieldName, String traceId, String convertedId) {
+      // When there is no converted ID, return the original simple term query
+      if (convertedId == null) {
+        return singleTermQuery(traceFieldName, traceId);
+      }
+
+      // When we have a convertedId, do traceId OR convertedId
+      JSONArray shouldArray = new JSONArray();
+      // term for original traceId
+      shouldArray.put(singleTermQuery(traceFieldName, traceId));
+      // term for convertedId
+      shouldArray.put(singleTermQuery(traceFieldName, convertedId));
+      JSONObject boolQuery = new JSONObject();
+      boolQuery.put("should", shouldArray);
+      boolQuery.put("minimum_should_match", 1);
+
+      JSONObject queryJson = new JSONObject();
+      queryJson.put("bool", boolQuery);
+
+      return queryJson;
+    }
+
+    private static String normalizeHexTraceId(@NonNull String hexTraceId) {
+      return StringUtils.leftPad(hexTraceId, 32, '0');
+    }
+
+    static @Nullable String maybeMapLongSpanIdToHex(String id) {
+      // assume if it's 16 or less chars, it'll be fine. [0-9]{16} or less will decode properly
+      if (id == null) {
+        return null;
+      } else if (id.length() <= 16) {
+        return id;
+      } else {
+        try {
+          long longValue = Long.parseLong(id);
+          return StringUtils.leftPad(Long.toHexString(longValue), 16, '0');
+        } catch (NumberFormatException e) {
+          return id;
+        }
+      }
+    }
+
     public JSONObject buildTraceIdQuery() {
       String firstId;
       String secondId;
@@ -152,54 +224,13 @@ public class TraceFetcher {
         firstId = base64;
         secondId = hex;
       }
-      return TraceFetcher.buildTraceIdQuery(traceIdField, firstId, secondId);
+      return buildTraceIdQuery(traceIdField, firstId, secondId);
     }
 
     public String cacheKey() {
       // to ensure we only cache the same trace once, we use the hex version as the cache key.
       return hex != null ? hex : original;
     }
-  }
-
-  static String base64EncodeHexEncodedId(String traceId) throws DecoderException {
-    byte[] bytes = Hex.decodeHex(traceId.toCharArray());
-    return Base64.getUrlEncoder().encodeToString(bytes);
-  }
-
-  private static @NonNull String hexEncodeBase64EncodedId(String traceId) {
-    byte[] bytes = Base64.getUrlDecoder().decode(traceId);
-    return Hex.encodeHexString(bytes);
-  }
-
-  private static JSONObject singleTermQuery(String traceFieldName, String traceId) {
-    JSONObject traceObject = new JSONObject();
-    traceObject.put(traceFieldName, traceId);
-    JSONObject queryJson = new JSONObject();
-    queryJson.put("term", traceObject);
-    return queryJson;
-  }
-
-  private static JSONObject buildTraceIdQuery(
-      String traceFieldName, String traceId, String convertedId) {
-    // When there is no converted ID, return the original simple term query
-    if (convertedId == null) {
-      return singleTermQuery(traceFieldName, traceId);
-    }
-
-    // When we have a convertedId, do traceId OR convertedId
-    JSONArray shouldArray = new JSONArray();
-    // term for original traceId
-    shouldArray.put(singleTermQuery(traceFieldName, traceId));
-    // term for convertedId
-    shouldArray.put(singleTermQuery(traceFieldName, convertedId));
-    JSONObject boolQuery = new JSONObject();
-    boolQuery.put("should", shouldArray);
-    boolQuery.put("minimum_should_match", 1);
-
-    JSONObject queryJson = new JSONObject();
-    queryJson.put("bool", boolQuery);
-
-    return queryJson;
   }
 
   private Result fetchTraceResult(
@@ -216,7 +247,7 @@ public class TraceFetcher {
     TraceIds traceIds;
     // if trace id looks like dd_trace_id, then use dd_trace_id field to search. If true, ignores
     // the hex/base64 flag
-    if (ddTraceIdEnabled.orElse(false) && isDDTraceId(traceId)) {
+    if (ddTraceIdEnabled.orElse(false) && TraceIds.isDDTraceId(traceId)) {
       traceIds = TraceIds.ddTraceId(traceId);
     } else if (searchByHexAndBase64.orElse(false)) {
       traceIds = TraceIds.base64AndHex(traceId);
@@ -405,8 +436,8 @@ public class TraceFetcher {
 
       final ZipkinSpanResponse span =
           new ZipkinSpanResponse(
-              maybeMapLongSpanIdToHex(id), maybeMapBase64TraceIdToHex(messageTraceId));
-      span.setParentId(maybeMapLongSpanIdToHex(parentId));
+              TraceIds.maybeMapLongSpanIdToHex(id), TraceIds.maybeMapBase64TraceIdToHex(messageTraceId));
+      span.setParentId(TraceIds.maybeMapLongSpanIdToHex(parentId));
       span.setName(name);
       if (serviceName != null) {
         ZipkinEndpointResponse remoteEndpoint = new ZipkinEndpointResponse();
@@ -421,38 +452,6 @@ public class TraceFetcher {
 
     return traces;
   }
-
-  static @Nullable String maybeMapBase64TraceIdToHex(String messageTraceId) {
-    if (messageTraceId == null) {
-      return null;
-    } else if (!BASE64_PATTERN.matcher(messageTraceId).matches()) {
-      return messageTraceId;
-    } else {
-      return normalizeHexTraceId(hexEncodeBase64EncodedId(messageTraceId));
-    }
-  }
-
-  private static String normalizeHexTraceId(@NonNull String hexTraceId) {
-    return StringUtils.leftPad(hexTraceId, 32, '0');
-  }
-
-  static @Nullable String maybeMapLongSpanIdToHex(String id) {
-    // assume if it's 16 or less chars, it'll be fine. [0-9]{16} or less will decode properly
-    if (id == null) {
-      return null;
-    } else if (id.length() <= 16) {
-      return id;
-    } else {
-      try {
-        long longValue = Long.parseLong(id);
-        return StringUtils.leftPad(Long.toHexString(longValue), 16, '0');
-      } catch (NumberFormatException e) {
-        return id;
-      }
-    }
-  }
-
-  private static final Pattern BASE64_PATTERN = Pattern.compile("^[A-Za-z0-9_-]+==$");
 
   // returning LogWireMessage instead of LogMessage
   // If we return LogMessage the caller then needs to call getSource which is a deep copy of the

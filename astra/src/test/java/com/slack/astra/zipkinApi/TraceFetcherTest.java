@@ -874,7 +874,7 @@ public class TraceFetcherTest {
       String input = aCase[0];
       String expected = aCase[1];
 
-      String actual = TraceFetcher.maybeMapLongSpanIdToHex(input);
+      String actual = TraceFetcher.TraceIds.maybeMapLongSpanIdToHex(input);
       assertEquals(expected, actual);
     }
   }
@@ -902,7 +902,7 @@ public class TraceFetcherTest {
       String expected = aCase[1];
       String actual;
       try {
-        actual = TraceFetcher.maybeMapBase64TraceIdToHex(input);
+        actual = TraceFetcher.TraceIds.maybeMapBase64TraceIdToHex(input);
       } catch (Exception e) {
         throw new RuntimeException("Error processing input: " + input, e);
       }
