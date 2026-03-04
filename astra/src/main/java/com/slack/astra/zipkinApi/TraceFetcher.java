@@ -199,12 +199,15 @@ public class TraceFetcher {
         return singleTermQuery(traceIdField, original);
       } else {
         return new JSONObject()
-          .put("bool", new JSONObject()
-            .put("should", new JSONArray()
-              .put(singleTermQuery(traceIdField, base64))
-              .put(singleTermQuery(traceIdField, hex))
-            )
-            .put("minimum_should_match", 1));
+            .put(
+                "bool",
+                new JSONObject()
+                    .put(
+                        "should",
+                        new JSONArray()
+                            .put(singleTermQuery(traceIdField, base64))
+                            .put(singleTermQuery(traceIdField, hex)))
+                    .put("minimum_should_match", 1));
       }
     }
 
@@ -417,7 +420,8 @@ public class TraceFetcher {
 
       final ZipkinSpanResponse span =
           new ZipkinSpanResponse(
-              TraceIds.maybeMapLongSpanIdToHex(id), TraceIds.maybeMapBase64TraceIdToHex(messageTraceId));
+              TraceIds.maybeMapLongSpanIdToHex(id),
+              TraceIds.maybeMapBase64TraceIdToHex(messageTraceId));
       span.setParentId(TraceIds.maybeMapLongSpanIdToHex(parentId));
       span.setName(name);
       if (serviceName != null) {
