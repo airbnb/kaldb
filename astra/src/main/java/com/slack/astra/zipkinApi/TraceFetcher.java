@@ -171,29 +171,6 @@ public class TraceFetcher {
       return queryJson;
     }
 
-    private static JSONObject buildTraceIdQuery(
-        String traceFieldName, String traceId, String convertedId) {
-      // When there is no converted ID, return the original simple term query
-      if (convertedId == null) {
-        return singleTermQuery(traceFieldName, traceId);
-      }
-
-      // When we have a convertedId, do traceId OR convertedId
-      JSONArray shouldArray = new JSONArray();
-      // term for original traceId
-      shouldArray.put(singleTermQuery(traceFieldName, traceId));
-      // term for convertedId
-      shouldArray.put(singleTermQuery(traceFieldName, convertedId));
-      JSONObject boolQuery = new JSONObject();
-      boolQuery.put("should", shouldArray);
-      boolQuery.put("minimum_should_match", 1);
-
-      JSONObject queryJson = new JSONObject();
-      queryJson.put("bool", boolQuery);
-
-      return queryJson;
-    }
-
     private static String normalizeHexTraceId(@NonNull String hexTraceId) {
       return StringUtils.leftPad(hexTraceId, 32, '0');
     }
@@ -215,16 +192,19 @@ public class TraceFetcher {
     }
 
     public JSONObject buildTraceIdQuery() {
-      String firstId;
-      String secondId;
+      // if we have only one representation for querying, use that one
+      // otherwise generate a query that searches both base64 and hex representations
       if (this.onlyOneRepresentationForQueries()) {
-        firstId = original;
-        secondId = null;
+        return singleTermQuery(traceIdField, original);
       } else {
-        firstId = base64;
-        secondId = hex;
+        return new JSONObject()
+          .put("bool", new JSONObject()
+            .put("should", new JSONArray()
+              .put(singleTermQuery(traceIdField, base64))
+              .put(singleTermQuery(traceIdField, hex))
+            )
+            .put("minimum_should_match", 1));
       }
-      return buildTraceIdQuery(traceIdField, firstId, secondId);
     }
 
     public String cacheKey() {
