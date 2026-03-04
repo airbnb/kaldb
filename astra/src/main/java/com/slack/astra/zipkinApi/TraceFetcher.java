@@ -97,6 +97,7 @@ public class TraceFetcher {
     // DD trace id is a long encoded as a string.
     private static final Pattern DIGITS = Pattern.compile("^\\d+$");
     private static final Pattern BASE64_PATTERN = Pattern.compile("^[A-Za-z0-9_-]+==$");
+    private static final Pattern HEX_PATTERN = Pattern.compile("^[0-9a-fA-F]+$");
 
     static TraceIds base64AndHex(String traceId) {
       // If input is hex → convert to Base64 URL-safe
@@ -104,11 +105,11 @@ public class TraceFetcher {
     }
 
     private static @NonNull TraceIds base64AndHex(String traceId, boolean onlyOneRepresentation) {
-      // in the case of being unable to convert, we fallback to original traceId
+      // in the case of being unable to convert, we fall back to original traceId
       if (traceId == null || traceId.isEmpty()) return TraceIds.fallback(traceId);
       String hex = null;
       String base64Url = null;
-      if (traceId.matches("^[0-9a-fA-F]+$") && traceId.length() % 2 == 0) {
+      if (HEX_PATTERN.matcher(traceId).matches() && traceId.length() % 2 == 0) {
         try {
           base64Url = base64EncodeHexEncodedId(normalizeHexTraceId(traceId));
           hex = traceId.toLowerCase();
