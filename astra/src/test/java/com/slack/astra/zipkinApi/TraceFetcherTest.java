@@ -208,7 +208,9 @@ public class TraceFetcherTest {
       when(mockTracer.currentSpan()).thenReturn(mockSpan);
 
       String traceId = "test_trace_3";
-      String traceFilePath = String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId);
+      String hexTraceId = "b5eb2dfedada71eff7";
+      String traceFilePath =
+          String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, hexTraceId);
       when(searcher.doSearch(any())).thenReturn(mockSearchResult);
 
       boolean userRequest = true;
@@ -282,6 +284,47 @@ public class TraceFetcherTest {
 
       assertNotNull(response, "Response should not be null");
       assertTrue(response.contains("[]"), "Response should be empty array for empty search result");
+    }
+  }
+
+  @Test
+  public void testGetTraceByTraceId_respectUserRequest_base64_id_uses_hex_cache_key()
+      throws Exception {
+    try (MockedStatic<Tracing> mockedTracing = mockStatic(Tracing.class)) {
+      // Mocking Tracing and Span
+      Tracer mockTracer = mock(Tracer.class);
+      Span mockSpan = mock(Span.class);
+
+      mockedTracing.when(Tracing::currentTracer).thenReturn(mockTracer);
+      when(mockTracer.currentSpan()).thenReturn(mockSpan);
+
+      String traceId = "AAAAAAAAAACZmZmZmZmZmQ==";
+      String hexTraceId = "00000000000000009999999999999999";
+      String traceFilePath =
+          String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, hexTraceId);
+
+      Path filePath = Paths.get(Resources.getResource("zipkinApi/traceData.json").toURI());
+
+      when(searcher.doSearch(any())).thenReturn(mockEmptySearchResult);
+      mockBlobStore.uploadData(traceFilePath, Files.readString(filePath), true);
+
+      boolean userRequest = true;
+      String response =
+          traceFetcher.getByTraceId(
+              traceId,
+              Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
+              Optional.of(userRequest),
+              Optional.empty(),
+              Optional.empty(),
+              Optional.empty());
+
+      verify(searcher, never()).doSearch(Mockito.any());
+      verify(mockBlobStore).uploadData(traceFilePath, Files.readString(filePath), true);
+      assertNotNull(response, "Response should not be null");
+      assertTrue(
+          response.contains("1234556789"), "Response should contain the trace ID from cached data");
     }
   }
 
@@ -362,7 +405,9 @@ public class TraceFetcherTest {
       when(mockTracer.currentSpan()).thenReturn(mockSpan);
 
       String traceId = "test_trace_5";
-      String traceFilePath = String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId);
+      String hexTraceId = "b5eb2dfedada71eff9";
+      String traceFilePath =
+          String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, hexTraceId);
 
       Path filePath = Paths.get(Resources.getResource("zipkinApi/traceData.json").toURI());
 
@@ -404,7 +449,9 @@ public class TraceFetcherTest {
       when(mockTracer.currentSpan()).thenReturn(mockSpan);
 
       String traceId = "test_trace_6";
-      String traceFilePath = String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId);
+      String hexTraceId = "b5eb2dfedada71effa";
+      String traceFilePath =
+          String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, hexTraceId);
 
       boolean userRequest = true;
       long dataFreshnessInSeconds =
@@ -460,7 +507,9 @@ public class TraceFetcherTest {
       when(mockTracer.currentSpan()).thenReturn(mockSpan);
 
       String traceId = "test_trace_7";
-      String traceFilePath = String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, traceId);
+      String hexTraceId = "b5eb2dfedada71effb";
+      String traceFilePath =
+          String.format("%s/%s/traceData.json.gz", TRACE_CACHE_PREFIX, hexTraceId);
       boolean userRequest = true;
       long dataFreshnessInSeconds = 100;
 

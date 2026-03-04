@@ -95,47 +95,57 @@ public class TraceFetcher {
     return s != null && DIGITS.matcher(s).matches();
   }
 
-  private record TraceIds(String traceIdField, String original, String hex, String base64) {
+  private record TraceIds(
+      String traceIdField,
+      boolean onlyOneRepresentationForQueries,
+      String original,
+      String hex,
+      String base64) {
     static TraceIds base64AndHex(String traceId) {
-      // in the case of being unable to convert, we fallback to original traceId
-      if (traceId == null || traceId.isEmpty()) return TraceIds.original(traceId);
+      // If input is hex → convert to Base64 URL-safe
+      return base64AndHex(traceId, false);
+    }
 
+    private static @NonNull TraceIds base64AndHex(String traceId, boolean onlyOneRepresentation) {
+      // in the case of being unable to convert, we fallback to original traceId
+      if (traceId == null || traceId.isEmpty()) return TraceIds.fallback(traceId);
       String hex = null;
       String base64Url = null;
-
-      // If input is hex → convert to Base64 URL-safe
-      String traceIdField = "trace_id";
       if (traceId.matches("^[0-9a-fA-F]+$") && traceId.length() % 2 == 0) {
         try {
           base64Url = base64EncodeHexEncodedId(normalizeHexTraceId(traceId));
           hex = traceId.toLowerCase();
-          return new TraceIds(traceIdField, traceId, hex, base64Url);
+          return new TraceIds("trace_id", onlyOneRepresentation, traceId, hex, base64Url);
         } catch (Exception ignored) {
-          return TraceIds.original(traceId);
+          return TraceIds.fallback(traceId);
         }
       }
       // Otherwise, assume Base64-URL → convert to hex
       try {
         hex = hexEncodeBase64EncodedId(traceId);
         base64Url = traceId;
-        return new TraceIds(traceIdField, traceId, hex, base64Url);
+        return new TraceIds("trace_id", onlyOneRepresentation, traceId, hex, base64Url);
       } catch (Exception ignored) {
-        return TraceIds.original(traceId);
+        return TraceIds.fallback(traceId);
       }
     }
 
     public static TraceIds ddTraceId(String traceId) {
-      return new TraceIds("dd_trace_id", traceId, null, null);
+      return new TraceIds("dd_trace_id", true, traceId, null, null);
     }
 
     public static TraceIds original(String traceId) {
-      return new TraceIds("trace_id", traceId, null, null);
+      return base64AndHex(traceId, true);
+    }
+
+    private static TraceIds fallback(String traceId) {
+      return new TraceIds("trace_id", true, traceId, null, null);
     }
 
     public JSONObject buildTraceIdQuery() {
       String firstId;
       String secondId;
-      if (hex == null && base64 == null) {
+      if (this.onlyOneRepresentationForQueries()) {
         firstId = original;
         secondId = null;
       } else {
@@ -206,9 +216,9 @@ public class TraceFetcher {
     TraceIds traceIds;
     // if trace id looks like dd_trace_id, then use dd_trace_id field to search. If true, ignores
     // the hex/base64 flag
-    if (ddTraceIdEnabled.isPresent() && ddTraceIdEnabled.get() && isDDTraceId(traceId)) {
+    if (ddTraceIdEnabled.orElse(false) && isDDTraceId(traceId)) {
       traceIds = TraceIds.ddTraceId(traceId);
-    } else if (searchByHexAndBase64.isPresent() && searchByHexAndBase64.get()) {
+    } else if (searchByHexAndBase64.orElse(false)) {
       traceIds = TraceIds.base64AndHex(traceId);
     } else {
       traceIds = TraceIds.original(traceId);
@@ -222,7 +232,7 @@ public class TraceFetcher {
       // cache for data freshness
       String traceData = retrieveDataFromBlobStoreCache(traceIds.cacheKey());
       if (traceData != null) {
-        LOG.info("Trace data retrieved from blob store cache for traceId={}", traceIds.cacheKey());
+        LOG.info("Trace data retrieved from blob store cache for traceId={}", traceIds);
         return new Result(traceData);
       }
     }
@@ -271,8 +281,7 @@ public class TraceFetcher {
 
       if (shouldSaveToBlobStoreCache(latestSpanTimestamp, dataFreshnessInSecondsValue)) {
         LOG.info(
-            "Data freshness check done, can be saved to blob store cache for traceId={}",
-            traceIds.cacheKey());
+            "Data freshness check done, can be saved to blob store cache for traceId={}", traceIds);
         // Save the trace data to blob store cache
         saveDataToBlobStoreCache(traceIds.cacheKey(), objectMapper.writeValueAsString(spans));
       }
