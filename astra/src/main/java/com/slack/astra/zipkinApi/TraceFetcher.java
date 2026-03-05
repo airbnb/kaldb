@@ -247,7 +247,7 @@ public class TraceFetcher {
       // cache for data freshness
       String traceData = retrieveDataFromBlobStoreCache(traceIds.cacheKey());
       if (traceData != null) {
-        LOG.info("Trace data retrieved from blob store cache for traceId={}", traceIds);
+        LOG.info("Trace data retrieved from blob store cache for traceId={}", traceId);
         return new Result(traceData);
       }
     }
@@ -296,7 +296,7 @@ public class TraceFetcher {
 
       if (shouldSaveToBlobStoreCache(latestSpanTimestamp, dataFreshnessInSecondsValue)) {
         LOG.info(
-            "Data freshness check done, can be saved to blob store cache for traceId={}", traceIds);
+            "Data freshness check done, can be saved to blob store cache for traceId={}", traceId);
         // Save the trace data to blob store cache
         saveDataToBlobStoreCache(traceIds.cacheKey(), objectMapper.writeValueAsString(spans));
       }
