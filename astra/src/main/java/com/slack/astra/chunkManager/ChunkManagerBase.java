@@ -11,6 +11,7 @@ import com.slack.astra.logstore.search.SearchResult;
 import com.slack.astra.logstore.search.SearchResultAggregator;
 import com.slack.astra.logstore.search.SearchResultAggregatorImpl;
 import com.slack.astra.metadata.schema.FieldType;
+import com.slack.astra.util.RuntimeHalterImpl;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -130,8 +131,13 @@ public abstract class ChunkManagerBase<T> extends AbstractIdleService implements
                             // represents a parse failure ) and instead of returning an empty
                             // result we throw back an error to the user
                             throw new IllegalArgumentException(throwable);
+                          } else if (throwable instanceof VirtualMachineError) {
+                            // we can't recover from these, so don't.
+                            LOG.error("Fatal Chunk Query Exception: ", throwable);
+                            new RuntimeHalterImpl().handleFatal(throwable);
+                          } else {
+                            LOG.warn("Chunk Query Exception", throwable);
                           }
-                          LOG.warn("Chunk Query Exception", throwable);
                         }
                         // else UNAVAILABLE (ie, timedout), return 0 snapshots
                         return (SearchResult<T>) SearchResult.error();

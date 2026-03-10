@@ -13,6 +13,7 @@ import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,6 +32,7 @@ import org.apache.lucene.index.KeepOnlyLastCommitDeletionPolicy;
 import org.apache.lucene.index.SnapshotDeletionPolicy;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
+import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.store.MMapDirectory;
 import org.opensearch.common.lucene.index.OpenSearchDirectoryReader;
@@ -156,7 +158,7 @@ public class LuceneIndexStoreImpl implements LogStore {
           try {
             refresh();
           } catch (Exception e) {
-            LOG.error("Error running scheduled commit", e);
+            LOG.error("Error running scheduled refresh", e);
           }
         },
         config.refreshDuration.toMillis(),
@@ -272,6 +274,22 @@ public class LuceneIndexStoreImpl implements LogStore {
     LOG.error(String.format("Exception %s processing", ex));
   }
 
+  private void handleMaybeFatal(AlreadyClosedException e) {
+    // If we hit an an AlreadyClosedException, it may have a tragic exception associated with it.
+    // If it does, then invoke the runtime halter.
+    Boolean hasTragicException;
+    indexWriterLock.lock();
+    try {
+      hasTragicException =
+          indexWriter.map(IndexWriter::getTragicException).map(Objects::nonNull).orElse(false);
+    } finally {
+      indexWriterLock.unlock();
+    }
+    if (hasTragicException) {
+      new RuntimeHalterImpl().handleFatal(e);
+    }
+  }
+
   @Override
   public void addMessage(Trace.Span message) {
     try {
@@ -302,6 +320,9 @@ public class LuceneIndexStoreImpl implements LogStore {
             LOG.debug("Indexer finished commit for: " + indexDirectory.getDirectory().toString());
           } catch (IOException e) {
             handleNonFatal(e);
+          } catch (AlreadyClosedException e) {
+            // already closed here may mean there was a tragic exception that is unrecoverable
+            handleMaybeFatal(e);
           }
         });
   }
@@ -316,6 +337,9 @@ public class LuceneIndexStoreImpl implements LogStore {
             LOG.debug("Indexer finished refresh for: " + indexDirectory.getDirectory().toString());
           } catch (IOException e) {
             handleNonFatal(e);
+          } catch (AlreadyClosedException e) {
+            // already closed here may mean there was a tragic exception that is unrecoverable
+            handleMaybeFatal(e);
           }
         });
   }
