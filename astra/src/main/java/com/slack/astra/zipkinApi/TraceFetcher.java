@@ -18,6 +18,7 @@ import com.slack.astra.proto.service.AstraSearch;
 import com.slack.astra.server.AstraQueryServiceBase;
 import com.slack.astra.util.JsonUtil;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -33,6 +34,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import org.apache.commons.codec.DecoderException;
 import org.apache.commons.codec.binary.Hex;
+import org.apache.commons.codec.digest.MurmurHash3;
 import org.apache.commons.lang3.StringUtils;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -145,10 +147,13 @@ public class TraceFetcher {
     }
 
     static @Nullable String maybeMapBase64TraceIdToHex(String messageTraceId) {
-      if (messageTraceId == null) {
+      if (messageTraceId == null || messageTraceId.isEmpty() || messageTraceId.equals("-1")) {
         return null;
+      } else if (HEX_PATTERN.matcher(messageTraceId).matches() && messageTraceId.length() <= 32) {
+        return normalizeHexTraceId(messageTraceId.toLowerCase());
       } else if (!BASE64_PATTERN.matcher(messageTraceId).matches()) {
-        return messageTraceId;
+        long[] hash = MurmurHash3.hash128(messageTraceId.getBytes(StandardCharsets.UTF_8));
+        return normalizeHexTraceId(Long.toHexString(hash[0]) + Long.toHexString(hash[1]));
       } else {
         return normalizeHexTraceId(hexEncodeBase64EncodedId(messageTraceId));
       }
@@ -178,17 +183,18 @@ public class TraceFetcher {
 
     static @Nullable String maybeMapLongSpanIdToHex(String id) {
       // assume if it's 16 or less chars, it'll be fine. [0-9]{16} or less will decode properly
-      if (id == null) {
+      if (id == null || id.isEmpty() || id.equals("-1")) {
         return null;
-      } else if (id.length() <= 16) {
-        return id;
+      } else if (id.length() <= 16 && HEX_PATTERN.matcher(id).matches()) {
+        return id.toLowerCase();
       } else {
+        long longValue;
         try {
-          long longValue = Long.parseLong(id);
-          return StringUtils.leftPad(Long.toHexString(longValue), 16, '0');
+          longValue = Long.parseLong(id);
         } catch (NumberFormatException e) {
-          return id;
+          longValue = MurmurHash3.hash128(id.getBytes(StandardCharsets.UTF_8))[0];
         }
+        return StringUtils.leftPad(Long.toHexString(longValue), 16, '0');
       }
     }
 
