@@ -858,16 +858,19 @@ public class TraceFetcherTest {
     String[][] cases =
         new String[][] {
           {null, null},
-          {"", ""},
+          {"", null},
+          {"-1", null},
+          {"ABCD", "abcd"},
+          {"not-a-number", "5118cb5950593214"},
           {"1234567890", "1234567890"},
           {"1234567890123456", "1234567890123456"},
           {"9223372036854775807", "7fffffffffffffff"},
-          {"12345678901234567890", "12345678901234567890"},
+          {"12345678901234567890", "24991545f5fe1363"},
           {
-            "18446744073709551615", "18446744073709551615"
+            "18446744073709551615", "1f052584a302c256"
           }, // largest unsigned 64-bit integer - the code we're working around uses abs of signed
           // longs
-          {"not-a-number-but-long", "not-a-number-but-long"},
+          {"not-a-number-but-long", "14be9ff2ed676879"},
         };
 
     for (String[] aCase : cases) {
@@ -875,7 +878,10 @@ public class TraceFetcherTest {
       String expected = aCase[1];
 
       String actual = TraceFetcher.TraceIds.maybeMapLongSpanIdToHex(input);
-      assertEquals(expected, actual);
+      assertEquals(
+          expected,
+          actual,
+          "Failed for input: " + input + " expected: " + expected + " actual: " + actual);
     }
   }
 
@@ -884,16 +890,20 @@ public class TraceFetcherTest {
     String[][] cases =
         new String[][] {
           {null, null},
-          {"", ""},
+          {"", null},
+          {"-1", null},
+          {"0", "00000000000000000000000000000000"},
+          {"00", "00000000000000000000000000000000"},
+          {"ABCD", "0000000000000000000000000000abcd"},
+          {"not-hex", "ac1648674a95e28b9501c2edc9b76cca"},
           {"1234567890==", "000000000000000000d76df8e7aefcf7"},
-          {"1234567890==", "000000000000000000d76df8e7aefcf7"},
-          {"1234567890", "1234567890"},
-          {"1234567890123456", "1234567890123456"},
+          {"1234567890", "00000000000000000000001234567890"},
+          {"1234567890123456", "00000000000000001234567890123456"},
           {"f____________________w==", "7fffffffffffffffffffffffffffffff"},
-          {"12345678901234567890", "12345678901234567890"},
+          {"12345678901234567890", "00000000000012345678901234567890"},
           {"AAAAAAAAAACZmZmZmZmZmQ==", "00000000000000009999999999999999"},
           {"00000000000000000000000000000000", "00000000000000000000000000000000"},
-          {"not-a-number-but-long", "not-a-number-but-long"},
+          {"not-a-number-but-longer-than-thirtytwo-characters", "7816baa92e237febd9634a9bd56f1cce"},
           {"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
         };
 

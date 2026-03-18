@@ -78,7 +78,7 @@ public class ZipkinServiceSpanConversionTest {
     // follows output format from https://zipkin.io/zipkin-api/#/default/get_trace__traceId_
     String expectedOutput =
         String.format(
-            "[{\"duration\":1,\"id\":\"1\",\"name\":\"Trace1\",\"remoteEndpoint\":{\"serviceName\":\"service1\"},\"timestamp\":%d,\"traceId\":\"1\"},{\"duration\":2,\"id\":\"2\",\"name\":\"Trace2\",\"parentId\":\"1\",\"remoteEndpoint\":{\"serviceName\":\"service1\"},\"timestamp\":%d,\"traceId\":\"1\"}]",
+            "[{\"duration\":1,\"id\":\"1\",\"name\":\"Trace1\",\"remoteEndpoint\":{\"serviceName\":\"service1\"},\"timestamp\":%d,\"traceId\":\"00000000000000000000000000000001\"},{\"duration\":2,\"id\":\"2\",\"name\":\"Trace2\",\"parentId\":\"1\",\"remoteEndpoint\":{\"serviceName\":\"service1\"},\"timestamp\":%d,\"traceId\":\"00000000000000000000000000000001\"}]",
             TraceFetcher.convertToMicroSeconds(time.plusSeconds(1)),
             TraceFetcher.convertToMicroSeconds(time.plusSeconds(2)));
     assertThat(actualOutput).isEqualTo(expectedOutput);
@@ -107,7 +107,7 @@ public class ZipkinServiceSpanConversionTest {
     // follows output format from https://zipkin.io/zipkin-api/#/default/get_trace__traceId_
     String expectedOutput =
         String.format(
-            "[{\"duration\":10,\"id\":\"na\",\"name\":\"na\",\"remoteEndpoint\":{\"serviceName\":\"na\"},\"timestamp\":%d,\"traceId\":\"na\"},{\"duration\":10,\"id\":\"na\",\"name\":\"na\",\"remoteEndpoint\":{\"serviceName\":\"na\"},\"timestamp\":%d,\"traceId\":\"na\"}]",
+            "[{\"duration\":10,\"id\":\"55c841cc9262c06e\",\"name\":\"na\",\"remoteEndpoint\":{\"serviceName\":\"na\"},\"timestamp\":%d,\"traceId\":\"55c841cc9262c06e114200ed4817a18b\"},{\"duration\":10,\"id\":\"55c841cc9262c06e\",\"name\":\"na\",\"remoteEndpoint\":{\"serviceName\":\"na\"},\"timestamp\":%d,\"traceId\":\"55c841cc9262c06e114200ed4817a18b\"}]",
             TraceFetcher.convertToMicroSeconds(time), TraceFetcher.convertToMicroSeconds(time));
     assertThat(actualOutput).isEqualTo(expectedOutput);
   }
