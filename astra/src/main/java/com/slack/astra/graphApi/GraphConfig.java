@@ -189,7 +189,6 @@ public final class GraphConfig {
         metadata.put("service", span.getRemoteEndpoint().getServiceName());
       }
     } else {
-      Map<String, String> tags = span.getTags();
 
       // Use configured tag mapping
       Set<String> keys =
@@ -199,7 +198,7 @@ public final class GraphConfig {
           };
 
       for (String key : keys) {
-        metadata.put(key, resolve(tags, key, entityType));
+        metadata.put(key, resolve(span, key, entityType));
       }
     }
 
@@ -207,23 +206,26 @@ public final class GraphConfig {
   }
 
   /**
-   * Resolves the actual tag value for a given logical field, using the provided span tags.
+   * Resolves the value for a given logical field from a span.
    *
    * <p>Steps: 1. Look up the TagConfig for this logical field (e.g. "resource"). 2. Check if any
    * rules match: - Iterate through each rule in reverse order. - If a rule's field/value condition
-   * matches, try to resolve using the overrideKey. - If the resolved value is non-empty, use it. -
-   * Otherwise, continue to the next matching rule. 3. If no rule produces a non-empty value, use
-   * the defaultKey: - Look up each keyPart from defaultKey list in the tags map. - Combine the
-   * values with the delimiter if multiple parts are present. - If any part is missing or empty,
-   * fall back to defaultValue.
+   * matches a span tag, try to resolve using the overrideKey. - If the resolved value is non-empty,
+   * use it. - Otherwise, continue to the next matching rule. 3. If no rule produces a non-empty
+   * value, use the defaultKey: - Keys prefixed with "span." are resolved against top-level span
+   * fields (e.g. "span.service" resolves to the remote endpoint service name); all other keys are
+   * looked up in span tags. - Combine the values with the delimiter if multiple keys are present. -
+   * If any key is missing or empty, fall back to defaultValue.
    *
    * <p>Note: This logic does not currently support multiple field matches for a single rule.
    *
-   * @param tags Map of tags from the span.
+   * @param span ZipkinSpanResponse containing the span data.
    * @param logicalField the node metadata field to resolve.
    * @return String the value of the logical metadata field after applying all GraphConfig rules.
    */
-  public String resolve(Map<String, String> tags, String logicalField, EntityType entityType) {
+  public String resolve(ZipkinSpanResponse span, String logicalField, EntityType entityType) {
+    Map<String, String> tags = span.getTags();
+
     TagConfig baseCfg =
         switch (entityType) {
           case EDGE -> this.edgeMetadataTagMapping.get(logicalField);
@@ -237,10 +239,12 @@ public final class GraphConfig {
 
     // Later rules override earlier ones, so start from the back of the list.
     // Try each matching rule until one produces a non-empty value.
+    boolean anyRuleMatched = false;
     for (RuleConfig rule : baseCfg.getRules().reversed()) {
       if (rule.getValue()
           .equals(tags.getOrDefault(rule.getField(), "unknown_" + rule.getField()))) {
-        String resolved = resolveKeys(tags, rule.getOverrideKey(), baseCfg.getKeyDelimiter());
+        anyRuleMatched = true;
+        String resolved = resolveKeys(span, rule.getOverrideKey(), baseCfg.getKeyDelimiter());
         if (resolved != null && !resolved.isEmpty()) {
           return resolved;
         }
@@ -248,25 +252,31 @@ public final class GraphConfig {
       }
     }
 
-    // No rules or rules produced a non-empty value, try the default key
-    String defaultResolved = resolveKeys(tags, baseCfg.getDefaultKey(), baseCfg.getKeyDelimiter());
+    // If a rule matched but none produced a value, return the default value directly.
+    // The default key is only used when no rule matched at all or none exist.
+    if (anyRuleMatched) {
+      return baseCfg.getDefaultValue();
+    }
+
+    // No rules matched or none exist — try the default key
+    String defaultResolved = resolveKeys(span, baseCfg.getDefaultKey(), baseCfg.getKeyDelimiter());
     if (defaultResolved != null && !defaultResolved.isEmpty()) {
       return defaultResolved;
     }
 
-    // No rules produced a non-empty value, Fall back to default value
     return baseCfg.getDefaultValue();
   }
 
   /**
-   * Helper method to resolve a list of keys from the tags map.
+   * Helper method to resolve a list of keys from the span. Keys prefixed with "span." are resolved
+   * against top-level span fields; all other keys are resolved against span tags.
    *
-   * @param tags Map of tags from the span.
+   * @param span ZipkinSpanResponse containing the span data.
    * @param keys List of keys to look up.
    * @param delimiter Delimiter to use when combining multiple key values.
    * @return The resolved value, or null if any key is missing.
    */
-  private String resolveKeys(Map<String, String> tags, List<String> keys, String delimiter) {
+  private String resolveKeys(ZipkinSpanResponse span, List<String> keys, String delimiter) {
     if (keys == null || keys.isEmpty()) {
       return null;
     }
@@ -274,7 +284,12 @@ public final class GraphConfig {
     // Collect values for all parts in a key
     List<String> values = new java.util.ArrayList<>();
     for (String keyPart : keys) {
-      String value = tags.get(keyPart);
+      String value;
+      if (keyPart.startsWith("span.")) {
+        value = resolveSpanKey(span, keyPart.substring("span.".length()));
+      } else {
+        value = span.getTags().get(keyPart);
+      }
       if (value == null) {
         // If any key is missing, return null
         return null;
@@ -287,6 +302,21 @@ public final class GraphConfig {
       return String.join(delimiter, values);
     }
     return values.get(0);
+  }
+
+  /**
+   * Resolves a top-level span field by name.
+   *
+   * @param span ZipkinSpanResponse containing the span data.
+   * @param fieldName The name of the top-level span field.
+   * @return The field value as a String, or null if not found.
+   */
+  private String resolveSpanKey(ZipkinSpanResponse span, String fieldName) {
+    return switch (fieldName) {
+      case "service" ->
+          span.getRemoteEndpoint() != null ? span.getRemoteEndpoint().getServiceName() : null;
+      default -> null;
+    };
   }
 
   @Override

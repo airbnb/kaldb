@@ -1,4 +1,13 @@
 node_metadata_tag_mapping:
+  project:
+    default_key:
+      - span.service
+    default_value: unknown_project
+    rules:
+      - field: operation_name
+        value: http.request
+        override_key:
+          - tag.http.target.service
   service:
     default_key:
       - kube.app
