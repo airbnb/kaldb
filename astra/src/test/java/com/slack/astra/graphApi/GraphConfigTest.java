@@ -730,18 +730,19 @@ public class GraphConfigTest {
   public void testResolveProject_withSpanServiceDefaultAndTagOverride() throws IOException {
     GraphConfig config =
         GraphConfig.load(
-            """
+"""
                 node_metadata_tag_mapping:
                   project:
                     default_key:
                       - span.service
                     default_value: unknown_project
+                    use_default_key_on_empty_override: false
                     rules:
                       - field: operation_name
                         value: http.request
                         override_key:
                           - tag.http.target.service
-                """);
+""");
 
     // Case 1: operation_name != "http.request" → falls back to span.service (remote endpoint)
     Map<String, String> tags1 = Map.of("operation_name", "grpc.request");
@@ -762,6 +763,42 @@ public class GraphConfigTest {
     ZipkinSpanResponse span3 = TestUtils.createSpanWithTags("span3", "trace1", null, tags3);
     String result3 = config.resolve(span3, "project", GraphConfig.EntityType.NODE);
     assertThat(result3).isEqualTo("unknown_project");
+  }
+
+  @Test
+  public void testResolveWithUseDefaultKeyOnEmptyOverride_true_fallsBackToDefaultKey()
+      throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+                node_metadata_tag_mapping:
+                  service:
+                    default_key:
+                      - kube.app
+                      - kube.namespace
+                    default_value: unknown_service
+                    key_delimiter: .
+                    use_default_key_on_empty_override: true
+                    rules:
+                      - field: operation_name
+                        value: http.request
+                        override_key:
+                          - tag.http.target.host
+                """);
+
+    // Rule matches but override key is missing — falls back to defaultKey
+    Map<String, String> tags1 =
+        Map.of("kube.app", "my-app", "kube.namespace", "prod", "operation_name", "http.request");
+    ZipkinSpanResponse span1 = TestUtils.createSpanWithTags("span1", "trace1", null, tags1);
+    assertThat(config.resolve(span1, "service", GraphConfig.EntityType.NODE))
+        .isEqualTo("my-app.prod");
+
+    // No rule matches — also falls back to defaultKey
+    Map<String, String> tags2 =
+        Map.of("kube.app", "my-app", "kube.namespace", "prod", "operation_name", "grpc.request");
+    ZipkinSpanResponse span2 = TestUtils.createSpanWithTags("span2", "trace1", null, tags2);
+    assertThat(config.resolve(span2, "service", GraphConfig.EntityType.NODE))
+        .isEqualTo("my-app.prod");
   }
 
   @Test

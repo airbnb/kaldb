@@ -40,18 +40,22 @@ public final class GraphConfig {
     private final String defaultValue;
     private final String keyDelimiter;
     private final List<RuleConfig> rules;
+    private final boolean useDefaultKeyOnEmptyOverride;
 
     @JsonCreator
     public TagConfig(
         @JsonProperty("default_key") List<String> defaultKey,
         @JsonProperty("default_value") String defaultValue,
         @JsonProperty("key_delimiter") String keyDelimiter,
-        @JsonProperty("rules") List<RuleConfig> rules) {
+        @JsonProperty("rules") List<RuleConfig> rules,
+        @JsonProperty("use_default_key_on_empty_override") Boolean useDefaultKeyOnEmptyOverride) {
       this.defaultKey = (defaultKey == null) ? Collections.emptyList() : List.copyOf(defaultKey);
       this.defaultValue = defaultValue;
       // Set default keyDelimiter to "." if null or empty
       this.keyDelimiter = (keyDelimiter == null || keyDelimiter.isEmpty()) ? "." : keyDelimiter;
       this.rules = (rules == null) ? Collections.emptyList() : List.copyOf(rules);
+      this.useDefaultKeyOnEmptyOverride =
+          (useDefaultKeyOnEmptyOverride == null) ? false : useDefaultKeyOnEmptyOverride;
     }
 
     public List<String> getDefaultKey() {
@@ -68,6 +72,10 @@ public final class GraphConfig {
 
     public List<RuleConfig> getRules() {
       return rules;
+    }
+
+    public boolean isUseDefaultKeyOnEmptyOverride() {
+      return useDefaultKeyOnEmptyOverride;
     }
   }
 
@@ -252,13 +260,14 @@ public final class GraphConfig {
       }
     }
 
-    // If a rule matched but none produced a value, return the default value directly.
-    // The default key is only used when no rule matched at all or none exist.
-    if (anyRuleMatched) {
+    // All rules exhausted without a value.
+    // Return the default_value if a rule matched and we don't want to fall back to the default_key.
+    if (anyRuleMatched && !baseCfg.isUseDefaultKeyOnEmptyOverride()) {
       return baseCfg.getDefaultValue();
     }
 
-    // No rules matched or none exist — try the default key
+    // Try the default_key if no rule matched or we want to fall back to the default_key
+    // in case rules produced empty values.
     String defaultResolved = resolveKeys(span, baseCfg.getDefaultKey(), baseCfg.getKeyDelimiter());
     if (defaultResolved != null && !defaultResolved.isEmpty()) {
       return defaultResolved;
