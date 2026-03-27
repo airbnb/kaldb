@@ -75,7 +75,9 @@ public class GraphBuilderTest {
                     "tag.http.target.canonical_path",
                     "/v2/res2",
                     "tag.http.target.host",
-                    "app2.ns2")));
+                    "app2.ns2",
+                    "tag.http.target.service",
+                    "service-a")));
 
     Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.empty());
 
@@ -87,14 +89,16 @@ public class GraphBuilderTest {
         new TreeMap<>(
             Map.of(
                 "service", "app1.ns1",
-                "resource", "res1"));
+                "resource", "res1",
+                "project", "default-service"));
     String expectedParentId = Node.generateIdFromMetadata(parentMetadata);
 
     SortedMap<String, String> childMetadata =
         new TreeMap<>(
             Map.of(
                 "service", "app2.ns2",
-                "resource", "/v2/res2"));
+                "resource", "/v2/res2",
+                "project", "service-a"));
 
     // uses canonical path as resource
     SortedMap<String, String> edgeMetadata = new TreeMap<>(Map.of("operation", "http.request"));
@@ -179,21 +183,24 @@ public class GraphBuilderTest {
         new TreeMap<>(
             Map.of(
                 "service", "app1.ns1",
-                "resource", "res1"));
+                "resource", "res1",
+                "project", "default-service"));
     String expectedParentId = Node.generateIdFromMetadata(parentMetadata);
 
     SortedMap<String, String> child1Metadata =
         new TreeMap<>(
             Map.of(
                 "service", "app2.ns2",
-                "resource", "res2"));
+                "resource", "res2",
+                "project", "default-service"));
     String expectedChild1Id = Node.generateIdFromMetadata(child1Metadata);
 
     SortedMap<String, String> child2Metadata =
         new TreeMap<>(
             Map.of(
                 "service", "app3.ns3",
-                "resource", "res3"));
+                "resource", "res3",
+                "project", "default-service"));
     String expectedChild2Id = Node.generateIdFromMetadata(child2Metadata);
 
     // verify both edges have the same parent
@@ -201,11 +208,17 @@ public class GraphBuilderTest {
     assertThat(edges.stream().allMatch(edge -> edge.getSourceNodeId().equals(expectedParentId)))
         .isTrue();
 
-    // metadata of the edges
-    assertThat(edges.get(0).getMetadata()).isEqualTo(new TreeMap<>(Map.of("operation", "op2")));
-    assertThat(edges.get(0).getObservedCount()).isEqualTo(1);
-    assertThat(edges.get(1).getMetadata()).isEqualTo(new TreeMap<>(Map.of("operation", "op3")));
-    assertThat(edges.get(1).getObservedCount()).isEqualTo(1);
+    // metadata of the edges (order is non-deterministic due to HashMap internals)
+    assertThat(edges)
+        .anyMatch(
+            e ->
+                e.getMetadata().equals(new TreeMap<>(Map.of("operation", "op2")))
+                    && e.getObservedCount() == 1);
+    assertThat(edges)
+        .anyMatch(
+            e ->
+                e.getMetadata().equals(new TreeMap<>(Map.of("operation", "op3")))
+                    && e.getObservedCount() == 1);
 
     // verify different children
     List<String> childIds =
@@ -263,14 +276,16 @@ public class GraphBuilderTest {
         new TreeMap<>(
             Map.of(
                 "service", "app1.ns1",
-                "resource", "res1"));
+                "resource", "res1",
+                "project", "default-service"));
     String expectedParentId = Node.generateIdFromMetadata(parentMetadata);
 
     SortedMap<String, String> childMetadata =
         new TreeMap<>(
             Map.of(
                 "service", "app2.ns2",
-                "resource", "res2"));
+                "resource", "res2",
+                "project", "default-service"));
     String expectedChildId = Node.generateIdFromMetadata(childMetadata);
 
     Edge edge = graph.edges().getFirst();
@@ -335,28 +350,32 @@ public class GraphBuilderTest {
         new TreeMap<>(
             Map.of(
                 "service", "root_app.root_ns",
-                "resource", "root_res"));
+                "resource", "root_res",
+                "project", "default-service"));
     String expectedRootId = Node.generateIdFromMetadata(rootMetadata);
 
     SortedMap<String, String> child1Metadata =
         new TreeMap<>(
             Map.of(
                 "service", "child1_app.child1_ns",
-                "resource", "child1_res"));
+                "resource", "child1_res",
+                "project", "default-service"));
     String expectedChild1Id = Node.generateIdFromMetadata(child1Metadata);
 
     SortedMap<String, String> child2Metadata =
         new TreeMap<>(
             Map.of(
                 "service", "child2_app.child2_ns",
-                "resource", "child2_res"));
+                "resource", "child2_res",
+                "project", "default-service"));
     String expectedChild2Id = Node.generateIdFromMetadata(child2Metadata);
 
     SortedMap<String, String> grandchildMetadata =
         new TreeMap<>(
             Map.of(
                 "service", "gc_app.gc_ns",
-                "resource", "gc_res"));
+                "resource", "gc_res",
+                "project", "default-service"));
     String expectedGrandchildId = Node.generateIdFromMetadata(grandchildMetadata);
 
     List<Edge> edges = graph.edges();
@@ -477,35 +496,40 @@ public class GraphBuilderTest {
         new TreeMap<>(
             Map.of(
                 "service", "appA.nsA",
-                "resource", "resA"));
+                "resource", "resA",
+                "project", "default-service"));
     String expectedNodeAId = Node.generateIdFromMetadata(nodeAMetadata);
 
     SortedMap<String, String> nodeBMetadata =
         new TreeMap<>(
             Map.of(
                 "service", "appB.nsB",
-                "resource", "resB"));
+                "resource", "resB",
+                "project", "default-service"));
     String expectedNodeBId = Node.generateIdFromMetadata(nodeBMetadata);
 
     SortedMap<String, String> nodeCMetadata =
         new TreeMap<>(
             Map.of(
                 "service", "appC.nsC",
-                "resource", "resC"));
+                "resource", "resC",
+                "project", "default-service"));
     String expectedNodeCId = Node.generateIdFromMetadata(nodeCMetadata);
 
     SortedMap<String, String> nodeDMetadata =
         new TreeMap<>(
             Map.of(
                 "service", "appD.nsD",
-                "resource", "resD"));
+                "resource", "resD",
+                "project", "default-service"));
     String expectedNodeDId = Node.generateIdFromMetadata(nodeDMetadata);
 
     SortedMap<String, String> nodeEMetadata =
         new TreeMap<>(
             Map.of(
                 "service", "appE.nsE",
-                "resource", "resE"));
+                "resource", "resE",
+                "project", "default-service"));
     String expectedNodeEId = Node.generateIdFromMetadata(nodeEMetadata);
 
     // A -> B
@@ -574,7 +598,9 @@ public class GraphBuilderTest {
                     "tag.http.target.canonical_path",
                     "/v2/target1",
                     "tag.http.target.host",
-                    "target_app1.target_ns1")),
+                    "target_app1.target_ns1",
+                    "tag.http.target.service",
+                    "service-a")),
             TestUtils.createSpanWithTags(
                 "child1",
                 "trace1",
@@ -591,7 +617,9 @@ public class GraphBuilderTest {
                     "tag.http.target.canonical_path",
                     "/v2/target2",
                     "tag.http.target.host",
-                    "target_app2.target_ns2")),
+                    "target_app2.target_ns2",
+                    "tag.http.target.service",
+                    "service-b")),
             TestUtils.createSpanWithTags(
                 "child2",
                 "trace1",
@@ -615,14 +643,16 @@ public class GraphBuilderTest {
         new TreeMap<>(
             Map.of(
                 "service", "target_app1.target_ns1",
-                "resource", "/v2/target1"));
+                "resource", "/v2/target1",
+                "project", "service-a"));
     String expectedParentId = Node.generateIdFromMetadata(parentMetadata);
 
     SortedMap<String, String> child1Metadata =
         new TreeMap<>(
             Map.of(
                 "service", "target_app2.target_ns2",
-                "resource", "/v2/target2"));
+                "resource", "/v2/target2",
+                "project", "service-b"));
     String expectedChild1Id = Node.generateIdFromMetadata(child1Metadata);
 
     Edge edge = graph.edges().get(0);
@@ -653,7 +683,9 @@ public class GraphBuilderTest {
                     "tag.http.target.canonical_path",
                     "/v2/target1",
                     "tag.http.target.host",
-                    "target_app1.target_ns1")),
+                    "target_app1.target_ns1",
+                    "tag.http.target.service",
+                    "service-a")),
             // intermediate child - operation: op2 (doesn't match filter)
             TestUtils.createSpanWithTags(
                 "child1",
@@ -681,7 +713,9 @@ public class GraphBuilderTest {
                     "tag.http.target.canonical_path",
                     "/v2/target2",
                     "tag.http.target.host",
-                    "target_app2.target_ns2")));
+                    "target_app2.target_ns2",
+                    "tag.http.target.service",
+                    "service-b")));
 
     // Filter to only include nodes with operation "http.request"
     GraphBuilder.Filter filter =
@@ -696,14 +730,16 @@ public class GraphBuilderTest {
         new TreeMap<>(
             Map.of(
                 "service", "target_app1.target_ns1",
-                "resource", "/v2/target1"));
+                "resource", "/v2/target1",
+                "project", "service-a"));
     String expectedRootId = Node.generateIdFromMetadata(rootMetadata);
 
     SortedMap<String, String> grandchildMetadata =
         new TreeMap<>(
             Map.of(
                 "service", "target_app2.target_ns2",
-                "resource", "/v2/target2"));
+                "resource", "/v2/target2",
+                "project", "service-b"));
     String expectedGrandchildId = Node.generateIdFromMetadata(grandchildMetadata);
 
     // Should have edge directly from root to grandchild (skipping intermediate)
@@ -767,7 +803,9 @@ public class GraphBuilderTest {
                     "tag.http.target.canonical_path",
                     "/v2/target1",
                     "tag.http.target.host",
-                    "target_app1.target_ns1")),
+                    "target_app1.target_ns1",
+                    "tag.http.target.service",
+                    "service-a")),
             // child1 - http.request
             TestUtils.createSpanWithTags(
                 "child1",
@@ -785,7 +823,9 @@ public class GraphBuilderTest {
                     "tag.http.target.canonical_path",
                     "/v2/target2",
                     "tag.http.target.host",
-                    "target_app2.target_app2")),
+                    "target_app2.target_app2",
+                    "tag.http.target.service",
+                    "service-b")),
             // child2 - http.request
             TestUtils.createSpanWithTags(
                 "child2",
@@ -803,7 +843,9 @@ public class GraphBuilderTest {
                     "tag.http.target.canonical_path",
                     "/v2/target3",
                     "tag.http.target.host",
-                    "target_app3.target+_ns3")));
+                    "target_app3.target+_ns3",
+                    "tag.http.target.service",
+                    "service-c")));
 
     // Filter to only include nodes with operation "http.request"
     GraphBuilder.Filter filter =
@@ -819,7 +861,8 @@ public class GraphBuilderTest {
         new TreeMap<>(
             Map.of(
                 "service", "target_app1.target_ns1",
-                "resource", "/v2/target1"));
+                "resource", "/v2/target1",
+                "project", "service-a"));
     String expectedRootId = Node.generateIdFromMetadata(rootMetadata);
 
     // Both edges should originate from root
@@ -858,7 +901,9 @@ public class GraphBuilderTest {
                     "tag.http.target.canonical_path",
                     "/v2/target1",
                     "tag.http.target.host",
-                    "target_app1.target_ns1")),
+                    "target_app1.target_ns1",
+                    "tag.http.target.service",
+                    "service-a")),
             TestUtils.createSpanWithTags(
                 "grandchild1",
                 "trace1",
@@ -875,7 +920,9 @@ public class GraphBuilderTest {
                     "tag.http.target.canonical_path",
                     "/v2/target2",
                     "tag.http.target.host",
-                    "target_app2.target_ns2")),
+                    "target_app2.target_ns2",
+                    "tag.http.target.service",
+                    "service-b")),
             // Second subtree: non-matching nodes -> matching -> more non-matching -> matching leaf
             // intermediate2a (parent missing) -> intermediate2b -> intermediate2c -> matching1 ->
             // intermediate2d -> intermediate2e -> matching2
@@ -922,7 +969,9 @@ public class GraphBuilderTest {
                     "tag.http.target.canonical_path",
                     "/v2/target3",
                     "tag.http.target.host",
-                    "target_app3.target_ns3")),
+                    "target_app3.target_ns3",
+                    "tag.http.target.service",
+                    "service-c")),
             TestUtils.createSpanWithTags(
                 "intermediate2d",
                 "trace1",
@@ -957,7 +1006,9 @@ public class GraphBuilderTest {
                     "tag.http.target.canonical_path",
                     "/v2/target4",
                     "tag.http.target.host",
-                    "target_app4.target_ns4")));
+                    "target_app4.target_ns4",
+                    "tag.http.target.service",
+                    "service-d")));
 
     // Filter to only include nodes with operation "http.request"
     GraphBuilder.Filter filter =
@@ -974,28 +1025,32 @@ public class GraphBuilderTest {
         new TreeMap<>(
             Map.of(
                 "service", "target_app1.target_ns1",
-                "resource", "/v2/target1"));
+                "resource", "/v2/target1",
+                "project", "service-a"));
     String expectedChild1Id = Node.generateIdFromMetadata(child1Metadata);
 
     SortedMap<String, String> grandchild1Metadata =
         new TreeMap<>(
             Map.of(
                 "service", "target_app2.target_ns2",
-                "resource", "/v2/target2"));
+                "resource", "/v2/target2",
+                "project", "service-b"));
     String expectedGrandchild1Id = Node.generateIdFromMetadata(grandchild1Metadata);
 
     SortedMap<String, String> matching1Metadata =
         new TreeMap<>(
             Map.of(
                 "service", "target_app3.target_ns3",
-                "resource", "/v2/target3"));
+                "resource", "/v2/target3",
+                "project", "service-c"));
     String expectedMatching1Id = Node.generateIdFromMetadata(matching1Metadata);
 
     SortedMap<String, String> matching2Metadata =
         new TreeMap<>(
             Map.of(
                 "service", "target_app4.target_ns4",
-                "resource", "/v2/target4"));
+                "resource", "/v2/target4",
+                "project", "service-d"));
     String expectedMatching2Id = Node.generateIdFromMetadata(matching2Metadata);
 
     // Verify both disconnected edges exist
@@ -1034,7 +1089,9 @@ public class GraphBuilderTest {
                     "tag.http.target.canonical_path",
                     "/v2/target1",
                     "tag.http.target.host",
-                    "target_app1.target_ns1")),
+                    "target_app1.target_ns1",
+                    "tag.http.target.service",
+                    "service-a")),
             // Child with operation: grpc.request
             TestUtils.createSpanWithTags(
                 "child1",
@@ -1079,14 +1136,16 @@ public class GraphBuilderTest {
         new TreeMap<>(
             Map.of(
                 "service", "target_app1.target_ns1",
-                "resource", "/v2/target1"));
+                "resource", "/v2/target1",
+                "project", "service-a"));
     String expectedParentId = Node.generateIdFromMetadata(parentMetadata);
 
     SortedMap<String, String> childMetadata =
         new TreeMap<>(
             Map.of(
                 "service", "app2.ns2",
-                "resource", "res2"));
+                "resource", "res2",
+                "project", "default-service"));
     String expectedChildId = Node.generateIdFromMetadata(childMetadata);
 
     Edge edge = graph.edges().get(0);
@@ -1171,7 +1230,9 @@ public class GraphBuilderTest {
                         "tag.http.target.canonical_path",
                         "/v2/targetA",
                         "tag.http.target.host",
-                        "targetA.nsA")),
+                        "targetA.nsA",
+                        "tag.http.target.service",
+                        "service-a")),
                 // Span B - doesn't match filter, child of A
                 TestUtils.createSpanWithTags(
                     "spanB",
@@ -1199,7 +1260,9 @@ public class GraphBuilderTest {
                         "tag.http.target.canonical_path",
                         "/v2/targetC",
                         "tag.http.target.host",
-                        "targetC.nsC")),
+                        "targetC.nsC",
+                        "tag.http.target.service",
+                        "service-c")),
                 // Span D - doesn't match filter, child of C
                 TestUtils.createSpanWithTags(
                     "spanD",
@@ -1227,7 +1290,9 @@ public class GraphBuilderTest {
                         "tag.http.target.canonical_path",
                         "/v2/targetE",
                         "tag.http.target.host",
-                        "targetE.nsE")),
+                        "targetE.nsE",
+                        "tag.http.target.service",
+                        "service-e")),
                 // Span F - matches filter, child of C (parallel to D)
                 TestUtils.createSpanWithTags(
                     "spanF",
@@ -1245,7 +1310,9 @@ public class GraphBuilderTest {
                         "tag.http.target.canonical_path",
                         "/v2/targetF",
                         "tag.http.target.host",
-                        "targetF.nsF")),
+                        "targetF.nsF",
+                        "tag.http.target.service",
+                        "service-f")),
                 // Create backward cycle: E -> B
                 TestUtils.createSpanWithTags(
                     "spanB_from_E",
@@ -1284,7 +1351,9 @@ public class GraphBuilderTest {
                         "tag.http.target.canonical_path",
                         "/v2/targetG",
                         "tag.http.target.host",
-                        "targetG.nsG"))));
+                        "targetG.nsG",
+                        "tag.http.target.service",
+                        "service-g"))));
 
     GraphBuilder.Filter filter =
         new GraphBuilder.Filter(Map.of("operation_name", List.of("http.request")));
@@ -1305,35 +1374,40 @@ public class GraphBuilderTest {
         new TreeMap<>(
             Map.of(
                 "service", "targetA.nsA",
-                "resource", "/v2/targetA"));
+                "resource", "/v2/targetA",
+                "project", "service-a"));
     String expectedNodeAId = Node.generateIdFromMetadata(nodeAMetadata);
 
     SortedMap<String, String> nodeCMetadata =
         new TreeMap<>(
             Map.of(
                 "service", "targetC.nsC",
-                "resource", "/v2/targetC"));
+                "resource", "/v2/targetC",
+                "project", "service-c"));
     String expectedNodeCId = Node.generateIdFromMetadata(nodeCMetadata);
 
     SortedMap<String, String> nodeEMetadata =
         new TreeMap<>(
             Map.of(
                 "service", "targetE.nsE",
-                "resource", "/v2/targetE"));
+                "resource", "/v2/targetE",
+                "project", "service-e"));
     String expectedNodeEId = Node.generateIdFromMetadata(nodeEMetadata);
 
     SortedMap<String, String> nodeFMetadata =
         new TreeMap<>(
             Map.of(
                 "service", "targetF.nsF",
-                "resource", "/v2/targetF"));
+                "resource", "/v2/targetF",
+                "project", "service-f"));
     String expectedNodeFId = Node.generateIdFromMetadata(nodeFMetadata);
 
     SortedMap<String, String> nodeGMetadata =
         new TreeMap<>(
             Map.of(
                 "service", "targetG.nsG",
-                "resource", "/v2/targetG"));
+                "resource", "/v2/targetG",
+                "project", "service-g"));
     String expectedNodeGId = Node.generateIdFromMetadata(nodeGMetadata);
 
     // A -> C
@@ -1421,7 +1495,9 @@ public class GraphBuilderTest {
                         "tag.http.target.canonical_path",
                         "/v1/targetB",
                         "operation_name",
-                        "http.request")),
+                        "http.request",
+                        "tag.http.target.service",
+                        "service-a")),
                 // spanB and spanC point to the same logical node, but have different operations
                 TestUtils.createSpanWithTags(
                     "spanC",
@@ -1451,14 +1527,16 @@ public class GraphBuilderTest {
         new TreeMap<>(
             Map.of(
                 "service", "app1.ns1",
-                "resource", "res1"));
+                "resource", "res1",
+                "project", "default-service"));
     String expectedNodeAId = Node.generateIdFromMetadata(nodeAMetadata);
 
     SortedMap<String, String> nodeBMetadata =
         new TreeMap<>(
             Map.of(
                 "service", "app2.ns2",
-                "resource", "/v1/targetB"));
+                "resource", "/v1/targetB",
+                "project", "default-service"));
     String expectedNodeBId = Node.generateIdFromMetadata(nodeBMetadata);
 
     // A -> B
@@ -1472,6 +1550,58 @@ public class GraphBuilderTest {
     assertThat(edge.getMetadata())
         .isEqualTo(new TreeMap<>(Map.of("operation", "dropwizard.request")));
     assertThat(edge.getObservedCount()).isEqualTo(1);
+  }
+
+  @Test
+  void buildFromSpans_withProjectOverrideKey_usesTagHttpTargetService() {
+    List<ZipkinSpanResponse> spans =
+        List.of(
+            TestUtils.createSpanWithTags(
+                "parent1",
+                "trace1",
+                null,
+                Map.of(
+                    "kube.app", "app1",
+                    "kube.namespace", "ns1",
+                    "operation_name", "http.request",
+                    "resource", "res1",
+                    "tag.http.target.service", "service-a",
+                    "tag.http.target.canonical_path", "/v2/res1",
+                    "tag.http.target.host", "app1.ns1")),
+            TestUtils.createSpanWithTags(
+                "child1",
+                "trace1",
+                "parent1",
+                Map.of(
+                    "kube.app", "app2",
+                    "kube.namespace", "ns2",
+                    "operation_name", "db.query",
+                    "resource", "res2")));
+
+    Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.empty());
+
+    assertThat(graph.nodes()).hasSize(2);
+    assertThat(graph.edges()).hasSize(1);
+
+    SortedMap<String, String> parentMetadata =
+        new TreeMap<>(
+            Map.of(
+                "service", "app1.ns1",
+                "resource", "/v2/res1",
+                "project", "service-a"));
+    String expectedParentId = Node.generateIdFromMetadata(parentMetadata);
+
+    SortedMap<String, String> childMetadata =
+        new TreeMap<>(
+            Map.of(
+                "service", "app2.ns2",
+                "resource", "res2",
+                "project", "default-service"));
+    String expectedChildId = Node.generateIdFromMetadata(childMetadata);
+
+    Edge edge = graph.edges().getFirst();
+    assertThat(edge.getSourceNodeId()).isEqualTo(expectedParentId);
+    assertThat(edge.getTargetNodeId()).isEqualTo(expectedChildId);
   }
 
   @Test

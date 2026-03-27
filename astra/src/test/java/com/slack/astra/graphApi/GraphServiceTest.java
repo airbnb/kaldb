@@ -252,6 +252,7 @@ public class GraphServiceTest {
       JsonNode metadata = node.get("metadata");
       assertTrue(metadata.has("service"));
       assertTrue(metadata.has("resource"));
+      assertTrue(metadata.has("project"));
     }
 
     // Verify all edges have required fields

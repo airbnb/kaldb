@@ -1,4 +1,14 @@
 node_metadata_tag_mapping:
+  project:
+    default_key:
+      - service_name
+    default_value: unknown_project
+    use_default_key_on_empty_override: false
+    rules:
+      - field: operation_name
+        value: http.request
+        override_key:
+          - tag.http.target.service
   service:
     default_key:
       - kube.app
@@ -14,6 +24,7 @@ node_metadata_tag_mapping:
     default_key:
       - resource
     default_value: unknown_resource
+    use_default_key_on_empty_override: false
     rules:
       - field: operation_name
         value: http.request

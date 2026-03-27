@@ -131,13 +131,14 @@ public class GraphConfigTest {
                  default_value: unknown_operation
              """);
     Map<String, String> tags = new HashMap<>();
+    ZipkinSpanResponse span = TestUtils.createSpanWithTags("span1", "trace1", null, tags);
 
     // Node
-    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
+    String result = config.resolve(span, "app", GraphConfig.EntityType.NODE);
     assertThat(result).isEqualTo("unknown_app");
 
     // Edge
-    result = config.resolve(tags, "operation", GraphConfig.EntityType.EDGE);
+    result = config.resolve(span, "operation", GraphConfig.EntityType.EDGE);
     assertThat(result).isEqualTo("unknown_operation");
   }
 
@@ -162,13 +163,14 @@ public class GraphConfigTest {
                  default_value: unknown_operation
               """);
     Map<String, String> tags = Map.of("some.tag", "some-value");
+    ZipkinSpanResponse span = TestUtils.createSpanWithTags("span1", "trace1", null, tags);
 
     // Node
-    String result = config.resolve(tags, "some_field", GraphConfig.EntityType.NODE);
+    String result = config.resolve(span, "some_field", GraphConfig.EntityType.NODE);
     assertThat(result).isEqualTo("unknown_some_field");
 
     // Edge
-    result = config.resolve(tags, "some_field", GraphConfig.EntityType.EDGE);
+    result = config.resolve(span, "some_field", GraphConfig.EntityType.EDGE);
     assertThat(result).isEqualTo("unknown_some_field");
   }
 
@@ -216,13 +218,14 @@ public class GraphConfigTest {
             "my-app-in-prod",
             "operation.prod",
             "prod_operation");
+    ZipkinSpanResponse span = TestUtils.createSpanWithTags("span1", "trace1", null, tags);
 
     // Node
-    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
+    String result = config.resolve(span, "app", GraphConfig.EntityType.NODE);
     assertThat(result).isEqualTo("my-app-in-prod");
 
     // Edge
-    result = config.resolve(tags, "operation", GraphConfig.EntityType.EDGE);
+    result = config.resolve(span, "operation", GraphConfig.EntityType.EDGE);
     assertThat(result).isEqualTo("prod_operation");
   }
 
@@ -263,14 +266,15 @@ public class GraphConfigTest {
     Map<String, String> tags =
         Map.of(
             "app.name", "my-app", "namespace.name", "prod-ns", "operation_name", "some_operation");
+    ZipkinSpanResponse span = TestUtils.createSpanWithTags("span1", "trace1", null, tags);
 
-    // Node - rule matches but override key is missing, should return default key's value
-    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
-    assertThat(result).isEqualTo("my-app");
+    // Node - rule matches but override key is missing, should return default value
+    String result = config.resolve(span, "app", GraphConfig.EntityType.NODE);
+    assertThat(result).isEqualTo("unknown_app");
 
-    // Edge - rule matches but override key is missing, should return default key's value
-    result = config.resolve(tags, "operation", GraphConfig.EntityType.EDGE);
-    assertThat(result).isEqualTo("some_operation");
+    // Edge - rule matches but override key is missing, should return default value
+    result = config.resolve(span, "operation", GraphConfig.EntityType.EDGE);
+    assertThat(result).isEqualTo("unknown_operation");
   }
 
   @Test
@@ -310,13 +314,14 @@ public class GraphConfigTest {
     Map<String, String> tags =
         Map.of(
             "app.name", "my-app", "namespace.name", "dev-ns", "operation_name", "some_operation");
+    ZipkinSpanResponse span = TestUtils.createSpanWithTags("span1", "trace1", null, tags);
 
     // Node
-    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
+    String result = config.resolve(span, "app", GraphConfig.EntityType.NODE);
     assertThat(result).isEqualTo("my-app");
 
     // Edge
-    result = config.resolve(tags, "operation", GraphConfig.EntityType.EDGE);
+    result = config.resolve(span, "operation", GraphConfig.EntityType.EDGE);
     assertThat(result).isEqualTo("some_operation");
   }
 
@@ -376,13 +381,14 @@ public class GraphConfigTest {
             "operation_prod",
             "operation.east",
             "operation_east");
+    ZipkinSpanResponse span = TestUtils.createSpanWithTags("span1", "trace1", null, tags);
 
     // Node
-    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
+    String result = config.resolve(span, "app", GraphConfig.EntityType.NODE);
     assertThat(result).isEqualTo("my-app-east");
 
     // Edge
-    result = config.resolve(tags, "operation", GraphConfig.EntityType.EDGE);
+    result = config.resolve(span, "operation", GraphConfig.EntityType.EDGE);
     assertThat(result).isEqualTo("operation_east");
   }
 
@@ -436,13 +442,14 @@ public class GraphConfigTest {
             "some_operation",
             "operation.prod",
             "operation_prod");
+    ZipkinSpanResponse span = TestUtils.createSpanWithTags("span1", "trace1", null, tags);
 
     // Node
-    String result = config.resolve(tags, "app", GraphConfig.EntityType.NODE);
+    String result = config.resolve(span, "app", GraphConfig.EntityType.NODE);
     assertThat(result).isEqualTo("my-app");
 
     // Edge
-    result = config.resolve(tags, "operation", GraphConfig.EntityType.EDGE);
+    result = config.resolve(span, "operation", GraphConfig.EntityType.EDGE);
     assertThat(result).isEqualTo("some_operation");
   }
 
@@ -460,8 +467,9 @@ public class GraphConfigTest {
                               key_delimiter: .
                           """);
     Map<String, String> tags = Map.of("kube.app", "my-app", "kube.namespace", "prod");
+    ZipkinSpanResponse span = TestUtils.createSpanWithTags("span1", "trace1", null, tags);
 
-    String result = config.resolve(tags, "service", GraphConfig.EntityType.NODE);
+    String result = config.resolve(span, "service", GraphConfig.EntityType.NODE);
     assertThat(result).isEqualTo("my-app.prod");
   }
 
@@ -479,8 +487,9 @@ public class GraphConfigTest {
                               key_delimiter: .
                           """);
     Map<String, String> tags = Map.of("kube.app", "my-app");
+    ZipkinSpanResponse span = TestUtils.createSpanWithTags("span1", "trace1", null, tags);
 
-    String result = config.resolve(tags, "service", GraphConfig.EntityType.NODE);
+    String result = config.resolve(span, "service", GraphConfig.EntityType.NODE);
     // Should return default value when any key is missing
     assertThat(result).isEqualTo("unknown_service");
   }
@@ -497,8 +506,9 @@ public class GraphConfigTest {
                               default_value: unknown_service
                           """);
     Map<String, String> tags = Map.of("kube.app", "my-app");
+    ZipkinSpanResponse span = TestUtils.createSpanWithTags("span1", "trace1", null, tags);
 
-    String result = config.resolve(tags, "service", GraphConfig.EntityType.NODE);
+    String result = config.resolve(span, "service", GraphConfig.EntityType.NODE);
     assertThat(result).isEqualTo("my-app");
   }
 
@@ -533,8 +543,9 @@ public class GraphConfigTest {
             "api.example.com",
             "tag.http.method",
             "GET");
+    ZipkinSpanResponse span = TestUtils.createSpanWithTags("span1", "trace1", null, tags);
 
-    String result = config.resolve(tags, "service", GraphConfig.EntityType.NODE);
+    String result = config.resolve(span, "service", GraphConfig.EntityType.NODE);
     assertThat(result).isEqualTo("api.example.com.GET");
   }
 
@@ -567,10 +578,11 @@ public class GraphConfigTest {
             "http.request",
             "tag.http.target.host",
             "api.example.com");
+    ZipkinSpanResponse span = TestUtils.createSpanWithTags("span1", "trace1", null, tags);
 
-    String result = config.resolve(tags, "service", GraphConfig.EntityType.NODE);
-    // Should return default key's value since override key is missing tag.http.method
-    assertThat(result).isEqualTo("my-app.prod");
+    String result = config.resolve(span, "service", GraphConfig.EntityType.NODE);
+    // Should return default value since rule matched but override key is missing tag.http.method
+    assertThat(result).isEqualTo("unknown_service");
   }
 
   @Test
@@ -654,11 +666,12 @@ public class GraphConfigTest {
             "/api/v1/users",
             "resource",
             "default_resource");
+    ZipkinSpanResponse span1 = TestUtils.createSpanWithTags("span1", "trace1", null, tags1);
 
-    String result1 = config.resolve(tags1, "resource", GraphConfig.EntityType.NODE);
+    String result1 = config.resolve(span1, "resource", GraphConfig.EntityType.NODE);
     assertThat(result1).isEqualTo("/api/v1/users");
 
-    // Case 2: Both are empty, should fallback to default key
+    // Case 2: Both are empty, should fallback to default value
     Map<String, String> tags2 =
         Map.of(
             "operation_name",
@@ -669,26 +682,12 @@ public class GraphConfigTest {
             "",
             "resource",
             "default_resource");
+    ZipkinSpanResponse span2 = TestUtils.createSpanWithTags("span2", "trace1", null, tags2);
 
-    String result2 = config.resolve(tags2, "resource", GraphConfig.EntityType.NODE);
-    assertThat(result2).isEqualTo("default_resource");
+    String result2 = config.resolve(span2, "resource", GraphConfig.EntityType.NODE);
+    assertThat(result2).isEqualTo("unknown_resource");
 
-    // Case 3: All empty including default key, should use default value
-    Map<String, String> tags3 =
-        Map.of(
-            "operation_name",
-            "http.request",
-            "tag.http.target.canonical_path",
-            "",
-            "http.url",
-            "",
-            "resource",
-            "");
-
-    String result3 = config.resolve(tags3, "resource", GraphConfig.EntityType.NODE);
-    assertThat(result3).isEqualTo("unknown_resource");
-
-    // Case 4: tag.http.target.canonical_path has value, should use it
+    // Case 3: tag.http.target.canonical_path has value, should use it
     Map<String, String> tags4 =
         Map.of(
             "operation_name",
@@ -699,11 +698,12 @@ public class GraphConfigTest {
             "/api/v1/users",
             "resource",
             "default_resource");
+    ZipkinSpanResponse span4 = TestUtils.createSpanWithTags("span4", "trace1", null, tags4);
 
-    String result4 = config.resolve(tags4, "resource", GraphConfig.EntityType.NODE);
+    String result4 = config.resolve(span4, "resource", GraphConfig.EntityType.NODE);
     assertThat(result4).isEqualTo("/api/canonical");
 
-    // Case 5: tag.http.target.canonical_path is missing, should fallback to http.url
+    // Case 4: tag.http.target.canonical_path is missing, should fallback to http.url
     Map<String, String> tags5 =
         Map.of(
             "operation_name",
@@ -712,16 +712,93 @@ public class GraphConfigTest {
             "/api/v1/users",
             "resource",
             "default_resource");
+    ZipkinSpanResponse span5 = TestUtils.createSpanWithTags("span5", "trace1", null, tags5);
 
-    String result5 = config.resolve(tags5, "resource", GraphConfig.EntityType.NODE);
-    assertThat(result1).isEqualTo("/api/v1/users");
+    String result5 = config.resolve(span5, "resource", GraphConfig.EntityType.NODE);
+    assertThat(result5).isEqualTo("/api/v1/users");
 
-    // Case 6: Both override keys are missing, should fallback to default key
+    // Case 5: Both override keys are missing, should fallback to default value
     Map<String, String> tags6 =
         Map.of("operation_name", "http.request", "resource", "default_resource");
+    ZipkinSpanResponse span6 = TestUtils.createSpanWithTags("span6", "trace1", null, tags6);
 
-    String result6 = config.resolve(tags6, "resource", GraphConfig.EntityType.NODE);
-    assertThat(result2).isEqualTo("default_resource");
+    String result6 = config.resolve(span6, "resource", GraphConfig.EntityType.NODE);
+    assertThat(result6).isEqualTo("unknown_resource");
+  }
+
+  @Test
+  public void testResolveProject_withSpanServiceDefaultAndTagOverride() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+"""
+                node_metadata_tag_mapping:
+                  project:
+                    default_key:
+                      - service_name
+                    default_value: unknown_project
+                    use_default_key_on_empty_override: false
+                    rules:
+                      - field: operation_name
+                        value: http.request
+                        override_key:
+                          - tag.http.target.service
+""");
+
+    // Case 1: operation_name != "http.request" → falls back to service_name (remote endpoint)
+    Map<String, String> tags1 = Map.of("operation_name", "grpc.request");
+    ZipkinSpanResponse span1 = TestUtils.createSpanWithTags("span1", "trace1", null, tags1);
+    String result1 = config.resolve(span1, "project", GraphConfig.EntityType.NODE);
+    assertThat(result1).isEqualTo("default-service");
+
+    // Case 2: operation_name = "http.request" with tag.http.target.service → uses override key
+    Map<String, String> tags2 =
+        Map.of("operation_name", "http.request", "tag.http.target.service", "my-project");
+    ZipkinSpanResponse span2 = TestUtils.createSpanWithTags("span2", "trace1", null, tags2);
+    String result2 = config.resolve(span2, "project", GraphConfig.EntityType.NODE);
+    assertThat(result2).isEqualTo("my-project");
+
+    // Case 3: operation_name = "http.request" but tag.http.target.service missing → returns default
+    // value
+    Map<String, String> tags3 = Map.of("operation_name", "http.request");
+    ZipkinSpanResponse span3 = TestUtils.createSpanWithTags("span3", "trace1", null, tags3);
+    String result3 = config.resolve(span3, "project", GraphConfig.EntityType.NODE);
+    assertThat(result3).isEqualTo("unknown_project");
+  }
+
+  @Test
+  public void testResolveWithUseDefaultKeyOnEmptyOverride_true_fallsBackToDefaultKey()
+      throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+                node_metadata_tag_mapping:
+                  service:
+                    default_key:
+                      - kube.app
+                      - kube.namespace
+                    default_value: unknown_service
+                    key_delimiter: .
+                    use_default_key_on_empty_override: true
+                    rules:
+                      - field: operation_name
+                        value: http.request
+                        override_key:
+                          - tag.http.target.host
+                """);
+
+    // Rule matches but override key is missing — falls back to defaultKey
+    Map<String, String> tags1 =
+        Map.of("kube.app", "my-app", "kube.namespace", "prod", "operation_name", "http.request");
+    ZipkinSpanResponse span1 = TestUtils.createSpanWithTags("span1", "trace1", null, tags1);
+    assertThat(config.resolve(span1, "service", GraphConfig.EntityType.NODE))
+        .isEqualTo("my-app.prod");
+
+    // No rule matches — also falls back to defaultKey
+    Map<String, String> tags2 =
+        Map.of("kube.app", "my-app", "kube.namespace", "prod", "operation_name", "grpc.request");
+    ZipkinSpanResponse span2 = TestUtils.createSpanWithTags("span2", "trace1", null, tags2);
+    assertThat(config.resolve(span2, "service", GraphConfig.EntityType.NODE))
+        .isEqualTo("my-app.prod");
   }
 
   @Test
