@@ -1,7 +1,7 @@
 node_metadata_tag_mapping:
   project:
     default_key:
-      - span.service
+      - service_name
     default_value: unknown_project
     use_default_key_on_empty_override: false
     rules:

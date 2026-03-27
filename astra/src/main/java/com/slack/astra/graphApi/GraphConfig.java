@@ -220,10 +220,10 @@ public final class GraphConfig {
    * rules match: - Iterate through each rule in reverse order. - If a rule's field/value condition
    * matches a span tag, try to resolve using the overrideKey. - If the resolved value is non-empty,
    * use it. - Otherwise, continue to the next matching rule. 3. If no rule produces a non-empty
-   * value, use the defaultKey: - Keys prefixed with "span." are resolved against top-level span
-   * fields (e.g. "span.service" resolves to the remote endpoint service name); all other keys are
-   * looked up in span tags. - Combine the values with the delimiter if multiple keys are present. -
-   * If any key is missing or empty, fall back to defaultValue.
+   * value, use the defaultKey: - Reserved keys (e.g. "service_name", "name") are resolved against
+   * top-level span fields; all other keys are looked up in span tags. - Combine the values with the
+   * delimiter if multiple keys are present. - If any key is missing or empty, fall back to
+   * defaultValue.
    *
    * <p>Note: This logic does not currently support multiple field matches for a single rule.
    *
@@ -277,8 +277,8 @@ public final class GraphConfig {
   }
 
   /**
-   * Helper method to resolve a list of keys from the span. Keys prefixed with "span." are resolved
-   * against top-level span fields; all other keys are resolved against span tags.
+   * Helper method to resolve a list of keys from the span. Reserved keys ("service_name", "name")
+   * are resolved against top-level span fields; all other keys are resolved against span tags.
    *
    * @param span ZipkinSpanResponse containing the span data.
    * @param keys List of keys to look up.
@@ -293,12 +293,14 @@ public final class GraphConfig {
     // Collect values for all parts in a key
     List<String> values = new java.util.ArrayList<>();
     for (String keyPart : keys) {
-      String value;
-      if (keyPart.startsWith("span.")) {
-        value = resolveSpanKey(span, keyPart.substring("span.".length()));
-      } else {
-        value = span.getTags().get(keyPart);
-      }
+      String value =
+          switch (keyPart) {
+            case "service_name" ->
+                span.getRemoteEndpoint() != null ? span.getRemoteEndpoint().getServiceName() : null;
+            case "name" -> span.getName();
+            default -> span.getTags().get(keyPart);
+          };
+
       if (value == null) {
         // If any key is missing, return null
         return null;
@@ -311,21 +313,6 @@ public final class GraphConfig {
       return String.join(delimiter, values);
     }
     return values.get(0);
-  }
-
-  /**
-   * Resolves a top-level span field by name.
-   *
-   * @param span ZipkinSpanResponse containing the span data.
-   * @param fieldName The name of the top-level span field.
-   * @return The field value as a String, or null if not found.
-   */
-  private String resolveSpanKey(ZipkinSpanResponse span, String fieldName) {
-    return switch (fieldName) {
-      case "service" ->
-          span.getRemoteEndpoint() != null ? span.getRemoteEndpoint().getServiceName() : null;
-      default -> null;
-    };
   }
 
   @Override

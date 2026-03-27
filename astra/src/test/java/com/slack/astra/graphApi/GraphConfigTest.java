@@ -734,7 +734,7 @@ public class GraphConfigTest {
                 node_metadata_tag_mapping:
                   project:
                     default_key:
-                      - span.service
+                      - service_name
                     default_value: unknown_project
                     use_default_key_on_empty_override: false
                     rules:
@@ -744,7 +744,7 @@ public class GraphConfigTest {
                           - tag.http.target.service
 """);
 
-    // Case 1: operation_name != "http.request" → falls back to span.service (remote endpoint)
+    // Case 1: operation_name != "http.request" → falls back to service_name (remote endpoint)
     Map<String, String> tags1 = Map.of("operation_name", "grpc.request");
     ZipkinSpanResponse span1 = TestUtils.createSpanWithTags("span1", "trace1", null, tags1);
     String result1 = config.resolve(span1, "project", GraphConfig.EntityType.NODE);
