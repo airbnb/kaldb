@@ -6,6 +6,7 @@ name: Java CI with Maven
 on:
   push:
     branches:
+      - kaldb-main
       - master
   pull_request:
     branches:
