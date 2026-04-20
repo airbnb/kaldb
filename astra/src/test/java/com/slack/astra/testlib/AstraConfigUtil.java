@@ -3,7 +3,6 @@ package com.slack.astra.testlib;
 import com.slack.astra.proto.config.AstraConfigs;
 
 public class AstraConfigUtil {
-
   public static AstraConfigs.AstraConfig makeAstraConfig(
       String bootstrapServers,
       int indexerPort,

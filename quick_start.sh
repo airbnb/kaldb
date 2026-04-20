@@ -112,7 +112,7 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# Step 3. Build local image if necessary
+# Step 3. Build local images if necessary
 # ------------------------------------------------------------------------------
 IMAGE_LABEL_VALUE=$(docker image inspect --format "{{ index .Config.Labels \"$SCRIPT_IMAGE_LABEL_KEY\" }}" slackhq/astra 2>/dev/null || true)
 
@@ -123,8 +123,11 @@ if [ "$CLEAN_BUILD" = true ] || [ "$IMAGE_LABEL_VALUE" != "$SCRIPT_IMAGE_LABEL_V
     -t astra:latest \
     --label "$SCRIPT_IMAGE_LABEL_KEY=$SCRIPT_IMAGE_LABEL_VALUE" \
     .
+  echo "🔨 Rebuilding Dashboards gateway image..."
+  docker compose build astra_dashboards_gateway
 else
   echo "⚡ Using existing KalDB Docker image (run with --clean to rebuild)."
+  echo "⚡ Using existing Dashboards gateway image (run with --clean to rebuild)."
 fi
 
 # ------------------------------------------------------------------------------
@@ -146,19 +149,19 @@ wait_for_http "Preprocessor" "http://localhost:8086/health" 60 2
 echo "📡 Creating Kafka topic (if not exists)..."
 docker exec dep_kafka kafka-topics.sh \
   --create \
-  --topic test-topic-in \
+  --topic test-topic \
   --if-not-exists \
   --bootstrap-server localhost:9092 || true
 
 # CreateDatasetMetadata
-echo "🧩 Creating dataset metadata via Manager API..."
+echo "🧩 Creating exact-match dataset metadata via Manager API..."
 curl -sS -XPOST \
   -H 'content-type: application/json; charset=utf-8; protocol=gRPC' \
   'http://localhost:8083/slack.proto.astra.ManagerApiService/CreateDatasetMetadata' \
   -d '{
     "name": "test",
     "owner": "test@email.com",
-    "serviceNamePattern": "_all"
+    "serviceNamePattern": "test"
   }' || echo "CreateDatasetMetadata may have already been applied."
 
 # UpdatePartitionAssignment
@@ -182,6 +185,8 @@ echo "   - Manager API:  http://localhost:8083"
 echo "   - Query API:    http://localhost:8081"
 echo "   - Grafana:      http://localhost:3000"
 echo "   - Zipkin UI:    http://localhost:9411"
+echo "   - OpenSearch:   http://localhost:9200"
+echo "   - Dashboards:   http://localhost:5601"
 echo ""
 echo "For manual API examples, see docs/topics/Getting-started.md."
 echo "To stop and remove everything, run: ./clean.sh"
