@@ -123,7 +123,7 @@ public class GraphBuilder {
             .collect(Collectors.toSet());
 
     return traverseAndBuildGraph(
-        matchingSpanIds, nodesToProcess, nodeIdToNode, parentNodeIdToChildNodeIds);
+        matchingSpanIds, nodesToProcess, nodeIdToNode, parentNodeIdToChildNodeIds, spanIdToSpan);
   }
 
   /**
@@ -190,7 +190,9 @@ public class GraphBuilder {
       Set<String> matchingSpanIds,
       Set<String> nodesToProcess,
       Map<String, Node> nodeIdToNode,
-      Map<String, List<Map.Entry<String, ZipkinSpanResponse>>> parentNodeIdToChildNodeIds) {
+      Map<String, List<Map.Entry<String, ZipkinSpanResponse>>> parentNodeIdToChildNodeIds,
+      Map<String, ZipkinSpanResponse> spanIdToSpan) {
+    Map<String, SortedMap<String, String>> annotationsBySpanId = new HashMap<>();
 
     Set<Node> nodes = new HashSet<>();
     Map<String, Edge> edges = new HashMap<>();
@@ -227,9 +229,11 @@ public class GraphBuilder {
                 config.createMetadataFromSpan(refSpan, GraphConfig.EntityType.EDGE);
             String edgeKey = Edge.generateKey(parentNodeId, childNodeId, edgeMetadata);
 
+            SortedMap<String, String> annotations =
+                config.resolveAnnotationsForSpan(refSpan, spanIdToSpan::get, annotationsBySpanId);
             edges
                 .computeIfAbsent(edgeKey, k -> new Edge(parentNodeId, childNodeId, edgeMetadata))
-                .incrementObservedCount();
+                .addObservation(annotations);
           } else {
             // Non-filtered intermediate node - continue traversing through it
             work.push(childNodeId);
