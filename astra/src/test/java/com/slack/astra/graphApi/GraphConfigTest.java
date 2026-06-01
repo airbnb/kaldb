@@ -51,7 +51,7 @@ public class GraphConfigTest {
                     - tag.product_context_root_function
                     - tag.product_context
                     - tag.product_context_criticality
-                  key_delimiter: ":"
+                  key_delimiter: "|"
                   default_value: ""
               """;
 
@@ -99,7 +99,7 @@ public class GraphConfigTest {
             "tag.product_context_root_function",
             "tag.product_context",
             "tag.product_context_criticality");
-    assertThat(productContextConfig.getKeyDelimiter()).isEqualTo(":");
+    assertThat(productContextConfig.getKeyDelimiter()).isEqualTo("|");
   }
 
   @Test
@@ -868,7 +868,7 @@ public class GraphConfigTest {
                   - tag.product_context_root_function
                   - tag.product_context
                   - tag.product_context_criticality
-                key_delimiter: ":"
+                key_delimiter: "|"
                 default_value: ""
             """);
 
@@ -902,7 +902,7 @@ public class GraphConfigTest {
                   - tag.product_context_root_function
                   - tag.product_context
                   - tag.product_context_criticality
-                key_delimiter: ":"
+                key_delimiter: "|"
                 default_value: ""
             """);
 
@@ -919,7 +919,7 @@ public class GraphConfigTest {
     SortedMap<String, String> annotations =
         config.resolveAnnotationsForSpan(span, id -> null, new HashMap<>());
 
-    assertThat(annotations).containsEntry("product_context", "FOO:FOO__BAR__BAZ:1");
+    assertThat(annotations).containsEntry("product_context", "FOO|FOO__BAR__BAZ|1");
   }
 
   @Test
@@ -934,7 +934,7 @@ public class GraphConfigTest {
                   - tag.product_context_root_function
                   - tag.product_context
                   - tag.product_context_criticality
-                key_delimiter: ":"
+                key_delimiter: "|"
                 default_value: ""
             """);
 
@@ -962,7 +962,7 @@ public class GraphConfigTest {
     SortedMap<String, String> annotations =
         config.resolveAnnotationsForSpan(child, spanMap::get, new HashMap<>());
 
-    assertThat(annotations).containsEntry("product_context", "FOO:FOO__BAR__BAZ:1");
+    assertThat(annotations).containsEntry("product_context", "FOO|FOO__BAR__BAZ|1");
   }
 
   @Test
@@ -977,7 +977,7 @@ public class GraphConfigTest {
                   - tag.product_context_root_function
                   - tag.product_context
                   - tag.product_context_criticality
-                key_delimiter: ":"
+                key_delimiter: "|"
                 default_value: ""
             """);
 

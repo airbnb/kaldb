@@ -46,5 +46,5 @@ edge_metadata_tag_mapping:
       - tag.product_context_root_function
       - tag.product_context
       - tag.product_context_criticality
-    key_delimiter: ":"
+    key_delimiter: "|"
     default_value: ""

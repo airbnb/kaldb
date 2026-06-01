@@ -1739,9 +1739,9 @@ public class GraphBuilderTest {
             .orElseThrow();
 
     assertThat(grandparentToParent.getAnnotations().get("product_context"))
-        .containsExactly("FOO:FOO__BAR__BAZ:1");
+        .containsExactly("FOO|FOO__BAR__BAZ|1");
     assertThat(parentToChild.getAnnotations().get("product_context"))
-        .containsExactly("FOO:FOO__BAR__BAZ:1");
+        .containsExactly("FOO|FOO__BAR__BAZ|1");
   }
 
   @Test
@@ -1828,6 +1828,6 @@ public class GraphBuilderTest {
     assertThat(graph.edges()).hasSize(1);
     assertThat(graph.edges().get(0).getObservedCount()).isEqualTo(2);
     assertThat(graph.edges().get(0).getAnnotations().get("product_context"))
-        .containsExactlyInAnyOrder("FOO:FOO__BAR__BAZ:1", "QUX:QUX__QUUX__CORGE:2");
+        .containsExactlyInAnyOrder("FOO|FOO__BAR__BAZ|1", "QUX|QUX__QUUX__CORGE|2");
   }
 }
