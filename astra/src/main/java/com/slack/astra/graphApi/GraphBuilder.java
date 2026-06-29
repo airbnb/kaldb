@@ -88,7 +88,6 @@ public class GraphBuilder {
    */
   public Graph buildFromSpans(List<ZipkinSpanResponse> spans, Optional<Filter> filter) {
     // Build all lookup structures
-    Map<String, ZipkinSpanResponse> spanIdToSpan = new HashMap<>(); // Lookup a span by span ID
     Map<String, Node> spanIdToNode = new HashMap<>(); // Lookup a span's logical node by span ID
     Map<String, Node> nodeIdToNode = new HashMap<>(); // Lookup a node by node ID
     Set<String> matchingSpanIds = new HashSet<>(); // Spans that match the given filter
@@ -99,8 +98,6 @@ public class GraphBuilder {
         .filter(span -> span.getId() != null && !span.getId().equals("-1"))
         .forEach(
             span -> {
-              spanIdToSpan.put(span.getId(), span);
-
               Node node =
                   new Node(config.createMetadataFromSpan(span, GraphConfig.EntityType.NODE));
               spanIdToNode.put(span.getId(), node);
@@ -123,7 +120,7 @@ public class GraphBuilder {
             .collect(Collectors.toSet());
 
     return traverseAndBuildGraph(
-        matchingSpanIds, nodesToProcess, nodeIdToNode, parentNodeIdToChildNodeIds, spanIdToSpan);
+        matchingSpanIds, nodesToProcess, nodeIdToNode, parentNodeIdToChildNodeIds);
   }
 
   /**
@@ -190,10 +187,7 @@ public class GraphBuilder {
       Set<String> matchingSpanIds,
       Set<String> nodesToProcess,
       Map<String, Node> nodeIdToNode,
-      Map<String, List<Map.Entry<String, ZipkinSpanResponse>>> parentNodeIdToChildNodeIds,
-      Map<String, ZipkinSpanResponse> spanIdToSpan) {
-    Map<String, SortedMap<String, String>> annotationsBySpanId = new HashMap<>();
-
+      Map<String, List<Map.Entry<String, ZipkinSpanResponse>>> parentNodeIdToChildNodeIds) {
     Set<Node> nodes = new HashSet<>();
     Map<String, Edge> edges = new HashMap<>();
 
@@ -229,8 +223,7 @@ public class GraphBuilder {
                 config.createMetadataFromSpan(refSpan, GraphConfig.EntityType.EDGE);
             String edgeKey = Edge.generateKey(parentNodeId, childNodeId, edgeMetadata);
 
-            SortedMap<String, String> annotations =
-                config.resolveAnnotationsForSpan(refSpan, spanIdToSpan::get, annotationsBySpanId);
+            SortedMap<String, String> annotations = config.createAnnotationsFromSpan(refSpan);
             edges
                 .computeIfAbsent(edgeKey, k -> new Edge(parentNodeId, childNodeId, edgeMetadata))
                 .addObservation(annotations);
