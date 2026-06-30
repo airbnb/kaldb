@@ -1662,35 +1662,85 @@ public class GraphBuilderTest {
   }
 
   @Test
-  void buildFromSpans_spanCarriesAnnotationTags_edgeGetsAnnotation() {
+  void buildFromSpans_annotationInheritedByDescendants() {
+    // Middle span carries annotation; spans above and below do not.
+    // Edge into annotated span gets the annotation (refSpan IS the annotated span).
+    // Edge out of annotated span also gets the annotation via walk-up from the child.
     List<ZipkinSpanResponse> spans =
         List.of(
             TestUtils.createSpanWithTags(
-                "parent",
+                "grandparent",
                 "trace1",
                 null,
                 Map.of(
-                    "kube.app", "app1",
-                    "kube.namespace", "ns1",
-                    "operation_name", "op1",
-                    "resource", "res1")),
+                    "kube.app", "appA",
+                    "kube.namespace", "nsA",
+                    "operation_name", "opA",
+                    "resource", "resA")),
+            TestUtils.createSpanWithTags(
+                "parent",
+                "trace1",
+                "grandparent",
+                Map.of(
+                    "kube.app", "appB",
+                    "kube.namespace", "nsB",
+                    "operation_name", "opB",
+                    "resource", "resB",
+                    "tag.product_context_root_function", "FOO",
+                    "tag.product_context", "FOO__BAR__BAZ",
+                    "tag.product_context_criticality", "1")),
             TestUtils.createSpanWithTags(
                 "child",
                 "trace1",
                 "parent",
                 Map.of(
-                    "kube.app", "app2",
-                    "kube.namespace", "ns2",
-                    "operation_name", "op2",
-                    "resource", "res2",
-                    "tag.product_context_root_function", "FOO",
-                    "tag.product_context", "FOO__BAR__BAZ",
-                    "tag.product_context_criticality", "1")));
+                    "kube.app", "appC",
+                    "kube.namespace", "nsC",
+                    "operation_name", "opC",
+                    "resource", "resC")));
 
     Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.empty());
 
-    assertThat(graph.edges()).hasSize(1);
-    assertThat(graph.edges().get(0).getAnnotations().get("product_context"))
+    assertThat(graph.edges()).hasSize(2);
+
+    Edge grandparentToParent =
+        graph.edges().stream()
+            .filter(
+                e ->
+                    e.getTargetNodeId()
+                        .equals(
+                            Node.generateIdFromMetadata(
+                                new TreeMap<>(
+                                    Map.of(
+                                        "service",
+                                        "appB.nsB",
+                                        "resource",
+                                        "resB",
+                                        "project",
+                                        "default-service")))))
+            .findFirst()
+            .orElseThrow();
+    Edge parentToChild =
+        graph.edges().stream()
+            .filter(
+                e ->
+                    e.getTargetNodeId()
+                        .equals(
+                            Node.generateIdFromMetadata(
+                                new TreeMap<>(
+                                    Map.of(
+                                        "service",
+                                        "appC.nsC",
+                                        "resource",
+                                        "resC",
+                                        "project",
+                                        "default-service")))))
+            .findFirst()
+            .orElseThrow();
+
+    assertThat(grandparentToParent.getAnnotations().get("product_context"))
+        .containsExactly("FOO|FOO__BAR__BAZ|1");
+    assertThat(parentToChild.getAnnotations().get("product_context"))
         .containsExactly("FOO|FOO__BAR__BAZ|1");
   }
 
@@ -1725,8 +1775,9 @@ public class GraphBuilderTest {
 
   @Test
   void buildFromSpans_twoSubtreesWithDifferentAnnotations_sameEdgeAccumulatesBoth() {
-    // Two spans map to the same logical edge (same parent/child node metadata) but each refSpan
-    // carries a different annotation. The deduped edge should accumulate both annotation values.
+    // Two spans map to the same logical edge (same parent/child node metadata) but are descended
+    // from different annotated ancestors. The deduped edge should accumulate both annotation
+    // values.
     List<ZipkinSpanResponse> spans =
         List.of(
             TestUtils.createSpanWithTags(
@@ -1737,7 +1788,10 @@ public class GraphBuilderTest {
                     "kube.app", "appA",
                     "kube.namespace", "nsA",
                     "operation_name", "opA",
-                    "resource", "resA")),
+                    "resource", "resA",
+                    "tag.product_context_root_function", "FOO",
+                    "tag.product_context", "FOO__BAR__BAZ",
+                    "tag.product_context_criticality", "1")),
             TestUtils.createSpanWithTags(
                 "child1",
                 "trace1",
@@ -1746,10 +1800,7 @@ public class GraphBuilderTest {
                     "kube.app", "appB",
                     "kube.namespace", "nsB",
                     "operation_name", "opB",
-                    "resource", "resB",
-                    "tag.product_context_root_function", "FOO",
-                    "tag.product_context", "FOO__BAR__BAZ",
-                    "tag.product_context_criticality", "1")),
+                    "resource", "resB")),
             TestUtils.createSpanWithTags(
                 "rootB",
                 "trace1",
@@ -1758,7 +1809,10 @@ public class GraphBuilderTest {
                     "kube.app", "appA",
                     "kube.namespace", "nsA",
                     "operation_name", "opA",
-                    "resource", "resA")),
+                    "resource", "resA",
+                    "tag.product_context_root_function", "QUX",
+                    "tag.product_context", "QUX__QUUX__CORGE",
+                    "tag.product_context_criticality", "2")),
             TestUtils.createSpanWithTags(
                 "child2",
                 "trace1",
@@ -1767,10 +1821,7 @@ public class GraphBuilderTest {
                     "kube.app", "appB",
                     "kube.namespace", "nsB",
                     "operation_name", "opB",
-                    "resource", "resB",
-                    "tag.product_context_root_function", "QUX",
-                    "tag.product_context", "QUX__QUUX__CORGE",
-                    "tag.product_context_criticality", "2")));
+                    "resource", "resB")));
 
     Graph graph = configuredGraphBuilder.buildFromSpans(spans, Optional.empty());
 

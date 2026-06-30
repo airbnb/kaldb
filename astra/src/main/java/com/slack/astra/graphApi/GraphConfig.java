@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -213,7 +214,7 @@ public final class GraphConfig {
           };
 
       for (String key : keys) {
-        // Annotation fields are resolved separately via createAnnotationsFromSpan and must not
+        // Annotation fields are resolved separately via resolveAnnotationsForSpan and must not
         // influence edge identity.
         if (entityType == EntityType.EDGE && this.edgeMetadataTagMapping.get(key).isAnnotation()) {
           continue;
@@ -328,23 +329,55 @@ public final class GraphConfig {
   }
 
   /**
-   * Creates annotations for an edge from a span's own tags. Annotation fields (those marked {@code
-   * is_annotation: true} in config) are resolved using the same key-lookup machinery as regular
-   * metadata fields but are kept separate from identity-determining metadata.
+   * Resolves annotation fields for a span, walking up the parent chain to find the nearest ancestor
+   * that carries a non-null value for each annotation field. Results are memoized in the provided
+   * cache, keyed by span ID, so each span's chain is walked at most once across all calls.
    *
-   * @param span The span to resolve annotations from.
-   * @return SortedMap of annotation field name to resolved value. Fields not present on this span
-   *     are absent from the map.
+   * <p>For each annotation field, resolution on a given span uses the same {@code resolveKeys}
+   * machinery as regular metadata fields. A field is only considered "carried" by a span when all
+   * keys in {@code default_key} resolve to non-null, non-empty values on that span. When a span
+   * doesn't carry a field, the value is inherited from the nearest ancestor that does.
+   *
+   * @param span The span to resolve annotations for.
+   * @param parentLookup Function to look up a span by ID; returns null when not found.
+   * @param annotationsBySpanId Shared map of spanId to resolved annotations; acts as both a
+   *     memoization store and a visited set to terminate cycles. Populated by this method.
+   * @return SortedMap of annotation field name to resolved value. Fields with no resolvable
+   *     ancestor are absent from the map.
    */
-  public SortedMap<String, String> createAnnotationsFromSpan(ZipkinSpanResponse span) {
+  public SortedMap<String, String> resolveAnnotationsForSpan(
+      ZipkinSpanResponse span,
+      Function<String, ZipkinSpanResponse> parentLookup,
+      Map<String, SortedMap<String, String>> annotationsBySpanId) {
+    if (annotationsBySpanId.containsKey(span.getId())) {
+      return annotationsBySpanId.get(span.getId());
+    }
+
+    // Insert before recursing so cycles in the parent chain terminate at the containsKey check
+    // above.
     SortedMap<String, String> result = new TreeMap<>();
-    for (String key : edgeMetadataTagMapping.keySet()) {
-      if (!edgeMetadataTagMapping.get(key).isAnnotation()) continue;
-      String value = resolve(span, key, EntityType.EDGE);
+    annotationsBySpanId.put(span.getId(), result);
+
+    // Resolve each annotation field on this span directly (no walk-up here).
+    for (Map.Entry<String, TagConfig> entry : edgeMetadataTagMapping.entrySet()) {
+      if (!entry.getValue().isAnnotation()) continue;
+      String value =
+          resolveKeys(span, entry.getValue().getDefaultKey(), entry.getValue().getKeyDelimiter());
       if (value != null && !value.isEmpty()) {
-        result.put(key, value);
+        result.put(entry.getKey(), value);
       }
     }
+
+    // All annotation fields currently inherit from the nearest ancestor that carries them.
+    // If a future field should not walk up, add a boolean flag (e.g. inherit_from_ancestor)
+    // to TagConfig and gate the putIfAbsent call on it here.
+    ZipkinSpanResponse parent =
+        span.getParentId() != null ? parentLookup.apply(span.getParentId()) : null;
+    if (parent != null) {
+      resolveAnnotationsForSpan(parent, parentLookup, annotationsBySpanId)
+          .forEach(result::putIfAbsent);
+    }
+
     return result;
   }
 
