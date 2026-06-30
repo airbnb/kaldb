@@ -333,10 +333,10 @@ public final class GraphConfig {
    * that carries a non-null value for each annotation field. Results are memoized in the provided
    * cache, keyed by span ID, so each span's chain is walked at most once across all calls.
    *
-   * <p>For each annotation field, resolution on a given span uses the same {@code resolveKeys}
-   * machinery as regular metadata fields. A field is only considered "carried" by a span when all
-   * keys in {@code default_key} resolve to non-null, non-empty values on that span. When a span
-   * doesn't carry a field, the value is inherited from the nearest ancestor that does.
+   * <p>For each annotation field, resolution uses the same {@code resolve} machinery as regular
+   * metadata fields (rules → default_key → default_value). A field is only considered "carried" by
+   * a span when resolution produces a non-empty value. When a span doesn't carry a field, the value
+   * is inherited from the nearest ancestor that does.
    *
    * @param span The span to resolve annotations for.
    * @param parentLookup Function to look up a span by ID; returns null when not found.
@@ -359,12 +359,12 @@ public final class GraphConfig {
     annotationsBySpanId.put(span.getId(), result);
 
     // Resolve each annotation field on this span directly (no walk-up here).
-    for (Map.Entry<String, TagConfig> entry : edgeMetadataTagMapping.entrySet()) {
-      if (!entry.getValue().isAnnotation()) continue;
-      String value =
-          resolveKeys(span, entry.getValue().getDefaultKey(), entry.getValue().getKeyDelimiter());
+    for (String key : edgeMetadataTagMapping.keySet()) {
+      if (!edgeMetadataTagMapping.get(key).isAnnotation()) continue;
+
+      String value = resolve(span, key, EntityType.EDGE);
       if (value != null && !value.isEmpty()) {
-        result.put(entry.getKey(), value);
+        result.put(key, value);
       }
     }
 
