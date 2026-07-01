@@ -2,7 +2,12 @@ package com.slack.astra.graphApi;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.SortedMap;
 
 /**
@@ -17,6 +22,7 @@ public class Edge {
   private final String targetNodeId;
   private final SortedMap<String, String> metadata;
   private int observedCount = 0;
+  private final Map<String, Set<String>> annotations = new HashMap<>();
 
   public Edge(String sourceNodeId, String targetNodeId, SortedMap<String, String> metadata) {
     this.sourceNodeId = checkNotNull(sourceNodeId, "sourceNodeId cannot be null");
@@ -45,8 +51,13 @@ public class Edge {
     return observedCount;
   }
 
-  public void incrementObservedCount() {
+  public Map<String, Set<String>> getAnnotations() {
+    return Collections.unmodifiableMap(annotations);
+  }
+
+  public void addObservation(Map<String, String> incoming) {
     observedCount++;
+    incoming.forEach((k, v) -> annotations.computeIfAbsent(k, x -> new LinkedHashSet<>()).add(v));
   }
 
   @Override

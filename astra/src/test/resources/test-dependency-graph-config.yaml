@@ -40,3 +40,11 @@ edge_metadata_tag_mapping:
       - operation_name
     default_value: unknown_operation
     rules: []
+  product_context:
+    is_annotation: true
+    default_key:
+      - tag.product_context_root_function
+      - tag.product_context
+      - tag.product_context_criticality
+    key_delimiter: "|"
+    default_value: ""

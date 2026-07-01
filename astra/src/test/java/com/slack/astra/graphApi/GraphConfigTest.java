@@ -45,6 +45,14 @@ public class GraphConfigTest {
                       value: prod
                       override_key:
                         - operation.prod
+                product_context:
+                  is_annotation: true
+                  default_key:
+                    - tag.product_context_root_function
+                    - tag.product_context
+                    - tag.product_context_criticality
+                  key_delimiter: "|"
+                  default_value: ""
               """;
 
     Path configFile = tempDir.resolve("test-config.yaml");
@@ -54,7 +62,7 @@ public class GraphConfigTest {
 
     assertThat(config).isNotNull();
     assertThat(config.getNodeMetadataTagMapping()).hasSize(2);
-    assertThat(config.getEdgeMetadataTagMapping()).hasSize(1);
+    assertThat(config.getEdgeMetadataTagMapping()).hasSize(2);
 
     GraphConfig.TagConfig serviceConfig = config.getNodeMetadataTagMapping().get("service");
     assertThat(serviceConfig.getDefaultKey()).containsExactly("service.name");
@@ -81,6 +89,17 @@ public class GraphConfigTest {
     assertThat(connectionTypeConfig.getDefaultKey()).containsExactly("operation_name");
     assertThat(connectionTypeConfig.getDefaultValue()).isEqualTo("unknown_operation");
     assertThat(connectionTypeConfig.getRules()).hasSize(1);
+    assertThat(connectionTypeConfig.isAnnotation()).isFalse();
+
+    GraphConfig.TagConfig productContextConfig =
+        config.getEdgeMetadataTagMapping().get("product_context");
+    assertThat(productContextConfig.isAnnotation()).isTrue();
+    assertThat(productContextConfig.getDefaultKey())
+        .containsExactly(
+            "tag.product_context_root_function",
+            "tag.product_context",
+            "tag.product_context_criticality");
+    assertThat(productContextConfig.getKeyDelimiter()).isEqualTo("|");
   }
 
   @Test
@@ -832,5 +851,340 @@ public class GraphConfigTest {
 
     assertThat(metadata).hasSize(1);
     assertThat(metadata.get("operation")).isEqualTo("some_operation");
+  }
+
+  @Test
+  public void testCreateMetadataFromSpan_edgeExcludesAnnotationFields() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+            edge_metadata_tag_mapping:
+              operation:
+                default_key: [operation_name]
+                default_value: unknown_operation
+              product_context:
+                is_annotation: true
+                default_key:
+                  - tag.product_context_root_function
+                  - tag.product_context
+                  - tag.product_context_criticality
+                key_delimiter: "|"
+                default_value: ""
+            """);
+
+    ZipkinSpanResponse span =
+        TestUtils.createSpanWithTags(
+            "s1",
+            "t1",
+            null,
+            Map.of(
+                "operation_name", "http.request",
+                "tag.product_context_root_function", "FOO",
+                "tag.product_context", "FOO__BAR__BAZ",
+                "tag.product_context_criticality", "1"));
+
+    SortedMap<String, String> metadata =
+        config.createMetadataFromSpan(span, GraphConfig.EntityType.EDGE);
+
+    assertThat(metadata).containsOnlyKeys("operation");
+    assertThat(metadata.get("operation")).isEqualTo("http.request");
+  }
+
+  @Test
+  public void testResolveAnnotationsForSpan_allThreeTags_returnsJoinedString() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+            edge_metadata_tag_mapping:
+              product_context:
+                is_annotation: true
+                default_key:
+                  - tag.product_context_root_function
+                  - tag.product_context
+                  - tag.product_context_criticality
+                key_delimiter: "|"
+                default_value: ""
+            """);
+
+    ZipkinSpanResponse span =
+        TestUtils.createSpanWithTags(
+            "s1",
+            "t1",
+            null,
+            Map.of(
+                "tag.product_context_root_function", "FOO",
+                "tag.product_context", "FOO__BAR__BAZ",
+                "tag.product_context_criticality", "1"));
+
+    SortedMap<String, String> annotations =
+        config.resolveAnnotationsForSpan(span, id -> null, new HashMap<>());
+
+    assertThat(annotations).containsEntry("product_context", "FOO|FOO__BAR__BAZ|1");
+  }
+
+  @Test
+  public void testResolveAnnotationsForSpan_missingOneTag_walksUpToAncestor() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+            edge_metadata_tag_mapping:
+              product_context:
+                is_annotation: true
+                default_key:
+                  - tag.product_context_root_function
+                  - tag.product_context
+                  - tag.product_context_criticality
+                key_delimiter: "|"
+                default_value: ""
+            """);
+
+    ZipkinSpanResponse parent =
+        TestUtils.createSpanWithTags(
+            "parent",
+            "t1",
+            null,
+            Map.of(
+                "tag.product_context_root_function", "FOO",
+                "tag.product_context", "FOO__BAR__BAZ",
+                "tag.product_context_criticality", "1"));
+
+    // Missing criticality — treated as not carrying PC, inherits from parent.
+    ZipkinSpanResponse child =
+        TestUtils.createSpanWithTags(
+            "child",
+            "t1",
+            "parent",
+            Map.of(
+                "tag.product_context_root_function", "QUX",
+                "tag.product_context", "QUX__QUUX__CORGE"));
+
+    Map<String, ZipkinSpanResponse> spanMap = Map.of("parent", parent, "child", child);
+    SortedMap<String, String> annotations =
+        config.resolveAnnotationsForSpan(child, spanMap::get, new HashMap<>());
+
+    assertThat(annotations).containsEntry("product_context", "FOO|FOO__BAR__BAZ|1");
+  }
+
+  @Test
+  public void testResolveAnnotationsForSpan_noPcAnywhere_returnsEmptyMap() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+            edge_metadata_tag_mapping:
+              product_context:
+                is_annotation: true
+                default_key:
+                  - tag.product_context_root_function
+                  - tag.product_context
+                  - tag.product_context_criticality
+                key_delimiter: "|"
+                default_value: ""
+            """);
+
+    ZipkinSpanResponse span =
+        TestUtils.createSpanWithTags("s1", "t1", null, Map.of("operation_name", "db.query"));
+
+    SortedMap<String, String> annotations =
+        config.resolveAnnotationsForSpan(span, id -> null, new HashMap<>());
+
+    assertThat(annotations).isEmpty();
+  }
+
+  @Test
+  public void testResolveAnnotationsForSpan_stopsAtNearestAncestor() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+            edge_metadata_tag_mapping:
+              category:
+                is_annotation: true
+                default_key: [tag.category]
+                default_value: ""
+            """);
+
+    // grandparent has annotation "cat_gp", parent has annotation "cat_p", child has none.
+    // Child should inherit "cat_p" (nearest), not "cat_gp".
+    ZipkinSpanResponse grandparent =
+        TestUtils.createSpanWithTags("gp", "t1", null, Map.of("tag.category", "cat_gp"));
+    ZipkinSpanResponse parent =
+        TestUtils.createSpanWithTags("p", "t1", "gp", Map.of("tag.category", "cat_p"));
+    ZipkinSpanResponse child = TestUtils.createSpanWithTags("c", "t1", "p", Map.of());
+
+    Map<String, ZipkinSpanResponse> spanMap = Map.of("gp", grandparent, "p", parent, "c", child);
+    SortedMap<String, String> annotations =
+        config.resolveAnnotationsForSpan(child, spanMap::get, new HashMap<>());
+
+    assertThat(annotations).containsEntry("category", "cat_p");
+  }
+
+  @Test
+  public void testResolveAnnotationsForSpan_cycleInParentChain_terminates() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+            edge_metadata_tag_mapping:
+              category:
+                is_annotation: true
+                default_key: [tag.category]
+                default_value: ""
+            """);
+
+    // A's parent is B, B's parent is A — cycle, neither carries the annotation
+    ZipkinSpanResponse spanA = TestUtils.createSpanWithTags("A", "t1", "B", Map.of());
+    ZipkinSpanResponse spanB = TestUtils.createSpanWithTags("B", "t1", "A", Map.of());
+
+    Map<String, ZipkinSpanResponse> spanMap = Map.of("A", spanA, "B", spanB);
+    SortedMap<String, String> annotations =
+        config.resolveAnnotationsForSpan(spanA, spanMap::get, new HashMap<>());
+
+    assertThat(annotations).isEmpty();
+  }
+
+  @Test
+  public void testResolveAnnotationsForSpan_siblingsDifferentAncestorAnnotations_eachInheritsOwn()
+      throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+            edge_metadata_tag_mapping:
+              category:
+                is_annotation: true
+                default_key: [tag.category]
+                default_value: ""
+            """);
+
+    ZipkinSpanResponse rootA =
+        TestUtils.createSpanWithTags("rootA", "t1", null, Map.of("tag.category", "cat_a"));
+    ZipkinSpanResponse childA = TestUtils.createSpanWithTags("childA", "t1", "rootA", Map.of());
+
+    ZipkinSpanResponse rootB =
+        TestUtils.createSpanWithTags("rootB", "t1", null, Map.of("tag.category", "cat_b"));
+    ZipkinSpanResponse childB = TestUtils.createSpanWithTags("childB", "t1", "rootB", Map.of());
+
+    Map<String, ZipkinSpanResponse> spanMap =
+        Map.of("rootA", rootA, "childA", childA, "rootB", rootB, "childB", childB);
+    Map<String, SortedMap<String, String>> annotationsBySpanId = new HashMap<>();
+
+    assertThat(config.resolveAnnotationsForSpan(childA, spanMap::get, annotationsBySpanId))
+        .containsEntry("category", "cat_a");
+    assertThat(config.resolveAnnotationsForSpan(childB, spanMap::get, annotationsBySpanId))
+        .containsEntry("category", "cat_b");
+  }
+
+  @Test
+  public void testResolveAnnotationsForSpan_cycleWithAnnotations_eachSpanKeepsOwnValue()
+      throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+            edge_metadata_tag_mapping:
+              category:
+                is_annotation: true
+                default_key: [tag.category]
+                default_value: ""
+            """);
+
+    // A's parent is B, B's parent is A — cycle, each carries its own annotation value.
+    // Each should resolve to its own value, not inherit the other's.
+    ZipkinSpanResponse spanA =
+        TestUtils.createSpanWithTags("A", "t1", "B", Map.of("tag.category", "cat_a"));
+    ZipkinSpanResponse spanB =
+        TestUtils.createSpanWithTags("B", "t1", "A", Map.of("tag.category", "cat_b"));
+
+    Map<String, ZipkinSpanResponse> spanMap = Map.of("A", spanA, "B", spanB);
+    Map<String, SortedMap<String, String>> annotationsBySpanId = new HashMap<>();
+
+    assertThat(config.resolveAnnotationsForSpan(spanA, spanMap::get, annotationsBySpanId))
+        .containsEntry("category", "cat_a");
+    assertThat(config.resolveAnnotationsForSpan(spanB, spanMap::get, annotationsBySpanId))
+        .containsEntry("category", "cat_b");
+  }
+
+  @Test
+  public void testResolveAnnotationsForSpan_deepChainPartialFields() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+            edge_metadata_tag_mapping:
+              a:
+                is_annotation: true
+                default_key: [tag.a]
+                default_value: ""
+              b:
+                is_annotation: true
+                default_key: [tag.b]
+                default_value: ""
+              c:
+                is_annotation: true
+                default_key: [tag.c]
+                default_value: ""
+            """);
+
+    // Chain: A(a=1,c=10) -> B(b=2) -> C(a=3) -> D()
+    // D should get: a=3 (nearest, from C), b=2 (from B), c=10 (from A)
+    // C should get: a=3 (own), b=2 (from B), c=10 (from A)
+    // B should get: b=2 (own), a=1 (from A), c=10 (from A)
+    // A should get: a=1 (own), c=10 (own)
+    ZipkinSpanResponse spanA =
+        TestUtils.createSpanWithTags("A", "t1", null, Map.of("tag.a", "1", "tag.c", "10"));
+    ZipkinSpanResponse spanB = TestUtils.createSpanWithTags("B", "t1", "A", Map.of("tag.b", "2"));
+    ZipkinSpanResponse spanC = TestUtils.createSpanWithTags("C", "t1", "B", Map.of("tag.a", "3"));
+    ZipkinSpanResponse spanD = TestUtils.createSpanWithTags("D", "t1", "C", Map.of());
+
+    Map<String, ZipkinSpanResponse> spanMap =
+        Map.of("A", spanA, "B", spanB, "C", spanC, "D", spanD);
+    Map<String, SortedMap<String, String>> annotationsBySpanId = new HashMap<>();
+
+    // Process D first
+    assertThat(config.resolveAnnotationsForSpan(spanD, spanMap::get, annotationsBySpanId))
+        .containsExactlyInAnyOrderEntriesOf(Map.of("a", "3", "b", "2", "c", "10"));
+
+    // All intermediate spans should now be cached with correct values
+    assertThat(annotationsBySpanId.get("C"))
+        .containsExactlyInAnyOrderEntriesOf(Map.of("a", "3", "b", "2", "c", "10"));
+    assertThat(annotationsBySpanId.get("B"))
+        .containsExactlyInAnyOrderEntriesOf(Map.of("a", "1", "b", "2", "c", "10"));
+    assertThat(annotationsBySpanId.get("A"))
+        .containsExactlyInAnyOrderEntriesOf(Map.of("a", "1", "c", "10"));
+  }
+
+  @Test
+  public void testResolveAnnotationsForSpan_sharedAncestor_bothChainsInheritCorrectly()
+      throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+            edge_metadata_tag_mapping:
+              a:
+                is_annotation: true
+                default_key: [tag.a]
+                default_value: ""
+              b:
+                is_annotation: true
+                default_key: [tag.b]
+                default_value: ""
+            """);
+
+    // A(a=1,b=2) -> B(b=3) -> C()
+    //                      -> D(a=5)
+    // C should get: a=1 (from A via B), b=3 (from B)
+    // D should get: a=5 (own), b=3 (from B)
+    ZipkinSpanResponse spanA =
+        TestUtils.createSpanWithTags("A", "t1", null, Map.of("tag.a", "1", "tag.b", "2"));
+    ZipkinSpanResponse spanB = TestUtils.createSpanWithTags("B", "t1", "A", Map.of("tag.b", "3"));
+    ZipkinSpanResponse spanC = TestUtils.createSpanWithTags("C", "t1", "B", Map.of());
+    ZipkinSpanResponse spanD = TestUtils.createSpanWithTags("D", "t1", "B", Map.of("tag.a", "5"));
+
+    Map<String, ZipkinSpanResponse> spanMap =
+        Map.of("A", spanA, "B", spanB, "C", spanC, "D", spanD);
+    Map<String, SortedMap<String, String>> annotationsBySpanId = new HashMap<>();
+
+    // Process C first — warms cache for B and A as side effects
+    assertThat(config.resolveAnnotationsForSpan(spanC, spanMap::get, annotationsBySpanId))
+        .containsExactlyInAnyOrderEntriesOf(Map.of("a", "1", "b", "3"));
+
+    // D shares B and A in its chain — both already cached
+    assertThat(config.resolveAnnotationsForSpan(spanD, spanMap::get, annotationsBySpanId))
+        .containsExactlyInAnyOrderEntriesOf(Map.of("a", "5", "b", "3"));
   }
 }
