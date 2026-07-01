@@ -125,6 +125,7 @@ public final class GraphConfig {
   // Holds the entire mapping for logical field names to their configuration of defaults and rules
   // for nodes.
   private final Map<String, TagConfig> edgeMetadataTagMapping;
+  private final List<String> edgeAnnotationKeys;
 
   @JsonCreator
   public GraphConfig(
@@ -138,6 +139,11 @@ public final class GraphConfig {
         (edgeMetadataTagMapping == null)
             ? Collections.emptyMap()
             : Map.copyOf(edgeMetadataTagMapping);
+    this.edgeAnnotationKeys =
+        this.edgeMetadataTagMapping.entrySet().stream()
+            .filter(e -> e.getValue().isAnnotation())
+            .map(Map.Entry::getKey)
+            .toList();
   }
 
   public Map<String, TagConfig> getNodeMetadataTagMapping() {
@@ -359,16 +365,17 @@ public final class GraphConfig {
     annotationsBySpanId.put(span.getId(), result);
 
     // Resolve each annotation field on this span directly (no walk-up here).
-    for (String key : edgeMetadataTagMapping.keySet()) {
-      if (!edgeMetadataTagMapping.get(key).isAnnotation()) continue;
-
+    for (String key : edgeAnnotationKeys) {
       String value = resolve(span, key, EntityType.EDGE);
       if (value != null && !value.isEmpty()) {
         result.put(key, value);
       }
     }
 
-    // All annotation fields currently inherit from the nearest ancestor that carries them.
+    // result is inserted into the cache before recursing to break cycles. putIfAbsent below
+    // mutates it in-place, so the cached entry reflects values for all annotation keys after
+    // inheriting any missing fields from the nearest ancestor that carries them (see
+    // testResolveAnnotationsForSpan_deepChainPartialFields).
     // If a future field should not walk up, add a boolean flag (e.g. inherit_from_ancestor)
     // to TagConfig and gate the putIfAbsent call on it here.
     ZipkinSpanResponse parent =

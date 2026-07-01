@@ -1099,4 +1099,92 @@ public class GraphConfigTest {
     assertThat(config.resolveAnnotationsForSpan(spanB, spanMap::get, annotationsBySpanId))
         .containsEntry("category", "cat_b");
   }
+
+  @Test
+  public void testResolveAnnotationsForSpan_deepChainPartialFields() throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+            edge_metadata_tag_mapping:
+              a:
+                is_annotation: true
+                default_key: [tag.a]
+                default_value: ""
+              b:
+                is_annotation: true
+                default_key: [tag.b]
+                default_value: ""
+              c:
+                is_annotation: true
+                default_key: [tag.c]
+                default_value: ""
+            """);
+
+    // Chain: A(a=1,c=10) -> B(b=2) -> C(a=3) -> D()
+    // D should get: a=3 (nearest, from C), b=2 (from B), c=10 (from A)
+    // C should get: a=3 (own), b=2 (from B), c=10 (from A)
+    // B should get: b=2 (own), a=1 (from A), c=10 (from A)
+    // A should get: a=1 (own), c=10 (own)
+    ZipkinSpanResponse spanA =
+        TestUtils.createSpanWithTags("A", "t1", null, Map.of("tag.a", "1", "tag.c", "10"));
+    ZipkinSpanResponse spanB = TestUtils.createSpanWithTags("B", "t1", "A", Map.of("tag.b", "2"));
+    ZipkinSpanResponse spanC = TestUtils.createSpanWithTags("C", "t1", "B", Map.of("tag.a", "3"));
+    ZipkinSpanResponse spanD = TestUtils.createSpanWithTags("D", "t1", "C", Map.of());
+
+    Map<String, ZipkinSpanResponse> spanMap =
+        Map.of("A", spanA, "B", spanB, "C", spanC, "D", spanD);
+    Map<String, SortedMap<String, String>> annotationsBySpanId = new HashMap<>();
+
+    // Process D first
+    assertThat(config.resolveAnnotationsForSpan(spanD, spanMap::get, annotationsBySpanId))
+        .containsExactlyInAnyOrderEntriesOf(Map.of("a", "3", "b", "2", "c", "10"));
+
+    // All intermediate spans should now be cached with correct values
+    assertThat(annotationsBySpanId.get("C"))
+        .containsExactlyInAnyOrderEntriesOf(Map.of("a", "3", "b", "2", "c", "10"));
+    assertThat(annotationsBySpanId.get("B"))
+        .containsExactlyInAnyOrderEntriesOf(Map.of("a", "1", "b", "2", "c", "10"));
+    assertThat(annotationsBySpanId.get("A"))
+        .containsExactlyInAnyOrderEntriesOf(Map.of("a", "1", "c", "10"));
+  }
+
+  @Test
+  public void testResolveAnnotationsForSpan_sharedAncestor_bothChainsInheritCorrectly()
+      throws IOException {
+    GraphConfig config =
+        GraphConfig.load(
+            """
+            edge_metadata_tag_mapping:
+              a:
+                is_annotation: true
+                default_key: [tag.a]
+                default_value: ""
+              b:
+                is_annotation: true
+                default_key: [tag.b]
+                default_value: ""
+            """);
+
+    // A(a=1,b=2) -> B(b=3) -> C()
+    //                      -> D(a=5)
+    // C should get: a=1 (from A via B), b=3 (from B)
+    // D should get: a=5 (own), b=3 (from B)
+    ZipkinSpanResponse spanA =
+        TestUtils.createSpanWithTags("A", "t1", null, Map.of("tag.a", "1", "tag.b", "2"));
+    ZipkinSpanResponse spanB = TestUtils.createSpanWithTags("B", "t1", "A", Map.of("tag.b", "3"));
+    ZipkinSpanResponse spanC = TestUtils.createSpanWithTags("C", "t1", "B", Map.of());
+    ZipkinSpanResponse spanD = TestUtils.createSpanWithTags("D", "t1", "B", Map.of("tag.a", "5"));
+
+    Map<String, ZipkinSpanResponse> spanMap =
+        Map.of("A", spanA, "B", spanB, "C", spanC, "D", spanD);
+    Map<String, SortedMap<String, String>> annotationsBySpanId = new HashMap<>();
+
+    // Process C first — warms cache for B and A as side effects
+    assertThat(config.resolveAnnotationsForSpan(spanC, spanMap::get, annotationsBySpanId))
+        .containsExactlyInAnyOrderEntriesOf(Map.of("a", "1", "b", "3"));
+
+    // D shares B and A in its chain — both already cached
+    assertThat(config.resolveAnnotationsForSpan(spanD, spanMap::get, annotationsBySpanId))
+        .containsExactlyInAnyOrderEntriesOf(Map.of("a", "5", "b", "3"));
+  }
 }
