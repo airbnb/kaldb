@@ -60,11 +60,11 @@ public class ElasticsearchApiService {
   private final ObjectMapper objectMapper = new ObjectMapper();
 
   private static final @NonNull Map<String, Object> FIELD_CAP_SEARCHABLE_NOT_AGGREGATABLE =
-    getFieldCapMap(true, false);
+      getFieldCapMap(true, false);
   private static final @NonNull Map<String, Object> FIELD_CAP_NOT_SEARCHABLE_NOT_AGGREGATABLE =
-    getFieldCapMap(false, false);
+      getFieldCapMap(false, false);
   private static final @NonNull Map<String, Object> FIELD_CAP_SEARCHABLE_AGGREGATABLE =
-    getFieldCapMap(true, true);
+      getFieldCapMap(true, true);
 
   public ElasticsearchApiService(AstraQueryServiceBase searcher) {
     this.searcher = searcher;
