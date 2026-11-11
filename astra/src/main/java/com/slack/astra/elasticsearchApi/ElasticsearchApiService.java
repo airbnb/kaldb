@@ -37,6 +37,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.StructuredTaskScope;
+import java.util.regex.Pattern;
+import org.jspecify.annotations.NonNull;
 import org.opensearch.search.aggregations.InternalAggregation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +58,13 @@ public class ElasticsearchApiService {
 
   private final OpenSearchRequest openSearchRequest = new OpenSearchRequest();
   private final ObjectMapper objectMapper = new ObjectMapper();
+
+  private static final @NonNull Map<String, Object> FIELD_CAP_SEARCHABLE_NOT_AGGREGATABLE =
+      getFieldCapMap(true, false);
+  private static final @NonNull Map<String, Object> FIELD_CAP_NOT_SEARCHABLE_NOT_AGGREGATABLE =
+      getFieldCapMap(false, false);
+  private static final @NonNull Map<String, Object> FIELD_CAP_SEARCHABLE_AGGREGATABLE =
+      getFieldCapMap(true, true);
 
   public ElasticsearchApiService(AstraQueryServiceBase searcher) {
     this.searcher = searcher;
@@ -222,5 +231,135 @@ public class ElasticsearchApiService {
             ImmutableMap.of(
                 indexName.orElseThrow(),
                 ImmutableMap.of("mappings", ImmutableMap.of("properties", propertiesMap)))));
+  }
+
+  /**
+   * Field Capabilities API
+   *
+   * @see <a
+   *     href="https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-field-caps">API
+   *     doc</a>
+   */
+  @Get
+  @Path("/:indexName/_field_caps")
+  public HttpResponse fieldCaps(
+      @Param("indexName") Optional<String> indexName,
+      @Param("startTimeEpochMs") Optional<Long> startTimeEpochMs,
+      @Param("endTimeEpochMs") Optional<Long> endTimeEpochMs,
+      @Param("fields") Optional<List<String>> fields)
+      throws IOException {
+    // Use a tree map so the results are naturally sorted
+    Map<String, Map<String, Map<String, Object>>> fieldsMap = new TreeMap<>();
+
+    // we default the schema search to the last hour if params are not provided
+    AstraSearch.SchemaResult schemaResult =
+        searcher.getSchema(
+            AstraSearch.SchemaRequest.newBuilder()
+                .setDataset(indexName.orElse("*"))
+                .setStartTimeEpochMs(
+                    startTimeEpochMs.orElse(
+                        Instant.now().minus(1, ChronoUnit.HOURS).toEpochMilli()))
+                .setEndTimeEpochMs(endTimeEpochMs.orElse(Instant.now().toEpochMilli()))
+                .build());
+
+    Map<String, FieldType> schema = SearchResultUtils.fromSchemaResultProto(schemaResult);
+
+    if (fields.isPresent()) {
+      List<String> fieldsOrEmpty = fields.orElse(List.of());
+      List<String> withWildcard =
+          fieldsOrEmpty.stream().filter(field -> field.contains("*")).toList();
+      List<String> withoutWildcard =
+          fieldsOrEmpty.stream().filter(field -> !field.contains("*")).toList();
+
+      for (String field : withoutWildcard) {
+        FieldType fieldType = schema.get(field);
+        if (fieldType != null) {
+          fieldsMap.put(
+              field, Map.of(fieldType.getName(), getFlagsForType(indexName, field, fieldType)));
+        }
+      }
+      withWildcard.stream()
+          .map(field -> Pattern.quote(field).replace("*", "\\E.*\\Q"))
+          .forEach(
+              field -> {
+                Pattern pattern = Pattern.compile("^" + field + "$");
+                for (Map.Entry<String, FieldType> entry : schema.entrySet()) {
+                  String fieldName = entry.getKey();
+                  FieldType fieldType = entry.getValue();
+                  if (pattern.matcher(fieldName).matches()) {
+                    fieldsMap.put(
+                        fieldName,
+                        Map.of(
+                            fieldType.getName(), getFlagsForType(indexName, fieldName, fieldType)));
+                  }
+                }
+              });
+    } else {
+      schema.forEach(
+          (key, value) ->
+              fieldsMap.put(key, Map.of(value.getName(), getFlagsForType(indexName, key, value))));
+    }
+    // todo - remove this after we add support for a "date" type
+    // override the timestamp as a date field for proper autocomplete
+    if (fieldsMap.containsKey(LogMessage.SystemField.TIME_SINCE_EPOCH.fieldName)) {
+      fieldsMap.put(
+          LogMessage.SystemField.TIME_SINCE_EPOCH.fieldName,
+          Map.of("date", FIELD_CAP_SEARCHABLE_AGGREGATABLE));
+    }
+    // indices: [...indices...]
+    // fields:
+    //   <name>:
+    //     <type>:
+    //       ...list of things about it
+    //       metadata_field
+    //       searchable
+    //       aggregatable
+    //       inference
+    //       indices
+    //       non_aggregatable_indices
+    return HttpResponse.of(
+        HttpStatus.OK,
+        MediaType.JSON,
+        JsonUtil.writeAsString(ImmutableMap.of("fields", fieldsMap)));
+  }
+
+  private static Map<String, Object> getFlagsForType(
+      Optional<String> indexName, String fieldName, FieldType fieldType) {
+    return switch (fieldType.toSchemaFieldType()) {
+      case KEYWORD,
+          IP,
+          DATE,
+          DOUBLE,
+          FLOAT,
+          HALF_FLOAT,
+          INTEGER,
+          LONG,
+          SCALED_LONG,
+          SHORT,
+          BYTE,
+          ID,
+          STRING,
+          BOOLEAN ->
+          FIELD_CAP_SEARCHABLE_AGGREGATABLE;
+      case TEXT -> FIELD_CAP_SEARCHABLE_NOT_AGGREGATABLE;
+      case BINARY -> FIELD_CAP_NOT_SEARCHABLE_NOT_AGGREGATABLE;
+      default -> {
+        LOG.warn("Unsupported field type {} for field {}", fieldType, fieldName);
+        yield FIELD_CAP_NOT_SEARCHABLE_NOT_AGGREGATABLE;
+      }
+    };
+  }
+
+  private static @NonNull Map<String, Object> getFieldCapMap(
+      Boolean searchable, Boolean aggregatable) {
+    return Map.of(
+        "metadata_field",
+        Boolean.FALSE,
+        "searchable",
+        searchable,
+        "aggregatable",
+        aggregatable,
+        "inference",
+        Boolean.FALSE);
   }
 }

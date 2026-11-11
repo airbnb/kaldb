@@ -359,6 +359,85 @@ public class ElasticsearchApiServiceTest {
     assertThat(map.size()).isEqualTo(25);
   }
 
+  @Test
+  public void testSchemaFieldsInFieldCap() throws Exception {
+    final File schemaFile =
+        new File(getClass().getClassLoader().getResource("schema/test_schema.yaml").getFile());
+    Schema.IngestSchema schema = SchemaUtil.parseSchema(schemaFile.toPath());
+
+    byte[] rawRequest = getIndexRequestBytes("index_all_schema_fields");
+    List<IndexRequest> indexRequests = BulkApiRequestParser.parseBulkRequest(rawRequest);
+    assertThat(indexRequests.size()).isEqualTo(2);
+
+    for (IndexRequest indexRequest : indexRequests) {
+      IngestDocument ingestDocument = convertRequestToDocument(indexRequest);
+      Trace.Span span = BulkApiRequestParser.fromIngestDocument(ingestDocument, schema);
+      ConsumerRecord<String, byte[]> spanRecord = consumerRecordWithValue(span.toByteArray());
+      LogMessageWriterImpl messageWriter = new LogMessageWriterImpl(chunkManagerUtil.chunkManager);
+      assertThat(messageWriter.insertRecord(spanRecord)).isTrue();
+    }
+
+    assertThat(getCount(MESSAGES_RECEIVED_COUNTER, metricsRegistry)).isEqualTo(2);
+    assertThat(getCount(MESSAGES_FAILED_COUNTER, metricsRegistry)).isEqualTo(0);
+    chunkManagerUtil.chunkManager.getActiveChunk().commit();
+
+    HttpResponse response =
+        elasticsearchApiService.fieldCaps(
+            Optional.of("test"), Optional.of(0L), Optional.of(Long.MAX_VALUE), Optional.empty());
+
+    // handle response
+    AggregatedHttpResponse aggregatedRes = response.aggregate().join();
+    String body = aggregatedRes.content(StandardCharsets.UTF_8);
+    JsonNode jsonNode = new ObjectMapper().readTree(body);
+    assertThat(jsonNode).isNotNull();
+
+    ObjectMapper objectMapper = new ObjectMapper();
+    Map<String, Object> map = objectMapper.convertValue(jsonNode.get("fields"), Map.class);
+    assertThat(map).isNotNull();
+    assertThat(map).hasSize(25);
+  }
+
+  @Test
+  public void testSchemaFieldsInFieldCapWithProvidedFields() throws Exception {
+    final File schemaFile =
+        new File(getClass().getClassLoader().getResource("schema/test_schema.yaml").getFile());
+    Schema.IngestSchema schema = SchemaUtil.parseSchema(schemaFile.toPath());
+
+    byte[] rawRequest = getIndexRequestBytes("index_all_schema_fields");
+    List<IndexRequest> indexRequests = BulkApiRequestParser.parseBulkRequest(rawRequest);
+    assertThat(indexRequests.size()).isEqualTo(2);
+
+    for (IndexRequest indexRequest : indexRequests) {
+      IngestDocument ingestDocument = convertRequestToDocument(indexRequest);
+      Trace.Span span = BulkApiRequestParser.fromIngestDocument(ingestDocument, schema);
+      ConsumerRecord<String, byte[]> spanRecord = consumerRecordWithValue(span.toByteArray());
+      LogMessageWriterImpl messageWriter = new LogMessageWriterImpl(chunkManagerUtil.chunkManager);
+      assertThat(messageWriter.insertRecord(spanRecord)).isTrue();
+    }
+
+    assertThat(getCount(MESSAGES_RECEIVED_COUNTER, metricsRegistry)).isEqualTo(2);
+    assertThat(getCount(MESSAGES_FAILED_COUNTER, metricsRegistry)).isEqualTo(0);
+    chunkManagerUtil.chunkManager.getActiveChunk().commit();
+
+    HttpResponse response =
+        elasticsearchApiService.fieldCaps(
+            Optional.of("test"),
+            Optional.of(0L),
+            Optional.of(Long.MAX_VALUE),
+            Optional.of(List.of("message*", "count", "*e")));
+
+    // handle response
+    AggregatedHttpResponse aggregatedRes = response.aggregate().join();
+    String body = aggregatedRes.content(StandardCharsets.UTF_8);
+    JsonNode jsonNode = new ObjectMapper().readTree(body);
+    assertThat(jsonNode).isNotNull();
+
+    ObjectMapper objectMapper = new ObjectMapper();
+    Map<String, Object> map = objectMapper.convertValue(jsonNode.get("fields"), Map.class);
+    assertThat(map).isNotNull();
+    assertThat(map.keySet()).hasSize(9);
+  }
+
   // todo - test mapping
   @Test
   public void testResultsAreReturnedForValidQuery() throws Exception {
